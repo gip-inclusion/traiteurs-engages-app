@@ -11,6 +11,9 @@ venv/
 # Environments / secrets
 .env
 .env.*
+# Local deploy env file — holds real prod secrets (Stripe, Brevo, …),
+# must never reach git history.
+.deploy.env
 !.env.example
 *.pem
 *.key
