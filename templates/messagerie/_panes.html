@@ -166,11 +166,16 @@
         {% else %}
         <form id="message-form" class="border-t border-soft p-4 flex items-center gap-2">
           <input type="hidden" name="recipient_id" value="{{ ctx.active.other_user_id }}">
+          {# Bouton « Joindre un fichier » masqué tant que l'import de
+             pièces jointes n'est pas implémenté — à réactiver avec la
+             fonctionnalité. #}
+          {#
           <button type="button"
                   class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-cream transition-colors text-mute flex-shrink-0"
                   title="Joindre un fichier (bientôt)" disabled>
             <i data-lucide="paperclip" class="w-4 h-4"></i>
           </button>
+          #}
           <input type="text" name="body"
                  placeholder="Votre message... (Entrée pour envoyer)"
                  class="flex-1 border rounded-full px-4 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default"
