@@ -139,6 +139,44 @@ def test_setup_post_with_valid_code_enables_and_returns_codes(client):
     assert len(admin.mfa_recovery_codes) == 10
 
 
+def test_setup_refuses_re_enrollment_when_already_enabled(client):
+    """Regression: a POST to /admin/security/mfa/setup from a user with
+    MFA already enabled must NOT mint a fresh secret or overwrite the
+    existing one. The only legitimate re-enrollment path is
+    disable-then-enroll (which requires password + current TOTP).
+    """
+    from services import mfa as mfa_service
+
+    original_secret = pyotp.random_base32()
+    _enroll_admin_with(original_secret, ["AAAA-1111"] * 10)
+    _login(client, "admin@test.local", "testpass")
+    # Clear the MFA gate so we have a fully authenticated admin session,
+    # which is the realistic attacker prerequisite (stolen session cookie).
+    client.post("/mfa/verify", data={"code": pyotp.TOTP(original_secret).now()})
+
+    # POST with empty code — must NOT trigger a fresh QR render or
+    # overwrite the secret. Should land on the status page.
+    resp = client.post(
+        "/admin/security/mfa/setup",
+        data={"code": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    # Status template, not the setup template — no fresh QR rendered.
+    assert b"data:image/png;base64," not in resp.data
+    # Session must not contain a stale enrollment secret.
+    with client.session_transaction() as sess:
+        assert "mfa_setup_secret" not in sess
+
+    admin = _get_user("admin@test.local")
+    # Secret unchanged — the original one still matches.
+    assert mfa_service.decrypt_secret(admin.mfa_secret) == original_secret
+    assert admin.mfa_enabled is True
+    # Recovery codes unchanged: same 10 hashes, all still unused.
+    assert len(admin.mfa_recovery_codes) == 10
+    assert all(c["used_at"] is None for c in admin.mfa_recovery_codes)
+
+
 # ---------------------------------------------------------------------------
 # Login + verify
 # ---------------------------------------------------------------------------

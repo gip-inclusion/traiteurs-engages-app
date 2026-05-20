@@ -919,9 +919,17 @@ def mfa_setup():
     user = g.current_user
     db = get_db()
 
-    if user.mfa_enabled and request.method == "GET":
-        # Already enrolled — show the status page instead of letting the
-        # user re-enroll silently (which would wipe their recovery codes).
+    if user.mfa_enabled:
+        # Already enrolled — show the status page and refuse re-enrollment
+        # outright. Gating only the GET path used to let an attacker with a
+        # stolen session POST an empty code, trigger a fresh-secret render
+        # of the QR, scan it, and then POST a valid code to overwrite the
+        # legitimate user's mfa_secret + recovery codes — full lockout
+        # without ever knowing the password. The only way to re-enroll is
+        # to disable first, which requires password + current TOTP.
+        # Defensive: drop any stale enrollment secret to avoid carrying it
+        # across the disable flow.
+        session.pop("mfa_setup_secret", None)
         return render_template(
             "admin/mfa_status.html",
             user=user,
