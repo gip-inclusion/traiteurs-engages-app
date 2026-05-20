@@ -248,6 +248,50 @@ def create_app():
     app.cli.add_command(admin_cli)
     app.cli.add_command(uploads_cli)
 
+    # Endpoints reachable without a fully-authenticated user (no MFA
+    # second-factor cleared yet). Anything outside this set is bounced
+    # to /mfa/verify by the hook below while `session.mfa_pending_user_id`
+    # is set.
+    _MFA_PENDING_ALLOWED = {
+        "static",
+        "health",
+        "auth.mfa_verify",
+        "auth.logout",
+        "legal.security_txt",
+        "legal.cgs_current",
+        "legal.cgs_by_slug",
+    }
+
+    # Endpoints a super_admin without MFA enrolled is allowed to hit.
+    # Everything else is redirected to the enrollment page so the
+    # account cannot operate the platform without a second factor.
+    # Anonymous routes (auth.login etc.) are also allowed so an admin
+    # who lost their second factor can still log out and seek support.
+    _MFA_ENROLLMENT_ALLOWED = {
+        "static",
+        "health",
+        "admin.mfa_setup",
+        "admin.mfa_recovery_codes",
+        "admin.mfa_disable",
+        "admin.mfa_regenerate_recovery_codes",
+        "auth.logout",
+        "legal.security_txt",
+        "legal.cgs_current",
+        "legal.cgs_by_slug",
+    }
+
+    @app.before_request
+    def force_mfa_verify_if_pending():
+        """If the user passed /login but hasn't entered their TOTP yet,
+        keep them on /mfa/verify regardless of the URL they typed.
+        Anonymous requests are unaffected.
+        """
+        if not session.get("mfa_pending_user_id"):
+            return
+        if request.endpoint in _MFA_PENDING_ALLOWED:
+            return
+        return redirect(url_for("auth.mfa_verify"))
+
     @app.before_request
     def load_current_user():
         g.current_user = None
@@ -299,6 +343,20 @@ def create_app():
                     session.clear()
                     user = None
             g.current_user = user
+
+    @app.before_request
+    def force_mfa_enrollment():
+        """Super_admins MUST have MFA enabled (RGS-AUTH.2). If a logged-in
+        super_admin isn't enrolled yet, redirect to the setup flow on
+        every request other than the small allow-list above. Other roles
+        are unaffected for now (MFA is opt-in only — see
+        `services/mfa.py` docstring)."""
+        user = getattr(g, "current_user", None)
+        if user is None or user.role != UserRole.super_admin or user.mfa_enabled:
+            return
+        if request.endpoint in _MFA_ENROLLMENT_ALLOWED:
+            return
+        return redirect(url_for("admin.mfa_setup"))
 
     @app.after_request
     def mark_notifications_read_on_entity_view(response):

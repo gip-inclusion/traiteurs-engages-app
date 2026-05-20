@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Codes de récupération MFA - Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="mb-8">
+    <h1 class="font-display font-bold text-3xl text-black">Codes de récupération</h1>
+    <p class="text-sm mt-2 text-mute-soft">
+      Conservez ces codes en lieu sûr. Ils permettent de se connecter en cas de perte d'accès à votre application d'authentification.
+    </p>
+  </div>
+
+  {% include "components/flash_messages.html" %}
+
+  {% if codes %}
+  <div class="bg-white rounded-2xl p-8 shadow-sm border border-default">
+    <div class="mb-4 p-4 rounded-xl bg-warning-light text-sm">
+      <strong>Affichage unique.</strong> Une fois cette page fermée, vous ne pourrez plus revoir ces codes en clair.
+      Chaque code n'est utilisable qu'une seule fois.
+    </div>
+    <div class="grid grid-cols-2 gap-3 font-mono text-base mb-6">
+      {% for code in codes %}
+      <div class="px-4 py-3 rounded-lg bg-cream-page text-center select-all">{{ code }}</div>
+      {% endfor %}
+    </div>
+    <p class="text-sm text-mute-soft text-center">
+      <a href="{{ url_for('admin.dashboard') }}" class="font-medium text-coral hover:underline">J'ai sauvegardé mes codes — retourner au tableau de bord</a>
+    </p>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-2xl p-8 shadow-sm border border-default text-center">
+    <p class="text-sm text-mute-soft mb-4">
+      Vos codes de récupération précédents ont été remis. Il vous reste {{ unused_count }} code(s) inutilisé(s).
+    </p>
+    <p class="text-sm">
+      Si vous avez perdu vos codes, vous pouvez en générer de nouveaux depuis la page de configuration MFA — cela invalidera les anciens.
+    </p>
+    <p class="text-sm mt-6">
+      <a href="{{ url_for('admin.mfa_setup') }}" class="font-medium text-coral hover:underline">Retour à la configuration MFA</a>
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

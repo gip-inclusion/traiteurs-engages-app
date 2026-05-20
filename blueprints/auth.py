@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import logging
 import os
+import uuid
 
 import bcrypt
 from flask import (
@@ -29,6 +30,7 @@ from models import (
     User,
     UserRole,
 )
+from services import mfa as mfa_service
 from services.notifications import (
     company_admin_user_ids,
     notify_users,
@@ -207,11 +209,85 @@ def login():
         # Rotate session on successful auth: drop any pre-login state
         # (CSRF token, anonymous flash) before issuing the authenticated cookie.
         session.clear()
+        # MFA gate. When the user has enrolled, mint a *partial* session
+        # (`mfa_pending_user_id` only). `app.load_current_user` refuses
+        # every route except /mfa/verify and /logout until the TOTP code
+        # clears.
+        if user.mfa_enabled:
+            session["mfa_pending_user_id"] = str(user.id)
+            session.permanent = True
+            return redirect(url_for("auth.mfa_verify"))
         _stamp_session(user)
         session.permanent = True
         endpoint = ROLE_DASHBOARDS.get(UserRole(user.role), "client.dashboard")
         return redirect(url_for(endpoint))
     return render_template("auth/login.html")
+
+
+# 5 attempts/min — enough for a human fumbling with their phone, while
+# making online brute-force unattractive (6-digit code = 1M keyspace; at
+# 5/min the expected time to land a hit is months).
+MFA_VERIFY_LIMIT = "5 per minute"
+
+
+@auth_bp.route("/mfa/verify", methods=["GET", "POST"])
+@limiter.limit(MFA_VERIFY_LIMIT, methods=["POST"])
+def mfa_verify():
+    """Second-factor gate. Reached only when `session['mfa_pending_user_id']`
+    is set by /login. Accepts a 6-digit TOTP code OR a recovery code
+    (XXXX-XXXX). On success, rotates the session to a fully
+    authenticated one.
+    """
+    pending = session.get("mfa_pending_user_id")
+    if not pending:
+        return redirect(url_for("auth.login"))
+
+    db = get_db()
+    try:
+        pending_uuid = uuid.UUID(pending)
+    except (ValueError, TypeError):
+        session.clear()
+        return redirect(url_for("auth.login"))
+    user = db.get(User, pending_uuid)
+    if user is None or not user.is_active or not user.mfa_enabled:
+        # Account vanished, was deactivated, or MFA was reset between
+        # the password step and the TOTP step — force a fresh login.
+        session.clear()
+        return redirect(url_for("auth.login"))
+
+    recovery_mode = (request.values.get("mode") or "").strip() == "recovery"
+
+    if request.method == "POST":
+        code = (request.form.get("code") or "").strip()
+        if recovery_mode:
+            ok = mfa_service.consume_recovery_code(user, code)
+            if ok:
+                db.commit()
+        else:
+            ok = mfa_service.verify_user_totp(user, code)
+        if not ok:
+            logger.info(
+                "mfa verify failed",
+                extra={
+                    "user_id": str(user.id),
+                    "mode": "recovery" if recovery_mode else "totp",
+                },
+            )
+            flash("Code incorrect. Réessayez.", "error")
+            return render_template("auth/mfa_verify.html", recovery_mode=recovery_mode)
+        session.clear()
+        _stamp_session(user)
+        session.permanent = True
+        if recovery_mode:
+            remaining = mfa_service.unused_recovery_code_count(user)
+            flash(
+                f"Code de récupération accepté. Il vous reste {remaining} code(s). "
+                "Pensez à régénérer vos codes depuis votre espace administrateur.",
+                "warning",
+            )
+        endpoint = ROLE_DASHBOARDS.get(UserRole(user.role), "client.dashboard")
+        return redirect(url_for(endpoint))
+    return render_template("auth/mfa_verify.html", recovery_mode=recovery_mode)
 
 
 @auth_bp.route("/signup", methods=["GET", "POST"])

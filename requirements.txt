@@ -22,6 +22,17 @@ stripe==15.1.0
 python-json-logger==4.1.0
 flask-limiter==4.1.1
 
+# MFA TOTP for super_admin (RGS-AUTH.2). pyotp generates and verifies
+# the 6-digit codes; qrcode renders the provisioning URI into a PNG
+# embedded as a data URL on the setup page (no external QR service —
+# stays first-party, matches the CSP `img-src 'self' data:` baseline).
+# cryptography is already a transitive dependency (Werkzeug, others)
+# but we pin it here too because services/mfa.py imports it directly
+# (Fernet, HKDF) — exact pin per the project policy.
+pyotp==2.9.0
+qrcode==8.0
+cryptography==46.0.3
+
 # Serves /static/* at the WSGI layer instead of through Flask routing —
 # critical on Scalingo where there is no Caddy/nginx in front of gunicorn
 # and every asset request would otherwise consume a worker. Self-hosted

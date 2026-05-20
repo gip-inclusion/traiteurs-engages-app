@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Vérification en deux étapes - Les Traiteurs Engag&#233;s{% endblock %}
+
+{% block public_content %}
+<div class="min-h-screen flex items-center justify-center p-4 bg-cream-page">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Les Traiteurs Engag&#233;s" class="h-12 mx-auto mb-6">
+    </div>
+
+    {% include "components/flash_messages.html" %}
+
+    <div class="bg-white rounded-2xl p-8 shadow-sm border border-default">
+      <h1 class="font-display text-2xl font-semibold text-text mb-1">Vérification en deux étapes</h1>
+      {% if recovery_mode %}
+      <p class="text-sm mb-6 text-mute-soft">
+        Saisissez un code de récupération à usage unique (format XXXX-XXXX).
+      </p>
+      {% else %}
+      <p class="text-sm mb-6 text-mute-soft">
+        Saisissez le code à 6 chiffres de votre application d'authentification.
+      </p>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('auth.mfa_verify') }}{% if recovery_mode %}?mode=recovery{% endif %}" class="space-y-5">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if recovery_mode %}
+        <input type="hidden" name="mode" value="recovery">
+        <div>
+          <label for="code" class="block text-sm font-medium text-text mb-1.5">Code de récupération</label>
+          <input type="text" id="code" name="code" required autocomplete="one-time-code"
+            class="w-full px-4 py-2.5 rounded-xl text-text text-sm tracking-widest font-mono input-coral"
+            placeholder="XXXX-XXXX"
+            inputmode="text"
+            autofocus>
+        </div>
+        {% else %}
+        <div>
+          <label for="code" class="block text-sm font-medium text-text mb-1.5">Code à 6 chiffres</label>
+          <input type="text" id="code" name="code" required autocomplete="one-time-code"
+            class="w-full px-4 py-2.5 rounded-xl text-text text-sm tracking-widest font-mono input-coral"
+            placeholder="000000"
+            inputmode="numeric"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            autofocus>
+        </div>
+        {% endif %}
+        <button type="submit"
+          class="w-full py-3 rounded-xl font-medium btn-coral">
+          Valider
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-sm mt-6 text-mute-soft">
+      {% if recovery_mode %}
+        <a href="{{ url_for('auth.mfa_verify') }}" class="font-medium transition-colors text-coral">Utiliser un code TOTP</a>
+      {% else %}
+        Pas accès à votre application ?
+        <a href="{{ url_for('auth.mfa_verify', mode='recovery') }}" class="font-medium transition-colors text-coral">Utiliser un code de récupération</a>
+      {% endif %}
+    </p>
+
+    <p class="text-center text-xs mt-4 text-mute-soft">
+      <form method="POST" action="{{ url_for('auth.logout') }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="underline">Se déconnecter</button>
+      </form>
+    </p>
+  </div>
+</div>
+{% endblock %}

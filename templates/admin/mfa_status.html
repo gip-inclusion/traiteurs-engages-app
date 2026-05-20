@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Authentification à deux facteurs - Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="mb-8">
+    <h1 class="font-display font-bold text-3xl text-black">Authentification à deux facteurs</h1>
+    <p class="text-sm mt-2 text-mute-soft">
+      Statut de la double authentification de votre compte.
+    </p>
+  </div>
+
+  {% include "components/flash_messages.html" %}
+
+  <div class="bg-white rounded-2xl p-8 shadow-sm border border-default space-y-6">
+    <div class="flex items-center gap-3">
+      <i data-lucide="shield-check" class="w-6 h-6 text-emerald-600"></i>
+      <div>
+        <p class="font-medium text-text">Activée</p>
+        {% if user.mfa_enrolled_at %}
+        <p class="text-sm text-mute-soft">Depuis le {{ user.mfa_enrolled_at.strftime('%d/%m/%Y') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="border-t border-default pt-6">
+      <p class="text-sm text-text mb-1">
+        <strong>Codes de récupération restants&nbsp;:</strong> {{ unused_codes }} / 10
+      </p>
+      {% if unused_codes <= 3 %}
+      <p class="text-sm text-coral-red mt-2">
+        Il vous reste peu de codes. Pensez à en générer de nouveaux.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="border-t border-default pt-6">
+      <h2 class="font-display font-semibold text-base text-black mb-3">Régénérer les codes de récupération</h2>
+      <p class="text-sm text-mute-soft mb-3">
+        Saisissez votre code TOTP actuel pour générer 10 nouveaux codes (les anciens deviennent invalides).
+      </p>
+      <form method="POST" action="{{ url_for('admin.mfa_regenerate_recovery_codes') }}" class="flex gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="code" required autocomplete="one-time-code"
+          class="flex-1 px-4 py-2.5 rounded-xl text-text text-sm tracking-widest font-mono input-coral"
+          placeholder="000000"
+          inputmode="numeric"
+          pattern="[0-9]{6}"
+          maxlength="6">
+        <button type="submit" class="px-5 py-2.5 rounded-xl font-medium btn-coral whitespace-nowrap">Régénérer</button>
+      </form>
+    </div>
+
+    <div class="border-t border-default pt-6">
+      <h2 class="font-display font-semibold text-base text-black mb-3">Désactiver la double authentification</h2>
+      <p class="text-sm text-mute-soft mb-3">
+        La désactivation requiert votre mot de passe ET un code TOTP valide. Conseillée uniquement en cas de raison opérationnelle documentée — un compte super_admin sans MFA n'est plus conforme RGS**.
+      </p>
+      <form method="POST" action="{{ url_for('admin.mfa_disable') }}" class="space-y-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="password" name="password" required autocomplete="current-password"
+          class="w-full px-4 py-2.5 rounded-xl text-text text-sm input-coral"
+          placeholder="Mot de passe">
+        <input type="text" name="code" required autocomplete="one-time-code"
+          class="w-full px-4 py-2.5 rounded-xl text-text text-sm tracking-widest font-mono input-coral"
+          placeholder="Code TOTP à 6 chiffres"
+          inputmode="numeric"
+          pattern="[0-9]{6}"
+          maxlength="6">
+        <button type="submit" class="w-full py-3 rounded-xl font-medium border border-coral text-coral hover:bg-coral hover:text-white transition-colors">
+          Désactiver
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
