@@ -39,8 +39,7 @@ Optional Stripe variables (leave unset to disable Stripe):
 scalingo --app les-traiteurs-engages env-set \
   STRIPE_SECRET_KEY=sk_live_... \
   STRIPE_PUBLISHABLE_KEY=pk_live_... \
-  STRIPE_WEBHOOK_SECRET=whsec_... \
-  STRIPE_CONNECT_CLIENT_ID=ca_...
+  STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
 ## Deploy

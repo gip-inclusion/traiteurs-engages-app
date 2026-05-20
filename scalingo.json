@@ -43,10 +43,6 @@
       "description": "Stripe webhook signing secret",
       "required": false
     },
-    "STRIPE_CONNECT_CLIENT_ID": {
-      "description": "Stripe Connect OAuth client ID",
-      "required": false
-    },
     "S3_BUCKET": {
       "description": "S3 bucket name for file uploads (required for persistent storage)",
       "required": true
