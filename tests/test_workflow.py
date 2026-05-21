@@ -1,15 +1,3 @@
-"""Tests directs des transitions workflow — pas de contexte HTTP.
-
-Stratégie d'isolation : la fixture `session` rollback à la fin. Les
-helpers de seed font `flush()`, jamais `commit()`, pour que rien ne
-persiste entre tests.
-
-Convention d'imports lazy : `database` (et donc `config.DATABASE_URL`)
-est importé *à l'intérieur* des fonctions, pas au top-level. Sinon le
-`engine` est figé sur la DB de dev avant que conftest ne switch sur
-`traiteurs_test`. Voir `tests/test_accept_quote_guards.py` pour le même
-pattern.
-"""
 
 import datetime as _dt
 import uuid
@@ -37,7 +25,6 @@ from services import workflow
 
 @pytest.fixture
 def session(app):
-    """Session SQLAlchemy par test, rollback à la fin (isolation)."""
     from database import session_factory
 
     s = session_factory()
@@ -171,7 +158,6 @@ def test_refuse_unknown_quote_raises_quote_not_found(session):
         )
 
 
-# --- accept_quote ---------------------------------------------------------
 
 
 def _set_valid_until(s, quote_id: uuid.UUID, valid_until: _dt.date | None) -> None:
@@ -267,15 +253,6 @@ def test_accept_quote_for_other_company_raises_request_not_found(session):
 
 
 def test_accept_quote_closes_losing_caterers_qrc(session):
-    """When the client accepts a quote, every other solicited caterer is
-    out of the running: their QRC flips to `closed` so the caterer UI
-    shows « Clôturée » and submit_quote refuses a late entry. The winning
-    caterer's QRC is left untouched.
-
-    Regression: accept_quote closed the QuoteRequest and refused sibling
-    quotes but never touched the QRC rows — a caterer who hadn't quoted
-    yet kept a `selected` QRC, still saw « Nouvelle », and could submit.
-    """
     from sqlalchemy import select
 
     qr_id, caterers, quote_ids = _seed_qr_with_qrcs_and_drafts(
@@ -306,7 +283,6 @@ def test_accept_quote_closes_losing_caterers_qrc(session):
     assert qrcs[caterers[2].id].status == QRCStatus.closed
 
 
-# --- approve_quote_request / reject_quote_request -------------------------
 
 
 def _seed_pending_review_qr(s) -> uuid.UUID:
@@ -330,10 +306,6 @@ def _seed_pending_review_qr(s) -> uuid.UUID:
 
 
 def test_approve_quote_request_dispatches_to_all_validated_caterers(session):
-    """Approving a request fans it out to every validated caterer on the
-    platform. The previous distance / capacity / budget pre-filter was
-    retired with the matching service — caterers gate their own queue
-    via the catalog filters they pick on their profile."""
     from sqlalchemy import select
 
     qr_id = _seed_pending_review_qr(session)
@@ -384,15 +356,11 @@ def test_reject_unknown_request_raises_not_found(session):
         workflow.reject_quote_request(session, request_id=uuid.uuid4(), reason=None)
 
 
-# --- submit_quote (3-responder rule) -------------------------------------
 
 
 def _seed_qr_with_qrcs_and_drafts(
     s, *, n_caterers: int, prior_transmitted: int = 0
 ) -> tuple[uuid.UUID, list[Caterer], list[uuid.UUID]]:
-    """Crée un QR avec n caterers en `selected` (chacun avec un draft Quote).
-    `prior_transmitted` répondants antérieurs sont déjà en `transmitted_to_client`.
-    """
     from sqlalchemy import select
 
     acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -501,9 +469,6 @@ def test_submit_quote_third_responder_closes_others(session):
 
 
 def test_submit_quote_after_third_responder_raises_closed(session):
-    """Une 4e soumission après que 3 traiteurs ont transmis leur devis
-    doit être refusée avec `QuoteRequestClosed`. Le devis reste en
-    `draft` côté DB et la QRC ne change pas d'état."""
     from sqlalchemy import select
 
     qr_id, caterers, qids = _seed_qr_with_qrcs_and_drafts(
@@ -522,9 +487,6 @@ def test_submit_quote_after_third_responder_raises_closed(session):
 
 
 def test_submit_quote_when_qrc_closed_raises(session):
-    """Si la QRC du traiteur est déjà `closed` (par ex. fermée par le
-    3e répondant précédent), une nouvelle tentative de soumission lève
-    `QuoteRequestClosed`."""
     qr_id, caterers, qids = _seed_qr_with_qrcs_and_drafts(
         session, n_caterers=4, prior_transmitted=2
     )
@@ -540,11 +502,6 @@ def test_submit_quote_when_qrc_closed_raises(session):
 
 
 def test_submit_quote_on_completed_request_raises_not_open(session):
-    """Once the client has accepted a quote (QR `completed`), no other
-    caterer may still transmit one — even with their own QRC left
-    `selected`. submit_quote must refuse on the QR status alone, with
-    QuoteRequestNotOpen (distinct from the 3-responders QuoteRequestClosed
-    so the blueprint can flash the right message)."""
     from sqlalchemy import select
 
     qr_id, caterers, qids = _seed_qr_with_qrcs_and_drafts(session, n_caterers=1)
@@ -583,12 +540,6 @@ def test_submit_quote_for_other_caterer_raises(session):
 
 
 def test_concurrent_submit_only_one_becomes_rank_3(app):
-    """Deux répondants concurrents alors que `transmitted == 2` :
-    le `SELECT … FOR UPDATE` sérialise. Exactement un atteint rank=3 ;
-    l'autre voit sa QRC `closed` (par le 1er à passer la barrière) et
-    se voit refusé avec `QuoteRequestClosed`. Plus de "loser silencieux"
-    en `responded` — la nouvelle règle métier est stricte : 3 max.
-    """
     import concurrent.futures
     import threading
 
@@ -610,8 +561,6 @@ def test_concurrent_submit_only_one_becomes_rank_3(app):
     barrier = threading.Barrier(2)
 
     def _submit(quote_id, caterer_id):
-        """Returns 'ok' on success, 'closed' when QuoteRequestClosed is
-        raised (the expected outcome for the slow racer)."""
         s = session_factory()
         try:
             cat = s.scalar(select(Caterer).where(Caterer.id == caterer_id))
@@ -669,12 +618,9 @@ def test_concurrent_submit_only_one_becomes_rank_3(app):
             cleanup.close()
 
 
-# --- mark_delivered -------------------------------------------------------
 
 
 def _seed_confirmed_order(s) -> tuple[uuid.UUID, Caterer]:
-    """Crée un Caterer + QR + Quote(accepted) + Order(confirmed). Retourne
-    (order_id, caterer)."""
     from sqlalchemy import select
 
     acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))

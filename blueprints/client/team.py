@@ -19,23 +19,17 @@ from forms.client import EmployeeForm, ServiceForm
 from models import Company, CompanyEmployee, CompanyService, MembershipStatus, User
 from services.notifications import notify
 
-# Invite-link token lifetime. After this delay the token is considered
-# expired even if it's still in the DB; /signup/invite/<token> rejects it.
+# Invite expires this many days after invited_at; rejected on redemption.
 INVITE_TOKEN_TTL_DAYS = 7
 
 
 def _hash_invite_token(raw: str) -> str:
-    """SHA-256 hex digest of an invite token — what gets persisted."""
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _stash_invite_raw(employee_id, raw: str) -> None:
-    """One-shot store of the raw invite token in the admin's session.
-
-    Persisted only long enough for /team to read it back and render the
-    copy-paste modal after a create/rotate redirect. The team page pops
-    the key so a refresh doesn't keep the raw lying around.
-    """
+    # One-shot store popped by /team so the raw token doesn't outlive the
+    # redirect that surfaces the copy-paste modal.
     session[f"invite_raw:{employee_id}"] = raw
 
 
@@ -59,11 +53,8 @@ def register(bp):
             )
         ).all()
 
-        # `?invite=<employee_id>` is set by the redirect after a fresh
-        # collaborator creation — surfaces the generated invite link in
-        # an auto-opened modal so the admin can copy/paste it
-        # immediately. Only honoured when the employee belongs to the
-        # admin's company and still has an active invite token.
+        # ?invite=<employee_id> auto-opens the copy-paste modal after a
+        # fresh create/rotate. Only honoured for the admin's own company.
         invite_employee = None
         invite_raw_token = None
         invite_id = request.args.get("invite")
@@ -81,10 +72,8 @@ def register(bp):
                         CompanyEmployee.user_id.is_(None),
                     )
                 )
-                # The raw token only exists in the admin's session for the
-                # one render after create/rotate; pop so a refresh doesn't
-                # keep it lying around. Without this, the modal can't show
-                # a usable signup URL (the DB now holds the digest).
+                # Pop so a refresh can't replay the modal; the DB only
+                # holds the digest, not the raw token.
                 if invite_employee is not None:
                     invite_raw_token = session.pop(
                         f"invite_raw:{invite_employee.id}", None
@@ -166,10 +155,8 @@ def register(bp):
     @login_required
     @role_required("client_admin")
     def team_employee_create():
-        """Adding a collaborator implicitly invites them: an invite_token
-        is generated at creation so the admin lands back on /client/team
-        with the link displayed in an auto-opened modal (the only way
-        for now to share access without an email pipeline)."""
+        # Creating implicitly invites — no mail pipeline yet, so the admin
+        # gets the signup URL back via the modal.
         user = g.current_user
         form = EmployeeForm()
         if not form.validate_on_submit():
@@ -177,10 +164,7 @@ def register(bp):
             return redirect(url_for("client.team"))
         db = get_db()
         email = form.email.data.strip().lower()
-        # Reject duplicates up-front: a second row with the same email
-        # within the company would never be redeemable (User.email is
-        # unique globally) and would just confuse the admin's effectifs
-        # list.
+        # Duplicate rows are never redeemable (User.email is globally unique).
         duplicate = db.scalar(
             select(CompanyEmployee).where(
                 CompanyEmployee.company_id == user.company_id,
@@ -193,10 +177,8 @@ def register(bp):
                 "error",
             )
             return redirect(url_for("client.team"))
-        # Mint a raw token, persist only its SHA-256 digest. The raw is
-        # surfaced once to the admin via the post-redirect modal so they
-        # can copy the signup URL. After that, only a rotate (via
-        # /team/employees/<id>/invite) can regenerate a fresh raw.
+        # Persist only the digest; rotate via /team/employees/<id>/invite
+        # to regenerate a fresh raw token.
         raw_token = secrets.token_urlsafe(32)
         employee = CompanyEmployee(
             company_id=user.company_id,
@@ -211,8 +193,6 @@ def register(bp):
         db.add(employee)
         db.commit()
         _stash_invite_raw(employee.id, raw_token)
-        # Redirect with the employee id in the query so /team can detect
-        # it and pop the « lien d'invitation » modal.
         return redirect(url_for("client.team", invite=str(employee.id)))
 
     @bp.route("/team/employees/<uuid:employee_id>/edit", methods=["POST"])
@@ -242,10 +222,8 @@ def register(bp):
         user = g.current_user
         db = get_db()
         employee = get_company_employee(employee_id, user.company_id)
-        # Defense-in-depth for the disabled trash button on the team page:
-        # an admin must not be able to remove their own effectifs row, even
-        # by replaying the POST manually. The UI already hides the form
-        # when employee.user_id == current user.
+        # Defence in depth against a replayed POST despite the UI hiding
+        # the trash button for self-rows.
         if employee.user_id == user.id:
             flash("Vous ne pouvez pas vous retirer vous-même des effectifs.", "error")
             return redirect(url_for("client.team"))
@@ -259,10 +237,7 @@ def register(bp):
     @role_required("client_admin")
     @limiter.limit("10 per minute")
     def team_employee_invite(employee_id):
-        """Generate a single-use signup link the admin copies to send
-        manually (no mail provider yet). Re-invoking on the same employee
-        rotates the token — useful if the previous link was leaked or if
-        the admin lost the URL."""
+        # Re-invoking rotates the token (after leak or lost URL).
         user = g.current_user
         db = get_db()
         employee = get_company_employee(employee_id, user.company_id)
@@ -272,9 +247,7 @@ def register(bp):
                 "info",
             )
             return redirect(url_for("client.team"))
-        # 32 bytes urlsafe = 43 chars, ~256 bits — unguessable. Only the
-        # digest is persisted; the raw is one-shot stashed in session
-        # so the post-redirect modal can render the signup URL.
+        # 32 urlsafe bytes ≈ 256 bits.
         raw_token = secrets.token_urlsafe(32)
         employee.invite_token = _hash_invite_token(raw_token)
         employee.invited_at = datetime.datetime.utcnow()
@@ -290,8 +263,6 @@ def register(bp):
     @login_required
     @role_required("client_admin")
     def team_employee_invite_revoke(employee_id):
-        """Invalidate an outstanding invite link without rotating it
-        (admin changed their mind, the address was wrong, …)."""
         user = g.current_user
         db = get_db()
         employee = get_company_employee(employee_id, user.company_id)
@@ -310,10 +281,7 @@ def register(bp):
         target_user = get_pending_user(user_id, admin.company_id)
         target_user.membership_status = MembershipStatus.active
 
-        # Approval = "this person works here", so they should appear in
-        # the effectifs list. If the admin had pre-created an invite row
-        # with the same email, link it to the user instead of duplicating
-        # the entry.
+        # Link any matching pre-created invite row instead of duplicating.
         existing = db.scalar(
             select(CompanyEmployee).where(
                 CompanyEmployee.company_id == admin.company_id,
@@ -328,9 +296,7 @@ def register(bp):
             existing.first_name = target_user.first_name
             existing.last_name = target_user.last_name
             existing.email = target_user.email
-            # Approval supersedes any outstanding invite — the user just
-            # signed up via the SIRET flow, so the link is dead weight
-            # (and would burn the unique-token index slot otherwise).
+            # SIRET signup supersedes any outstanding invite link.
             existing.invite_token = None
             existing.invited_at = None
         else:
@@ -344,8 +310,6 @@ def register(bp):
                 )
             )
 
-        # Tell the freshly-approved user. They couldn't log in until
-        # now, so the notification will pop on their first session.
         company = db.get(Company, admin.company_id)
         notify(
             db,

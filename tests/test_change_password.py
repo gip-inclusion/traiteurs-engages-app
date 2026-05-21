@@ -1,13 +1,3 @@
-"""Tests for the authenticated change-password feature.
-
-The route `/account/change-password` lives in `auth_bp` and is gated by
-`login_required` only — no role filter — so the four seeded test users
-(super_admin, client_admin, client_user, caterer) must all be able to
-rotate their password.
-
-The seeded test password is `testpass`. Mutating tests restore it in a
-`finally` block so other tests in the suite still pass.
-"""
 
 import bcrypt
 import pytest
@@ -41,9 +31,6 @@ def _reset_password(email, plain="testpass"):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Happy path — every role can rotate its own password
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -56,8 +43,6 @@ def _reset_password(email, plain="testpass"):
     ],
 )
 def test_change_password_works_for_every_role(client, login, user_email):
-    """The route is shared by every role — pas de filtre de rôle, juste
-    `login_required`. Each of the 4 seeded users must succeed."""
     try:
         login(user_email)
         r = client.post(
@@ -80,14 +65,9 @@ def test_change_password_works_for_every_role(client, login, user_email):
         _reset_password(user_email)
 
 
-# ---------------------------------------------------------------------------
-# Rejections — each guard returns 400 and leaves the hash untouched
-# ---------------------------------------------------------------------------
 
 
 def test_change_password_wrong_current_is_rejected(client, login):
-    """A wrong current password must block the change — even when the
-    new/confirm pair is otherwise valid."""
     try:
         login("alice@test.local")
         r = client.post(
@@ -107,7 +87,6 @@ def test_change_password_wrong_current_is_rejected(client, login):
 
 
 def test_change_password_mismatched_confirm_is_rejected(client, login):
-    """New ≠ confirm → 400, hash untouched."""
     try:
         login("alice@test.local")
         r = client.post(
@@ -127,8 +106,6 @@ def test_change_password_mismatched_confirm_is_rejected(client, login):
 
 
 def test_change_password_weak_new_is_rejected(client, login):
-    """`validate_password` exige ≥12 caractères et 3 classes de
-    caractères — un mot de passe court doit être refusé."""
     try:
         login("alice@test.local")
         r = client.post(
@@ -148,13 +125,6 @@ def test_change_password_weak_new_is_rejected(client, login):
 
 
 def test_change_password_same_as_current_is_rejected(client, login):
-    """Re-using the same plaintext re-hashes (different bcrypt salt → new
-    hash) AND bumps `password_changed_at`, which silently invalidates
-    other sessions. Misleading UX — the handler rejects explicitly.
-
-    To hit this branch we need the new password to pass
-    `validate_password` first, so we pre-set the account to a strong
-    password and try to "change" it to the same value."""
     _reset_password("alice@test.local", plain="ValidPass123!")
     try:
         login("alice@test.local", password="ValidPass123!")
@@ -174,14 +144,9 @@ def test_change_password_same_as_current_is_rejected(client, login):
         _reset_password("alice@test.local")
 
 
-# ---------------------------------------------------------------------------
-# Auth + session side-effects
-# ---------------------------------------------------------------------------
 
 
 def test_change_password_requires_login(client):
-    """Without a session → redirect to /login. Pas d'écran ouvert, pas
-    de mutation possible."""
     r = client.get("/account/change-password", follow_redirects=False)
     assert r.status_code == 302
     assert "/login" in r.headers["Location"]

@@ -1,19 +1,9 @@
-// Send-message modal handler.
-//
-// Wires every <form data-send-message-form="<modal_id>"> rendered by the
-// `send_message_modal` Jinja macro to /api/messages. On success, swaps
-// the modal from compose → sent state and points the "Voir la
-// conversation" link at the thread_id returned by the API.
-//
-// CSP : inline scripts are blocked, so this lives in a static file
-// referenced from base.html (or per-page) via a normal <script> tag.
 (function () {
   'use strict';
 
-  // Sentinel UUID the macro embeds via url_for(thread_endpoint,
-  // thread_id=<sentinel>). We substitute it with the real thread_id
-  // returned by /api/messages. Keeping the mapping in Flask via url_for
-  // means a route rename blows up at render time, not silently in JS.
+  // Sentinel URL produced by url_for(thread_endpoint, thread_id=<this>);
+  // we substitute it with the thread_id returned by /api/messages so a
+  // route rename blows up in Flask (render time), not silently here.
   var THREAD_ID_SENTINEL = '00000000-0000-0000-0000-000000000000';
 
   function buildThreadUrl(dialog, threadId) {
@@ -49,8 +39,7 @@
       var href = buildThreadUrl(dialog, threadId);
       if (link && href) link.href = href;
     }
-    // Scope icon refresh to the dialog so we don't reprocess every
-    // [data-lucide] node on the page each time a message is sent.
+    // Scoped refresh to avoid reprocessing every icon on the page.
     if (window.lucide && lucide.createIcons) {
       try { lucide.createIcons({ root: dialog }); }
       catch (_) { lucide.createIcons(); }
@@ -58,8 +47,6 @@
   }
 
   function resetToComposeState(dialog) {
-    // After the dialog closes we want the next open to start fresh:
-    // cleared textarea, no error banner, compose pane visible again.
     var compose = dialog.querySelector('[data-modal-state="compose"]');
     var sent = dialog.querySelector('[data-modal-state="sent"]');
     if (compose) compose.classList.remove('hidden');
@@ -136,9 +123,7 @@
   function bindCloseReset(dialog) {
     if (dialog.__sendMessageCloseBound) return;
     dialog.__sendMessageCloseBound = true;
-    // Native <dialog> fires a "close" event whether close() was called
-    // explicitly (Annuler / Fermer buttons via dialog-close action) or
-    // backdrop-dismiss kicked in. Single hook covers both paths.
+    // `close` fires on both explicit close() and backdrop-dismiss.
     dialog.addEventListener('close', function () {
       resetToComposeState(dialog);
     });

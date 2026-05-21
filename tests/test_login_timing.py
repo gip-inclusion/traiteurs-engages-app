@@ -17,8 +17,6 @@ import pytest
 
 @pytest.mark.timing
 def test_login_response_time_is_constant_for_unknown_email(client, login):
-    """A POST /login with an unknown email must take roughly as long as
-    one with a known email, so an attacker cannot enumerate accounts."""
 
     def _measure(email: str, samples: int = 5) -> float:
         ts = []

@@ -42,11 +42,7 @@
   <div class="bg-white rounded-lg p-6">
     <h2 class="font-display font-bold text-lg text-black mb-4">File de qualification</h2>
     {% if recent_requests %}
-    {# Chaque ligne devient un <a> vers /admin/qualification/<id> — même
-       cible que le bouton "Voir" de /admin/qualification, pour que
-       cliquer la carte ouvre la fiche détaillée à qualifier. Hover
-       cream + chevron à droite alignés sur le bloc "Commandes à
-       facturer" juste en dessous (pattern partagé). #}
+
     <div>
       {% for req in recent_requests %}
       <a href="{{ url_for('admin.qualification_detail', request_id=req.id) }}"

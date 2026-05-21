@@ -1,10 +1,3 @@
-"""Shared messagerie routes for client/caterer blueprints.
-
-Endpoint names are derived from the blueprint name (e.g. `client.messages`),
-so call sites only differ by which roles are authorized. Admin's messages
-view is paginated and lives in blueprints/admin.py separately.
-"""
-
 from flask import abort, g, render_template
 
 from blueprints.middleware import (

@@ -1,11 +1,7 @@
-/* ============================================================
-   Brand tokens — single source of truth for color and type.
-   Any new color is added HERE first.
-   ============================================================ */
 :root {
   /* Brand */
   --c-navy:        #1A3A52;
-  --c-navy-soft:   #F0F4F7;   /* was also #F0F4F8 — typo collapsed */
+  --c-navy-soft:   #F0F4F7;
   --c-cream:       #F5F1E8;
   --c-cream-page:  #FAF7F2;   /* page background */
   --c-coral:       #C4714A;
@@ -75,14 +71,6 @@
   --font-feat-display: 'SOFT' 0, 'WONK' 1;
 }
 
-/* ============================================================
-   Marianne — police officielle de l'Etat (DSFR).
-   Fichiers attendus dans /static/fonts/Marianne/. Si absents, le browser
-   tombe gracieusement sur system-ui (defini en fallback dans --font-body).
-   Pour un rendu pixel-perfect, telecharger les fichiers depuis :
-     https://github.com/GouvernementFR/dsfr/tree/main/dist/fonts
-   et les placer dans static/fonts/Marianne/.
-   ============================================================ */
 @font-face {
   font-family: 'Marianne';
   src: url('/static/fonts/Marianne/Marianne-Light.woff2') format('woff2');
@@ -112,7 +100,7 @@
   font-display: swap;
 }
 
-/* Base element styles (moved from base.html <style>) */
+/* Base element styles */
 html { background-color: var(--c-cream-page); color: var(--c-text); }
 body { font-family: var(--font-body); }
 h1, h2, h3, h4, h5, h6, .font-display {
@@ -126,7 +114,7 @@ h1, h2, h3, h4, h5, h6, .font-display {
 * { scrollbar-width: thin; scrollbar-color: rgba(196, 113, 74, 0.25) transparent; }
 button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] { cursor: pointer; }
 
-/* Inputs — base + :focus, replacing inline onfocus/onblur handlers */
+/* Inputs — base + :focus */
 .input-soft {
   border: 1px solid var(--c-border);
   background: #FFFFFF;
@@ -137,7 +125,7 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   border-color: var(--c-navy);
 }
 
-/* Ghost button (transparent → cream on hover), replacing onmouseover/onmouseout */
+/* Ghost button (transparent → cream on hover) */
 .btn-ghost-navy {
   border: 1px solid var(--c-navy);
   color: var(--c-navy);
@@ -148,7 +136,7 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: var(--c-cream);
 }
 
-/* Sidebar nav links, replacing the JS active-state walker in app.js */
+/* Sidebar nav links */
 .sidebar-link {
   color: var(--c-mute);
   background: transparent;
@@ -164,8 +152,8 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   color: #FFFFFF;
 }
 
-/* Desktop main offset for the fixed sidebar.
-   Set in CSS so the first paint is correct (no slide-in from JS). */
+/* CSS-only desktop offset so the first paint matches the final layout
+   (no slide-in from JS). */
 @media (min-width: 1024px) {
   #main-content { margin-left: var(--w-sidebar); }
 }
@@ -222,9 +210,8 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: #8B4A3D;
 }
 
-/* Disabled CTA — used while signup form is invalid (missing field /
-   weak password). The native `disabled` attribute is enough to block
-   submission; this just signals the state visually. */
+/* Visual-only disabled state; the native `disabled` attribute does the
+   actual gating. */
 .signup-submit-disabled,
 .signup-submit-disabled:hover {
   opacity: 0.45;
@@ -232,8 +219,7 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: var(--c-coral);
 }
 
-/* Password requirement bullet — turns success-green when the rule is
-   satisfied (toggled by signup.js). */
+/* Password requirement bullet — flipped to green by signup.js. */
 .pw-rule-ok {
   color: var(--c-success);
 }
@@ -248,20 +234,12 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: #132B3E;
 }
 
-/* ============================================================
-   Tab pills — pure-link tabs used on admin list pages.
-   ------------------------------------------------------------
-   Same pattern as `/admin/requests`, `/admin/orders`, etc. : a
-   horizontal strip of small rounded buttons, one marked active.
-   Naming once so the role (tab navigation) is documented in the
-   markup rather than duplicated as raw Tailwind across pages.
-   ============================================================ */
 .tab-pill {
   display: inline-flex;
   align-items: center;
-  padding: 0.375rem 0.75rem;     /* py-1.5 px-3 */
-  border-radius: 0.5rem;          /* rounded-lg */
-  font-size: 0.75rem;             /* text-xs */
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--c-text-soft);
   transition: background-color .15s, color .15s;
@@ -285,23 +263,13 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: #8B0001;
 }
 
-/* ============================================================
-   Dashboard KPI primitives
-   ------------------------------------------------------------
-   Two repeating motifs on the client/caterer dashboards:
-   - `.icon-badge`  : rounded square holding a lucide glyph at
-                      the top-left of a KPI card.
-   - `.kpi-figure`  : the big serif number underneath.
-   Naming them once keeps the dashboard markup focused on
-   structure (which KPI it is) rather than visual tokens.
-   ============================================================ */
 .icon-badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;        /* w-9  */
-  height: 2.25rem;       /* h-9  */
-  border-radius: 0.5rem; /* rounded-lg */
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
   background-color: var(--c-navy-soft);
   color: var(--c-navy);
   flex-shrink: 0;
@@ -310,7 +278,7 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
 .kpi-figure {
   font-family: 'Fraunces', serif;
   font-weight: 700;
-  font-size: 1.875rem;   /* text-3xl */
+  font-size: 1.875rem;
   line-height: 2.25rem;
   color: var(--c-text);
 }
@@ -334,12 +302,6 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   color: var(--c-caterer-fg);
 }
 
-/* ============================================================
-   Brand utilities (token-backed)
-   Mirror Tailwind's API but resolve to brand tokens.
-   These live HERE, not in tailwind.css, so tailwind.css
-   stays regenerable.
-   ============================================================ */
 
 /* Text */
 .text-text       { color: var(--c-text); }
@@ -396,9 +358,7 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
 .hover\:bg-navy-soft:hover { background-color: var(--c-navy-soft); }
 .focus\:border-navy:focus  { border-color: var(--c-navy); }
 
-/* Sticky flash-toast lifecycle. The base transition fades + slides up
-   when the JS toggles `flash-toast-leaving`; auto-dismiss is set up in
-   static/js/app.js (auto-pause on hover, then restart on mouseleave). */
+/* Flash toast — leaving transition driven by app.js (auto-pause on hover). */
 .flash-toast {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
@@ -408,9 +368,8 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   pointer-events: none;
 }
 
-/* Catalog list card — whole card clickable, lifts on hover. The `display`
-   intentionally isn't set here so the inline `flex flex-col sm:flex-row`
-   classes win and keep the image / text side-by-side on >= sm. */
+/* Catalog list card — `display` is intentionally left to the inline
+   `flex flex-col sm:flex-row` classes so the responsive layout sticks. */
 .catalog-card {
   color: inherit;
   text-decoration: none;
@@ -433,7 +392,7 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
 .has-\[\:checked\]\:bg-white:has(:checked)     { background-color: #ffffff; }
 .has-\[\:checked\]\:text-white:has(:checked)   { color: #ffffff; }
 
-/* Stock Tailwind classes the original tailwind.css scan missed */
+/* Stock Tailwind classes the JIT scan missed */
 .w-3  { width: 0.75rem; }
 .h-3  { height: 0.75rem; }
 .w-12 { width: 3rem; }
@@ -448,14 +407,12 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
 .opacity-70 { opacity: 0.7; }
 .text-hero  { font-size: 2.625rem; line-height: 1.1; }
 
-/* sm: variants the compiled Tailwind didn't include but that the
-   client catalog cards depend on (image column width). The breakpoint
-   matches the rest of the project's sm: rules at 640px. */
+/* sm:w-72 missed by the JIT scan — used by the catalog card image column. */
 @media (min-width: 640px) {
   .sm\:w-72 { width: 18rem; }
 }
 
-/* Notification badge accent (project-specific, was in tailwind.css) */
+/* Notification badge accent */
 .bg-coral-red   { background-color: var(--c-coral-red); }
 .text-coral-red { color: var(--c-coral-red); }
 .bg-error-light  { background-color: var(--c-error-light); }
@@ -480,10 +437,8 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
 .h-chat        { height: calc(100vh - var(--h-chat-offset)); }
 .h-chat-narrow { height: calc(100vh - var(--h-chat-offset-sm)); }
 
-/* Notifications dropdown.
-   Mobile: full-width sheet pinned near the top with a small inset, so it
-   stays usable when the sidebar (and bell) is opened from the mobile menu.
-   Desktop: anchored just past the sidebar's right edge at a fixed width. */
+/* Notifications dropdown: full-width sheet on mobile, anchored past the
+   sidebar on desktop. */
 .notifications-dropdown {
   top: 0.75rem;
   left: 0.75rem;
@@ -499,45 +454,32 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   }
 }
 
-/* Max-width utility (Tailwind max-w-20 = 5rem) */
 .max-w-20 { max-width: 5rem; }
-
-/* Flex shorthand (Tailwind flex-none = flex: 0 0 auto) */
 .flex-none { flex: none; }
 
 /* Badge sizes */
 .badge-xs { padding: 2px 6px; border-radius: 4px; font-size: 10px; line-height: 1.4; }
 
-/* Sidebar bell unread counter. Sits inside the 36px button (no
-   overhang — overhang pixels fall outside the button's hit area
-   and clicks there don't open the dropdown). The white box-shadow
-   ring lifts the pill off any sidebar shade; pointer-events:none
-   keeps the bell beneath clickable. */
+/* Sidebar bell counter pinned inside the 36px button so its hit area
+   stays on the bell itself; box-shadow ring isolates the pill. */
 .notification-badge {
   position: absolute;
-  top: 0.125rem;             /* 2px from the button's top edge */
+  top: 0.125rem;
   right: 0.125rem;
-  min-width: 1rem;            /* 16px — bell glyph stays visible beneath */
+  min-width: 1rem;
   height: 1rem;
   padding: 0 0.25rem;
   border-radius: 9999px;
   background-color: var(--c-coral-red);
   color: white;
-  font-size: 0.625rem;        /* 10px — legible on a 16px pill */
+  font-size: 0.625rem;
   font-weight: 700;
   line-height: 1rem;
   text-align: center;
-  box-shadow: 0 0 0 1.5px white; /* ring against any sidebar shade */
-  pointer-events: none;       /* clicks must reach the bell button beneath */
+  box-shadow: 0 0 0 1.5px white;
+  pointer-events: none;
 }
 
-/* ============================================================
-   Wizard validation error styles — appliquées par static/js/wizard.js
-   au clic "Suivant" si des champs requis sont vides. Les classes
-   utilisées avant (border-coral-red-400 / ring-coral-red-400)
-   n'existaient pas dans le tailwind curated du projet, donc le JS
-   tournait à vide. Ces règles donnent enfin un signal visible.
-   ============================================================ */
 
 /* Inputs / selects / textareas vides marqués comme invalides */
 .wizard-field-error,
@@ -556,12 +498,8 @@ textarea.wizard-field-error {
   border-radius: 0.5rem;
 }
 
-/* Champs désactivés dans le wizard quand on cible un traiteur qui
-   ne supporte pas l'option (cf. blueprints/client/requests.py — la
-   handler `requests_new` calcule `caterer_capabilities` quand
-   `?caterer_id=...` est présent). Visuel : grisé + curseur "no", le
-   tooltip natif (attribut `title`) s'affiche au survol et explique
-   pourquoi. */
+/* Wizard: option grisée + tooltip natif quand le traiteur ciblé ne
+   l'expose pas. */
 .wizard-disabled-option {
   opacity: 0.55;
   cursor: not-allowed !important;
@@ -573,7 +511,6 @@ textarea.wizard-field-error {
   cursor: not-allowed !important;
 }
 .wizard-disabled-option:hover {
-  /* Pas de hover effect — l'option est verrouillée. */
   opacity: 0.55;
 }
 
@@ -593,12 +530,6 @@ textarea.wizard-field-error {
 }
 .wizard-error-banner i { flex-shrink: 0; }
 
-/* ============================================================
-   LANDING PAGE — styles isoles sous .landing-root pour ne pas
-   contaminer les pages connectees. Portes du Next.js de reference
-   (src/app/globals.css). Tous les selecteurs commencent par
-   .landing-root pour scoper.
-   ============================================================ */
 
 .landing-root {
   font-family: 'Marianne', system-ui, sans-serif;
@@ -649,10 +580,8 @@ textarea.wizard-field-error {
   }
 }
 
-/* Hero + section titles : bumped up on tablet/desktop. Mobile sizes
-   live inline on the elements (cf. templates/landing.html) so the
-   first paint already feels generous; these media queries layer
-   bigger sizes on top once we have the room. */
+/* Hero + section titles bumped up on tablet/desktop. Mobile sizes
+   live inline on the elements (landing.html). */
 @media (min-width: 768px) {
   .landing-root .landing-h1     { font-size: 3.25rem !important; }
   .landing-root .landing-h2     { font-size: 2.5rem !important; }
@@ -683,8 +612,7 @@ textarea.wizard-field-error {
 .landing-root .swap-btn:hover .swap-front { transform: translateY(-100%); }
 .landing-root .swap-btn:hover .swap-back  { transform: translateY(0); }
 
-/* Galerie photo cliquable : leger dezoom au hover pour signaler l'affordance
-   (couple avec cursor:pointer sur le wrapper data-photo-index, gere inline). */
+/* Galerie photo : léger dézoom au hover pour signaler l'affordance. */
 #photos-gallery [data-photo-index] img {
   transition: transform .2s ease;
 }
@@ -713,10 +641,8 @@ textarea.wizard-field-error {
 .landing-root .step-pos-3 { top: 60%;  left: 23%; }
 .landing-root .step-pos-4 { top: 94%;  right: 24%; left: auto; }
 
-/* Responsive utilities used by the landing — Tailwind variants `sm:`,
-   `md:`, `lg:` are not in the precompiled bundle, so we hand-write
-   the ones the landing relies on. Scoped under .landing-root to avoid
-   any leak to the connected pages (which use a different layout system). */
+/* Landing-only Tailwind variants. Scoped under .landing-root so they
+   never leak to the connected pages. */
 @media (min-width: 640px) {
   .landing-root .sm\:absolute        { position: absolute; }
   .landing-root .sm\:block           { display: block; }
@@ -744,10 +670,8 @@ textarea.wizard-field-error {
   .landing-root .lg\:px-8            { padding-left: 2rem; padding-right: 2rem; }
 }
 
-/* --- Legal pages (CGS, future privacy policy, etc.) ----------------
-   Single hook `.legal-page` scopes the typography rules so the rest of
-   the app keeps its compact dashboard look. Articles/sections nest h2
-   (= article), h3 (= sub-section), h4 (= deeper rubric). */
+/* Legal pages (CGS, future privacy policy). Scoped under .legal-page so
+   the dashboard typography stays untouched. h2/h3/h4 = article/sub/rubric. */
 .legal-page                 { color: var(--c-text); line-height: 1.6; }
 .legal-page h2              { font-family: 'Fraunces', serif; font-weight: 700;
                               font-size: 1.5rem; margin-top: 2rem;
@@ -764,11 +688,7 @@ textarea.wizard-field-error {
 .legal-page li              { margin-bottom: 0.25rem; }
 .legal-page strong          { font-weight: 700; color: var(--c-text); }
 
-/* Inline navy link inside body copy (forms, signup checkbox, legal
-   page anchors, …). `underline` + `text-navy` aren't in our curated
-   Tailwind bundle, so anchors must opt into this class to be visibly
-   linkable. `.legal-page a` inherits the same treatment automatically
-   so paragraph links there don't need to repeat the class. */
+/* Inline navy link for body copy. .legal-page a inherits automatically. */
 .text-link,
 .legal-page a               { color: var(--c-navy); text-decoration: underline; }
 .text-link:hover,

@@ -1,20 +1,6 @@
-"""Developer tooling — exposed ONLY when ENABLE_DEMO_SEED=1.
-
-Lets you switch between the seeded demo accounts in one click without
-having to re-enter passwords. Useful for testing role-specific UI flows.
-
-NEVER ship to production. The endpoint bypasses password verification
-entirely and would let any visitor impersonate any user.
-
-Two safeguards keep that risk contained:
-  1. The blueprint is only registered by app.py when
-     `ENABLE_DEMO_SEED == "1"`. The flag is never set on Scalingo, so
-     in production the route literally does not exist.
-  2. The endpoint additionally hard-codes the demo email allowlist.
-     Even if the flag accidentally leaked into prod, only the seven
-     well-known demo accounts could be impersonated — not real users.
-"""
-
+# Dev account switcher gated TWICE: blueprint only registered when
+# ENABLE_DEMO_SEED=1, and the email allowlist below restricts impersonation
+# to the seven seeded demo accounts even if the flag ever leaked into prod.
 from __future__ import annotations
 
 from flask import Blueprint, abort, flash, redirect, request, session, url_for
@@ -26,7 +12,6 @@ from models import User
 
 devtools_bp = Blueprint("devtools", __name__, url_prefix="/dev")
 
-# Centralised so app.py can pass the same list to the template renderer.
 DEMO_ACCOUNTS = [
     {
         "email": "admin@traiteurs-engages.fr",
@@ -65,7 +50,7 @@ _DEMO_EMAILS = {a["email"] for a in DEMO_ACCOUNTS}
 
 
 @devtools_bp.route("/switch-account", methods=["POST"])
-@limiter.exempt  # Dev convenience — flask-limiter shouldn't get in the way here.
+@limiter.exempt
 def switch_account():
     email = (request.form.get("email") or "").strip().lower()
     if email not in _DEMO_EMAILS:
@@ -74,19 +59,12 @@ def switch_account():
     db = get_db()
     user = db.scalar(select(User).where(User.email == email))
     if not user:
-        # The seed wasn't run, or the user was deleted. Fail loud so
-        # whoever clicked knows the dev DB is in a weird state.
         flash(f"Compte demo introuvable : {email}.", "error")
         return redirect(url_for("auth.login"))
 
-    # Unlike the real /login, we DON'T `session.clear()` here:
-    # rotating the session also rotates the CSRF token, and any page
-    # left open in another tab (typical dev workflow) would then fail
-    # with "CSRF session token is missing" on the next switch click.
-    # The dev switcher is gated behind ENABLE_DEMO_SEED so it never
-    # runs in prod — the audit-VULN-11 security rationale (don't carry
-    # an attacker-seeded session into an authenticated state) doesn't
-    # apply here.
+    # Skip session.clear() (unlike /login): rotating the session also rotates
+    # the CSRF token, breaking any tab left open in another dev workflow.
+    # ENABLE_DEMO_SEED gates this so VULN-11 doesn't apply.
     session["user_id"] = str(user.id)
     session.permanent = True
     flash(f"[DEV] Connecte en tant que {user.email}.", "info")

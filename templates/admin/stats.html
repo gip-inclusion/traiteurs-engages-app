@@ -123,9 +123,7 @@
 {% endblock %}
 
 {% block scripts %}
-{# Chart.js bundled locally (audit VULN-105) — pinned to 4.5.0 to avoid the
-   floating @4 tag, removes CDN supply-chain risk, and lets us tighten the
-   CSP to script-src 'self'. #}
+{# Bundled locally (VULN-105): pinned to 4.5.0 so script-src can stay 'self'. #}
 <script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/stats.js') }}" defer></script>
 {% endblock %}

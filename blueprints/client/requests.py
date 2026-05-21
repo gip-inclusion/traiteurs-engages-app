@@ -57,26 +57,13 @@ logger = logging.getLogger(__name__)
 
 
 def _no_store(response):
-    """Tag a response so the browser does not keep it in history.
-
-    Without this, pressing "back" after submitting the wizard restores
-    the cached HTML — pre-ticked checkboxes carried only in DOM state
-    (not in the server-rendered attributes) appear blank, and the user
-    can re-submit a stale form. `no-store` evicts the response from
-    bfcache (Chrome/Firefox) and from regular cache, forcing the
-    browser to re-fetch on back/forward navigation.
-
-    Modern browsers honor `Cache-Control: no-store` on its own — the
-    `Pragma: no-cache` (HTTP/1.0) and `Expires: 0` headers we used to
-    add alongside are folklore here and some CDN middlewares re-
-    interpret them in surprising ways, so we keep this single header.
-    """
+    # Evicts the wizard response from bfcache so "back + resubmit" doesn't
+    # replay a stale form with checkboxes whose state was DOM-only.
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-# Icon glyph (lucide) per MealType slug — kept next to the templates'
-# step-1 radios. Anything not listed falls back to `utensils`.
+# Default icon: `utensils`.
 _MEAL_TYPE_ICONS: dict[str, str] = {
     "petit_dejeuner": "coffee",
     "pause_gourmande": "cookie",
@@ -88,13 +75,8 @@ _MEAL_TYPE_ICONS: dict[str, str] = {
 
 
 def _resolve_target_caterer(db, raw_id):
-    """Resolve a `target_caterer_id` string (form or query param) to a
-    validated Caterer row, or None if blank/invalid/not-validated.
-
-    Same gate as the workflow: only `is_validated=True` caterers can
-    receive a targeted demand. Returning None here means "treat as open
-    demand", which the route handler does upstream.
-    """
+    # None means "treat as open demand" — only validated caterers can be
+    # targeted (matches the workflow gate).
     raw = (raw_id or "").strip()
     if not raw:
         return None
@@ -108,11 +90,8 @@ def _resolve_target_caterer(db, raw_id):
 
 
 def _caterer_capabilities(caterer):
-    """Wizard step-4 needs to grey out régimes the caterer can't honor.
-
-    Returns None for open demands so the template falls through to
-    "no restriction"; otherwise a dict of dietary booleans.
-    """
+    # Wizard step-4 uses this to grey out régimes the caterer can't honor;
+    # None means open demand (no restriction).
     if caterer is None:
         return None
     return {
@@ -127,12 +106,6 @@ def _caterer_capabilities(caterer):
 
 
 def _meal_type_options(restrict_to: set[str] | None = None) -> list[dict]:
-    """Render-ready list of `{slug, label, icon}` for the step-1 radios.
-
-    Pass `restrict_to` to filter on what a targeted caterer publishes
-    (= `Caterer.service_offerings`). With no argument the caller gets
-    the full canonical list.
-    """
     options = [
         {
             "slug": m.value,
@@ -146,8 +119,6 @@ def _meal_type_options(restrict_to: set[str] | None = None) -> list[dict]:
     return [opt for opt in options if opt["slug"] in restrict_to]
 
 
-# Filter tabs visible on /client/requests. Each tab maps to one of the
-# values _derive_request_display_status() returns (or "all").
 REQUEST_STATUS_TABS = {
     "all": "Toutes",
     "awaiting_quotes": "En attente de devis",
@@ -156,8 +127,7 @@ REQUEST_STATUS_TABS = {
     "closed": "Clôturées",
 }
 
-# Quote statuses that count as "the caterer actually responded" (drafts
-# don't, since the client can't see them).
+# Drafts excluded — the client can't see them.
 _QUOTE_RECEIVED_STATUSES = (
     QuoteStatus.sent,
     QuoteStatus.accepted,
@@ -165,9 +135,8 @@ _QUOTE_RECEIVED_STATUSES = (
     QuoteStatus.expired,
 )
 
-# Mirror of the cap on caterer/requests.py: refuse to render a quote
-# whose line items list is implausibly long. Stops a malicious or
-# corrupted row from saturating the WeasyPrint worker.
+# Mirrors the caterer/requests.py cap; stops a long line list from
+# saturating the WeasyPrint worker.
 _MAX_PDF_LINES = 500
 
 
@@ -193,12 +162,7 @@ def _derive_request_display_status(qr):
 
 
 def _request_quote_counts(qr):
-    """Return (received_count, expected_count) used in the row footer.
-
-    `received` counts quotes the caterer actually sent (drafts excluded).
-    `expected` is 1 for single-caterer demands, 3 for compare-mode demands
-    — matches the wizard's "Recevoir 3 devis" copy.
-    """
+    # received excludes drafts; expected is 1 (targeted) or 3 (compare mode).
     received = sum(1 for q in qr.quotes if q.status in _QUOTE_RECEIVED_STATUSES)
     expected = 1 if not qr.is_compare_mode else 3
     return received, expected
@@ -216,8 +180,6 @@ def register(bp):
         search_q = (request.args.get("q") or "").strip().lower()
 
         db = get_db()
-        # selectinload(quotes) avoids N+1 when computing display_status
-        # and quote counts for every row.
         stmt = (
             select(QuoteRequest)
             .where(QuoteRequest.company_id == user.company_id)
@@ -229,14 +191,11 @@ def register(bp):
             stmt = stmt.where(own_only)
         requests = db.execute(stmt).scalars().all()
 
-        # Hydrate row-level helpers used by the template so it stays
-        # arithmetic-free.
         for qr in requests:
             qr.display_status = _derive_request_display_status(qr)
             qr.received_quotes, qr.expected_quotes = _request_quote_counts(qr)
 
-        # Tab filter: "closed" buckets cancelled + closed for the user
-        # but each row keeps its own badge.
+        # "closed" buckets cancelled + closed for the user; rows keep their badge.
         if status_filter == "closed":
             requests = [
                 r for r in requests if r.display_status in ("closed", "cancelled")
@@ -244,8 +203,7 @@ def register(bp):
         elif status_filter != "all":
             requests = [r for r in requests if r.display_status == status_filter]
 
-        # Free-text search across the cheap-to-check fields. Stays in
-        # Python because the volume per company is small (< 100 demands).
+        # Python-side search — per-company volume is small (< 100 demands).
         if search_q:
 
             def _matches(qr):
@@ -291,20 +249,12 @@ def register(bp):
             .scalars()
             .all()
         )
-        # When the wizard is opened from a specific caterer profile
-        # (?caterer_id=...), prefill target_caterer so the form ships the
-        # demand straight to that caterer and bypasses admin qualification
-        # fan-out.
+        # ?caterer_id=... ships the demand straight to one caterer and
+        # bypasses admin qualification fan-out.
         target_caterer = _resolve_target_caterer(db, request.args.get("caterer_id"))
 
-        # Build the list of prestation options the wizard's step 1 will
-        # render as radios. Two cases:
-        #  - Targeted demand : filter to what the caterer actually
-        #    publishes under "Catalogue & tarifs" (= service_offerings).
-        #  - Open demand     : the full canonical MEAL_TYPE_LABELS list.
-        # The radio's `value` IS the MealType slug — the wizard no longer
-        # needs a hidden meal_type field nor a service_offering → meal_type
-        # mapping, since the two surfaces now share the same slug set.
+        # Targeted demand → filter step-1 radios to the caterer's published
+        # service_offerings; open demand → full MEAL_TYPE_LABELS list.
         restrict = (
             set(target_caterer.service_offerings or [])
             if target_caterer is not None
@@ -319,11 +269,6 @@ def register(bp):
                     target_caterer=target_caterer,
                     meal_type_options=_meal_type_options(restrict_to=restrict),
                     caterer_capabilities=_caterer_capabilities(target_caterer),
-                    # Idempotency token: a fresh GET in another tab
-                    # produces a new one. The POST handler uses it to
-                    # deduplicate. Combined with the `no_store` header
-                    # below, "back + resubmit" doesn't even reach this
-                    # branch — bfcache is bypassed.
                     form_token=str(uuid.uuid4()),
                 )
             )
@@ -337,11 +282,8 @@ def register(bp):
         db = get_db()
         form = QuoteRequestForm()
 
-        # Idempotency : the GET emits a one-shot UUID into a hidden
-        # `form_token` field. A "back + resubmit" replays the same
-        # token; we short-circuit straight to the existing detail page
-        # instead of creating a duplicate row. Scoping to company_id
-        # closes a (very unlikely) cross-tenant clash.
+        # Idempotency token from the GET: a back+resubmit short-circuits to
+        # the existing detail page. Scoped to company_id against cross-tenant clash.
         form_token = (request.form.get("form_token") or "").strip()
         if form_token:
             try:
@@ -361,11 +303,8 @@ def register(bp):
                     url_for("client.request_detail", request_id=existing.id)
                 )
 
-        # Resolve the targeted caterer (if any) before validation so the
-        # form-side `validate_meal_type` cross-field rule has the right
-        # offerings set to gate against. A tampered POST with
-        # `meal_type=pause_gourmande` for a caterer that doesn't offer
-        # it gets rejected here, not silently persisted.
+        # Resolve before validate_on_submit so validate_meal_type can gate
+        # a tampered POST that names an offering the caterer doesn't publish.
         target_caterer = _resolve_target_caterer(db, form.target_caterer_id.data)
         if target_caterer is not None:
             form.target_offerings = set(target_caterer.service_offerings or [])
@@ -395,9 +334,6 @@ def register(bp):
                         target_caterer=target_caterer,
                         meal_type_options=_meal_type_options(restrict_to=restrict),
                         caterer_capabilities=_caterer_capabilities(target_caterer),
-                        # Echo the token back so the user's correction
-                        # stays idempotent — a tab-restored form keeps
-                        # the same token.
                         form_token=form_token or str(uuid.uuid4()),
                     )
                 )
@@ -408,15 +344,11 @@ def register(bp):
         service_id = own_service_id(db, user, form.company_service_id.data)
 
         if target_caterer is not None:
-            # Single-caterer demand: skip admin review entirely, send
-            # directly to that caterer with a QRC in 'selected' state
-            # (= awaiting the caterer's response, like the admin had
-            # transmitted it).
+            # Targeted demand: skip admin review, QRC starts at 'selected'.
             status = QuoteRequestStatus.sent_to_caterers
             is_compare = False
         else:
-            # Standard wizard ("Recevoir 3 devis"): admin curates the
-            # candidate list, status sits in pending_review until then.
+            # 3-devis flow: admin curates, status sits in pending_review.
             is_compare = bool(form.is_compare_mode.data)
             status = (
                 QuoteRequestStatus.pending_review
@@ -433,15 +365,13 @@ def register(bp):
         )
         apply_quote_request_form(qr, form)
         apply_drinks(qr, request.form)
-        # Force the persisted is_compare_mode to match the resolved flow
-        # (apply_quote_request_form may have written it from the form).
+        # Override what apply_quote_request_form wrote — the resolved flow wins.
         qr.is_compare_mode = is_compare
         db.add(qr)
         try:
             db.flush()
         except IntegrityError:
-            # Race condition: a concurrent POST landed first and grabbed
-            # the same token. Resolve to that one instead of failing.
+            # Race: a concurrent POST grabbed the same token first.
             db.rollback()
             existing = db.scalar(
                 select(QuoteRequest).where(
@@ -450,7 +380,6 @@ def register(bp):
                 )
             )
             if existing is None:
-                # Token clash that's NOT the dedup case — surface it.
                 raise
             flash("Cette demande a deja ete envoyee.", "info")
             return redirect(url_for("client.request_detail", request_id=existing.id))
@@ -463,9 +392,8 @@ def register(bp):
                     status=QRCStatus.selected,
                 )
             )
-            # Single-caterer demand bypasses admin curation, so notify
-            # the caterer directly. The « 3 devis » flow goes through
-            # workflow.approve_quote_request which already notifies.
+            # The 3-devis flow notifies via workflow.approve_quote_request;
+            # targeted demands skip that path, so notify the caterer here.
             notify_users(
                 db,
                 caterer_user_ids(db, target_caterer.id),
@@ -477,8 +405,7 @@ def register(bp):
                 related_entity_id=qr.id,
             )
         elif qr.status == QuoteRequestStatus.pending_review:
-            # « Recevoir 3 devis » : la demande arrive en file de
-            # qualification — alerter les super_admins.
+            # Demande arrive en file de qualification — alerter les super_admins.
             notify_users(
                 db,
                 super_admin_user_ids(db),
@@ -504,9 +431,7 @@ def register(bp):
         db = get_db()
         qr = get_company_request(request_id, user)
 
-        # Order by id so qrcs[0] is deterministic — the model has no
-        # created_at, and the template indexes into qrcs in direct mode
-        # to render the pending-caterer card.
+        # Order by id so qrcs[0] is deterministic (no created_at column).
         qrcs = (
             db.execute(
                 select(QuoteRequestCaterer)
@@ -517,12 +442,8 @@ def register(bp):
             .all()
         )
 
-        # Drafts are caterer-only — they're work-in-progress quotes the
-        # caterer hasn't sent yet. Surfacing them on the client side
-        # leaks pricing + caterer identity before the caterer is ready
-        # to commit. Allow-list rather than `!= draft` so a future
-        # status doesn't leak by default — same gate as the dashboard
-        # helpers and the client.quote_pdf route.
+        # Allow-list (not `!= draft`) so a future status doesn't leak by
+        # default — drafts are caterer-only WIP and leak pricing if shown.
         quotes = (
             db.execute(
                 select(Quote)
@@ -534,24 +455,17 @@ def register(bp):
             .all()
         )
 
-        # Same display_status logic as the list page so the header badge
-        # uses a French, user-facing label instead of the raw enum value.
+        # Mirror the list page so header and rows share the same badge.
         qr.display_status = _derive_request_display_status(qr)
 
-        # Resolve the contactable caterer user once per quote / qrc so
-        # the template doesn't have to do `caterer.users[0] if ... else
-        # None` in two separate loops (button render + modal render).
-        # Same shape for qrcs so the pending-caterer card reads from a
-        # single source of truth.
+        # Pre-resolve `caterer.users[0]` once per quote/qrc so the template
+        # doesn't repeat it across button + modal loops.
         for quote in quotes:
             quote.caterer_user = quote.caterer.users[0] if quote.caterer.users else None
         for qrc in qrcs:
             qrc.caterer_user = qrc.caterer.users[0] if qrc.caterer.users else None
 
-        # Attach per-quote PDF preview data so the template can render a
-        # read-only modal for "Voir le devis" without doing arithmetic in
-        # Jinja. quote.pdf_preview stays None for any quote that has no
-        # line items (defensive — the modal opener checks for it).
+        # pdf_preview stays None for empty quotes (modal opener checks).
         for quote in quotes:
             if quote.lines:
                 line_dicts = [ln.as_dict() for ln in quote.lines]
@@ -570,11 +484,6 @@ def register(bp):
             else:
                 quote.pdf_preview = None
 
-        # Surface admin → client messages tied to this QR. The
-        # super_admin sends them from /admin/qualification/<id>; the
-        # write path stores one Notification per company_admin. Pulling
-        # them here means the client sees them inline on the request
-        # detail even before the bell-notification UI lands.
         admin_messages = (
             db.execute(
                 select(Notification)
@@ -603,10 +512,8 @@ def register(bp):
     @bp.route("/requests/<uuid:request_id>/accept-quote", methods=["POST"])
     @limiter.limit("10 per minute")
     @login_required
-    # Both client_admin and client_user can accept on behalf of the
-    # company. Scoping by `qr.company_id == user.company_id` inside
-    # `workflow.accept_quote` is what stops a member of another company
-    # from acting on this QR — the role isn't the right gate.
+    # Any company member can accept; cross-company access is blocked by
+    # the company_id scope inside workflow.accept_quote.
     @role_required("client_admin", "client_user")
     def accept_quote(request_id):
         form = QuoteAcceptForm()
@@ -644,9 +551,6 @@ def register(bp):
 
     @bp.route("/requests/<uuid:request_id>/refuse-quote", methods=["POST"])
     @login_required
-    # Symmetric with accept-quote: any company member can refuse a
-    # quote on behalf of the company. Company-scoping lives in
-    # `workflow.refuse_quote`.
     @role_required("client_admin", "client_user")
     def refuse_quote(request_id):
         form = QuoteRefuseForm()
@@ -678,25 +582,13 @@ def register(bp):
     @role_required("client_admin", "client_user")
     @limiter.limit("20 per minute")
     def quote_pdf(request_id, q_id):
-        """Download a received quote as a server-rendered PDF.
-
-        Mirrors `caterer.quote_pdf` but the scope check goes the other
-        way: the quote must belong to a request the viewer's company
-        owns. Reuses `services.quote_pdf.render_quote_pdf` so the file
-        looks identical to what the client sees in the in-app preview
-        modal (same template, same totals).
-        """
-        # Lazy import — WeasyPrint pulls Cairo/Pango bindings at import
-        # time. Same rationale as caterer.quote_pdf.
+        # Lazy: WeasyPrint pulls Cairo/Pango at import.
         from services.quote_pdf import render_quote_pdf
 
         user = g.current_user
         db = get_db()
-        # Gate scope via get_company_request: applies company_id AND
-        # own_requests_filter (a client_user only sees QRs they
-        # themselves created — a colleague's QR is out of scope, same
-        # rule as the page detail). 404 keeps the existence of an
-        # off-scope QR opaque.
+        # get_company_request applies company_id + own_requests_filter
+        # so a client_user can't fetch a colleague's QR.
         qr = get_company_request(request_id, user)
         quote = db.scalar(
             select(Quote)
@@ -710,10 +602,7 @@ def register(bp):
             )
             .where(Quote.id == q_id)
             .where(Quote.quote_request_id == qr.id)
-            # Drafts are caterer-only — refuse to serve a brouillon PDF
-            # to the client even if they guess the URL. Allow-list
-            # rather than `!= draft` so a future status doesn't leak by
-            # default.
+            # Allow-list (drafts are caterer-only WIP).
             .where(Quote.status.in_(_QUOTE_RECEIVED_STATUSES))
         )
         if not quote:
@@ -780,13 +669,8 @@ def register(bp):
         user = g.current_user
 
         db = get_db()
-        # Lock the row until commit so an admin clicking « Approuver »
-        # mid-request can't slip the QR into sent_to_caterers (which
-        # fans out notifications + QRCs based on the OLD payload) while
-        # this handler writes the user's edits. Without the lock, the
-        # status gate below would read pending_review, the admin commit
-        # would fly through, and we'd persist the new fields on a QR
-        # whose caterers already received the previous version.
+        # Row-level lock against an admin Approve racing this edit and
+        # fanning out QRCs on the OLD payload.
         qr = get_company_request(request_id, user, for_update=True)
         if qr.status not in (
             QuoteRequestStatus.draft,
@@ -844,32 +728,18 @@ def register(bp):
     @bp.route("/search")
     @limiter.limit("60 per minute")
     def search():
-        # Catalogue public — accessible aux visiteurs non connectés depuis
-        # le bloc de recherche de la landing. Les actions qui nécessitent
-        # un compte (lancer une demande, voir une fiche, accepter un
-        # devis, etc.) restent gatées par leur propre `@login_required`
-        # et redirigeront via le `next=` standard si on clique dessus
-        # sans session.
-        #
-        # Per-IP rate limit (the per-blueprint default only applies to
-        # POSTs): /search is now public + GET, so a scraper could
-        # otherwise harvest the catalogue at high RPS. 60/min is loose
-        # enough for legitimate paginated browsing, tight enough to make
-        # bulk scraping inconvenient.
+        # Public catalogue (no @login_required). Per-IP rate limit because
+        # the per-blueprint default only catches POSTs — 60/min throttles
+        # bulk scrapers without slowing paginated browsing.
         page = request.args.get("page", 1, type=int)
         q = request.args.get("q", "").strip()
         location = request.args.get("location", "").strip()
-        # The structure filter is a multi-select in the new UI: 0..n of
-        # ("STPA", "SIAE"). Kept the legacy single-value `structure_type`
-        # as fallback so existing query strings don't break.
+        # Legacy single-value `structure_type` kept for query-string compat.
         structure_groups = request.args.getlist("structure_type_multi")
         structure_type = request.args.get("structure_type", "")
         dietary = request.args.getlist("dietary")
         capacity = request.args.get("capacity", type=int)
         service_offerings = request.args.getlist("service_offering")
-        # Validate price-band slugs against the canonical list — anything
-        # we don't recognize is silently dropped to keep query strings
-        # tamper-safe.
         budget_bands = [
             b for b in request.args.getlist("budget_range") if b in PRICE_BAND_BOUNDS
         ]
@@ -878,8 +748,6 @@ def register(bp):
         db = get_db()
         stmt = select(Caterer).where(Caterer.is_validated.is_(True))
 
-        # Structure filter: collapse the multi-select groups + legacy
-        # single value into one IN clause.
         struct_codes: set[str] = set()
         for group in structure_groups:
             if group in STRUCTURE_GROUPS:
@@ -905,8 +773,7 @@ def register(bp):
             )
 
         if location:
-            # Loose match: city OR zip_code starts with the input. Lets the
-            # user type "75" to find Paris, or "Paris" to find by city name.
+            # Loose match: typing "75" finds Paris, "Paris" finds the city.
             loc_pattern = f"%{location}%"
             stmt = stmt.where(
                 or_(
@@ -915,28 +782,22 @@ def register(bp):
                 )
             )
 
-        # service_offerings filter (Type de prestation): caterer matches
-        # if its service_offerings JSON contains any of the requested
-        # slugs. JSON-array-contains is portable enough across Postgres
-        # and SQLite when expressed as a LIKE on the JSON-encoded text.
+        # JSON-array-contains via LIKE on the encoded text stays portable
+        # across Postgres and SQLite. Quote the slug so "petit_dejeuner"
+        # doesn't match a hypothetical "petit_dejeuner_xyz".
         for slug in service_offerings:
             if slug in SERVICE_OFFERING_LABELS:
-                # Match the slug between quotes so "petit_dejeuner" doesn't
-                # also match a hypothetical "petit_dejeuner_xyz".
                 stmt = stmt.where(
                     cast(Caterer.service_offerings, String).ilike(f'%"{slug}"%')
                 )
 
-        # Budget bands (per person): the caterer's [min, max] range must
-        # overlap with the requested band's bounds. Implemented per-band
-        # then OR'd together so multiple bands act as a union.
+        # Per-band OR — caterer [min, max] must overlap the band's bounds.
         if budget_bands:
             band_clauses = []
             for band in budget_bands:
                 band_min, band_max = PRICE_BAND_BOUNDS[band]
                 clauses = []
                 if band_min is not None:
-                    # caterer's max price must reach the band floor
                     clauses.append(
                         or_(
                             Caterer.price_per_person_max.is_(None),
@@ -944,7 +805,6 @@ def register(bp):
                         )
                     )
                 if band_max is not None:
-                    # caterer's min price must be under the band ceiling
                     clauses.append(
                         or_(
                             Caterer.price_per_person_min.is_(None),
@@ -975,8 +835,7 @@ def register(bp):
             .limit(ITEMS_PER_PAGE)
         ).all()
 
-        # Hydrate review aggregates for the current page in a single
-        # query — the catalogue card displays "★ 4.3 · 12 avis" per row.
+        # Single-query hydration for the row badges ("★ 4.3 · 12 avis").
         from services.reviews import (
             ReviewAggregate,
             aggregates_for_caterers,
@@ -1012,15 +871,8 @@ def register(bp):
     @bp.route("/caterers/<uuid:caterer_id>")
     @limiter.limit("60 per minute")
     def caterer_detail(caterer_id):
-        # Fiche traiteur publique — accessible aux visiteurs non connectés
-        # qui naviguent depuis le catalogue public (cf. la route /search
-        # qui a aussi perdu son @login_required). Les CTA d'action
-        # (demande de devis) restent gatées par leur propre login_required
-        # côté /client/requests/new.
-        #
-        # Per-IP rate limit for the same reason as /search above: this
-        # route is now public + GET so it needs explicit throttling
-        # (the per-blueprint default only catches POSTs).
+        # Public fiche (no @login_required). Per-IP rate limit because
+        # the per-blueprint default only catches POSTs.
         db = get_db()
         caterer = db.get(Caterer, caterer_id)
         if not caterer or not caterer.is_validated:

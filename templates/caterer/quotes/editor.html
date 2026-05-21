@@ -4,16 +4,16 @@
 {% block title %}{% if quote %}Modifier le devis{% else %}Créer un devis{% endif %} - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
-{# French month names — used to format the event date in the demand recap. #}
+
 {% set fr_months_long = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'] %}
 {% set short_qr_id = qr.id.hex[:8].upper() %}
 
-{# ---- Top bar : back link ---- #}
+
 <div class="mb-6">
   {{ back_button(label="Retour à la demande") }}
 </div>
 
-{# ---- Header : title ---- #}
+
 <div class="mb-8">
   <h1 class="font-display font-bold text-4xl text-black">
     {% if quote %}Modifier le devis{% else %}Créer un devis{% endif %}
@@ -23,9 +23,7 @@
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-  {# ============================================================
-     LEFT (2/3) — form sections
-     ============================================================ #}
+
   <div class="lg:col-span-2 space-y-6">
 
     <form id="quote-form" method="POST"
@@ -34,7 +32,7 @@
       <input type="hidden" name="details" id="details-field" value="">
       <input type="hidden" name="action" id="action-field" value="draft">
 
-      {# ---- Card : informations du devis ---- #}
+
       <div class="bg-white rounded-lg p-6 space-y-4 mb-6">
         <h2 class="font-display font-bold text-2xl text-text">Informations du devis</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -55,7 +53,7 @@
         </div>
       </div>
 
-      {# ---- Cards : prestation sections ---- #}
+
       {% set sections = [
         ('principal', 'Prestations principales'),
         ('boissons', 'Boissons'),
@@ -76,7 +74,7 @@
       </div>
       {% endfor %}
 
-      {# ---- Card : notes et conditions ---- #}
+
       <div class="bg-white rounded-lg p-6 space-y-4 mb-6">
         <h2 class="font-display font-bold text-2xl text-text">Notes et conditions</h2>
         <textarea id="notes" name="notes" rows="4"
@@ -86,13 +84,11 @@
     </form>
   </div>
 
-  {# ============================================================
-     RIGHT (1/3) — sticky sidebar with totals + actions + recap
-     ============================================================ #}
+
   <aside class="lg:col-span-1">
     <div class="space-y-6 sticky top-6">
 
-      {# ---- Card : totals + action buttons ---- #}
+
       <div class="bg-white rounded-lg p-6 space-y-4">
         <h2 class="font-display font-bold text-2xl text-text">Total du devis</h2>
 
@@ -102,9 +98,7 @@
             <span class="text-mute">Total HT</span>
             <span class="font-bold text-text" id="display-total-ht">0,00 €</span>
           </div>
-          {# Per-rate TVA breakdown — populated by quote-editor.js
-             (recalculate). Mirrors the same view in _pdf_preview.html
-             so the editor matches the document the client will see. #}
+
           <div id="display-tva-breakdown" class="space-y-2"></div>
           <div class="flex justify-between text-sm">
             <span class="font-bold text-text">Sous-total TTC</span>
@@ -115,10 +109,7 @@
         <div class="space-y-2">
           <p class="text-xs uppercase tracking-wider font-bold inline-flex items-center gap-1 text-mute">
             Frais de mise en relation (5% ajoutés)
-            {# Tooltip : `title` doit être sur un parent <span> car
-               lucide.createIcons() remplace <i> par <svg> et perd
-               l'attribut au passage. Le span wrapper le conserve
-               pendant le rendu, le tooltip natif s'affiche au hover. #}
+
             <span title="Ces frais concernent uniquement le client" class="inline-flex items-center cursor-help">
               <i data-lucide="info" class="w-3.5 h-3.5"></i>
             </span>
@@ -155,7 +146,7 @@
         </div>
       </div>
 
-      {# ---- Card : demand recap ---- #}
+
       <div class="bg-white rounded-lg p-6 space-y-4">
         <h2 class="font-display font-bold text-2xl text-text">Récapitulatif de la demande</h2>
         <dl class="space-y-2 text-sm">
@@ -235,11 +226,7 @@
   </aside>
 </div>
 
-{# ============================================================
-   PREVIEW OVERLAY — shown when caterer clicks "Enregistrer et envoyer".
-   The body is filled in JS from the live form values; the wrapper +
-   header + footer are static here so the layout doesn't flicker.
-   ============================================================ #}
+
 <div id="quote-preview-overlay" class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
      style="background-color:rgba(0,0,0,0.5);">
   <div class="bg-white rounded-lg w-full my-8 flex flex-col" style="max-width:800px;max-height:90vh;">
@@ -256,7 +243,7 @@
 
     <div class="flex-1 overflow-y-auto p-6">
       <div id="preview-content" class="bg-white rounded-lg border border-soft p-8">
-        {# Filled by quote-editor.js when the overlay opens #}
+
       </div>
     </div>
 
@@ -282,8 +269,7 @@
   </div>
 </div>
 
-{# Config consumed by quote-editor.js — also exposes the static metadata
-   needed to render the preview without an extra round-trip to the server. #}
+
 <div id="quote-editor-config"
      data-guest-count="{{ qr.guest_count or 0 }}"
      data-initial-lines='{{ initial_lines | tojson }}'

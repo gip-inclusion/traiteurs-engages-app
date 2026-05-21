@@ -1,15 +1,6 @@
-"""Test fixtures.
-
-Tests run against a real Postgres database (the same dev container) so
-features like sequences, NUMERIC, and constraints behave identically to
-production. Run via:
-
-    docker compose exec app pytest
-
-Each session creates a fresh `traiteurs_test` database, applies all
-Alembic migrations, then seeds known users for role-based tests.
-"""
-
+# Real Postgres so sequences / NUMERIC / constraints behave like prod.
+# Each session drops + recreates `traiteurs_test`, applies migrations,
+# and seeds role-based fixtures.
 import os
 
 import bcrypt
@@ -19,18 +10,15 @@ from sqlalchemy.orm import sessionmaker
 
 
 def _ensure_test_db():
-    """Drop + recreate the test database from the parent server."""
     parent_url = os.environ.get(
         "DATABASE_URL", "postgresql://traiteurs:traiteurs@db:5432/traiteurs"
     )
     test_db_name = "traiteurs_test"
-    # Connect to the 'postgres' maintenance DB so we never hold a connection
-    # to traiteurs_test while trying to drop it (CI sets DATABASE_URL to
-    # traiteurs_test directly, causing "cannot drop the currently open database").
+    # Connect to the maintenance DB so dropping traiteurs_test can't fail
+    # with "cannot drop the currently open database".
     maint_url = parent_url.rsplit("/", 1)[0] + "/postgres"
     parent_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT")
     with parent_engine.connect() as conn:
-        # Disconnect anyone holding the test DB open before dropping
         conn.execute(
             text(
                 f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
@@ -46,28 +34,18 @@ def _ensure_test_db():
 
 @pytest.fixture(scope="session", autouse=True)
 def _required_env():
-    """Provide SECRET_KEY + a clean test DB url before any app import."""
-    # `setdefault` is not enough: docker-compose interpolates
-    # `${VAR:-}` to an empty string, which leaves the key present in
-    # os.environ but unusable. Treat empty as absent.
+    # `${VAR:-}` interpolation leaves empty values present in os.environ,
+    # which setdefault wouldn't override — treat empty as absent.
     if not os.environ.get("SECRET_KEY"):
         os.environ["SECRET_KEY"] = "x" * 32
     test_url = _ensure_test_db()
     os.environ["DATABASE_URL"] = test_url
     os.environ.pop("STRIPE_SECRET_KEY", None)
-    # Use the in-memory dramatiq stub broker (no Redis dependency in tests).
-    # services/billing_tasks.py reads this at import time.
     os.environ["DRAMATIQ_TESTING"] = "1"
-    # The rate-limiter refuses to start on `memory://` outside of dev/test
-    # (audit H-3, 2026-05-13). The test suite runs single-process and
-    # doesn't exercise Redis itself, so opt-in to the in-memory store
-    # explicitly here — that's exactly what `LIMITER_ALLOW_MEMORY` is for.
+    # Audit H-3: in-memory limiter store is opt-in outside dev/test.
     if not os.environ.get("LIMITER_ALLOW_MEMORY"):
         os.environ["LIMITER_ALLOW_MEMORY"] = "1"
-    # Same for the SESSION_COOKIE_SECURE default: the test client doesn't
-    # speak HTTPS, so leaving the Secure flag on means the session cookie
-    # never round-trips, breaking every authenticated assertion. Override
-    # for tests; prod keeps the safe True default flipped by H-13.
+    # H-13 flipped SECURE_COOKIES default to True; test client doesn't do HTTPS.
     if not os.environ.get("SECURE_COOKIES"):
         os.environ["SECURE_COOKIES"] = "false"
     yield
@@ -75,7 +53,7 @@ def _required_env():
 
 @pytest.fixture(scope="session")
 def app(_required_env):
-    # Late import — config.Settings() runs at import and needs SECRET_KEY/DATABASE_URL.
+    # Late import: config.Settings() runs at import and needs SECRET_KEY.
     from alembic import command
     from alembic.config import Config as AlembicConfig
 
@@ -89,8 +67,7 @@ def app(_required_env):
         TESTING=True,
         WTF_CSRF_ENABLED=False,
     )
-    # Kill the rate limiter for tests — otherwise the 10/min login limit
-    # collides with the 23 parametrised logins this suite performs.
+    # Disable the limiter so the 10/min login cap doesn't fail the suite.
     from extensions import limiter
 
     limiter.enabled = False
@@ -169,19 +146,16 @@ def _seed_users():
 
 @pytest.fixture
 def login(client):
-    """Log `client` in as a known seeded user. CSRF is disabled in tests."""
-
     def _login(email, password="testpass"):
         resp = client.post(
             "/login",
             data={"email": email, "password": password},
             follow_redirects=False,
         )
-        # Garantit que les tests qui suivent ne valident pas par accident
-        # un état non-authentifié (un login en échec re-render la page en
-        # 200, et les routes derrière `@login_required` redirigent en 302
-        # vers /login — l'assertion finale du test passe pour de mauvaises
-        # raisons).
+        # Catch silent auth failures: a failed login rerenders 200, and
+        # @login_required redirects unauth'd traffic to /login (302), so
+        # without this assertion downstream tests can pass for the wrong
+        # reasons.
         assert resp.status_code == 302, (
             f"login({email!r}) failed: status={resp.status_code} body={resp.data!r}"
         )

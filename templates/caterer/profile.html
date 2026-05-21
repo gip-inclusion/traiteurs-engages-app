@@ -12,14 +12,13 @@
 <form method="POST" action="{{ url_for('caterer.profile_save') }}" enctype="multipart/form-data" class="space-y-6">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  {# ---- Informations (with logo) + Livraison side-by-side ---- #}
+
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
     <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-xl mb-4 text-text">Informations</h2>
 
-      {# Logo : preview + upload + delete. JPG/PNG/GIF/WEBP, 10 Mo max
-         (cap dans services/uploads.py). #}
+
       <div class="flex items-start gap-4 mb-4">
         <div id="logo-preview" class="rounded-lg flex items-center justify-center bg-cream"
              style="width:5rem;height:5rem;flex-shrink:0;overflow:hidden;">
@@ -103,9 +102,7 @@
     </div>
   </div>
 
-  {# Catalog metadata — feeds the /client/search filters and listing.
-     Each offered prestation type carries its own capacity / price / délai
-     specs. Specs for un-checked offerings are dropped on save. #}
+
   <div class="bg-white rounded-lg p-6">
     <h2 class="font-display font-bold text-xl mb-4 text-text">Catalogue & tarifs</h2>
     <p class="text-sm text-mute mb-4">
@@ -167,7 +164,7 @@
     </div>
   </div>
 
-  {# Photos : jusqu'a 10, les 3 premieres en vitrine. Drag-drop pour reordonner. #}
+
   {% set PHOTOS_MAX = 10 %}
   {% set current_count = (caterer.photos or [])|length %}
   <div class="bg-white rounded-lg p-6">
@@ -196,9 +193,7 @@
       {% endfor %}
     </div>
 
-    {# Drop zone : carte de meme taille qu'une photo, avec "+" + format.
-       Accepte le clic (proxy vers l'input file masque) ET le drag-drop
-       de fichiers depuis le bureau. Cachee quand on atteint la limite. #}
+
     <div id="photo-drop-wrapper" {% if current_count >= PHOTOS_MAX %}style="display:none"{% endif %}>
       <label for="photos-upload" id="photo-drop-zone"
              style="display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -232,7 +227,7 @@
   </div>
 </form>
 
-{# ---- Card Sécurité — hors du formulaire de profil ---- #}
+
 <div class="bg-white rounded-lg p-6 mt-6">
   <h2 class="font-display font-bold text-xl mb-1 text-text">S&#233;curit&#233;</h2>
   <p class="text-sm mb-4 text-mute">Mettez &#224; jour votre mot de passe r&#233;guli&#232;rement.</p>

@@ -1,20 +1,3 @@
-"""Password-reset token lifecycle.
-
-Coverage :
-  * issue_token creates a row tied to the user with TTL in the future;
-  * consume_token rejects unknown / expired / already-used tokens;
-  * consume_token rotates the user's password hash and flips used_at;
-  * kick_off_reset is idempotent on unknown emails (no row created,
-    no exception);
-  * the /forgot-password POST returns 200 even for unknown emails
-    (no account-existence leak).
-
-Convention d'imports lazy : `database`, `config`, et `services.*` sont
-importés *à l'intérieur* des fonctions, pas au top-level. Sinon le
-`engine` (et `config.DATABASE_URL`) est figé sur la DB de dev avant
-que conftest ne switche sur `traiteurs_test`. Voir
-`tests/test_workflow.py` pour le même pattern.
-"""
 
 import datetime as _dt
 import uuid
@@ -47,7 +30,6 @@ def _alice(s):
     return alice
 
 
-# --- issue_token ----------------------------------------------------------
 
 
 def test_issue_token_persists_with_ttl_in_future(session):
@@ -89,7 +71,6 @@ def test_issue_token_returns_unique_strings(session):
     assert len(a) >= 32
 
 
-# --- consume_token --------------------------------------------------------
 
 
 def test_consume_token_rotates_password_hash_and_flags_used(session):
@@ -167,7 +148,6 @@ def test_consume_token_rejects_inactive_user(session):
         pr.consume_token(session, raw_token=raw, new_password="N3w-Strong-Password!")
 
 
-# --- kick_off_reset (no account leak) -------------------------------------
 
 
 def test_kick_off_reset_unknown_email_creates_no_row(session):
@@ -205,12 +185,9 @@ def test_kick_off_reset_known_email_creates_row(session):
     assert after == before + 1
 
 
-# --- HTTP smoke -----------------------------------------------------------
 
 
 def test_forgot_password_post_unknown_email_returns_200(client):
-    """Same response as the known-email path — that's what makes the
-    flow non-enumerable."""
     r = client.post(
         "/forgot-password",
         data={
@@ -231,19 +208,13 @@ def test_forgot_password_post_known_email_returns_200(client):
 
 
 def test_reset_password_get_with_invalid_token_renders_form(client):
-    """The GET doesn't validate the token (validation happens on POST)
-    so an invalid token still renders the form. POST then redirects to
-    forgot-password with a flash."""
     r = client.get("/reset-password/totally-fake-token")
     assert r.status_code == 200
 
 
-# --- session invalidation on password reset -------------------------------
 
 
 def test_consume_token_bumps_password_changed_at(session):
-    """Belt-and-braces : the column the session-invalidation check reads
-    on every request must move forward when consume_token runs."""
     from services import password_reset as pr
 
     alice = _alice(session)
@@ -258,17 +229,6 @@ def test_consume_token_bumps_password_changed_at(session):
 
 
 def test_session_invalidated_after_password_reset(client):
-    """End-to-end : an authenticated session must lose access the moment
-    the user's password_changed_at moves past the snapshot stored in
-    the session cookie. This is the headline security guarantee of the
-    `app.load_current_user` re-validation step.
-
-    We don't exercise the "login with the new password" follow-up here:
-    in tests, conftest's session-scoped fixture causes SQLAlchemy's
-    identity map to leak across requests, so the login handler reads a
-    cached `password_hash` and rejects the new password. In production
-    each request gets a fresh session and that path works fine.
-    """
     import bcrypt as _bcrypt
 
     from database import session_factory

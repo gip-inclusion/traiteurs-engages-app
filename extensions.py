@@ -1,7 +1,3 @@
-"""Singleton instances of Flask extensions, importable from blueprints
-without creating circular imports with app.py.
-"""
-
 import logging
 import os
 
@@ -19,29 +15,14 @@ def _is_truthy_env(name: str) -> bool:
 
 
 def _limiter_storage_uri() -> str:
-    """Pick the rate-limiter backend at import time.
-
-    Audit VULN-101 (P0) + H-3 (2026-05-13): in-memory storage is
-    per-process, so multi-worker gunicorn (4 workers in prod) silently
-    multiplies every limit by N. The login throttle (`10/min`) becomes
-    `40/min` and brute-force protection effectively disappears. Worse,
-    a worker recycle resets every counter to zero.
-
-    Resolution: reuse the Redis instance already provisioned for Dramatiq
-    (P3.4) when REDIS_URL is set. Use a different DB index from the broker
-    (1 vs 0) to keep the keyspaces isolated.
-
-    When REDIS_URL is unset we refuse to start unless an explicit dev/test
-    marker is in the environment. The marker set:
-      * FLASK_DEBUG=1            — local dev (docker-compose.dev.yml)
-      * LIMITER_ALLOW_MEMORY=1   — explicit operator opt-in (tests,
-                                   niche prod scenarios with one worker)
-    """
+    # Audit VULN-101 / H-3: in-memory storage is per-process, so multi-worker
+    # gunicorn silently multiplies every limit by N (login throttle becomes
+    # useless) and worker recycles reset the counters. Refuse to start outside
+    # dev/test unless an explicit single-worker opt-in is set.
     redis_url = os.getenv("REDIS_URL")
     if redis_url:
-        # Carve out a dedicated DB number so dramatiq queues and
-        # rate-limiter keys never collide. Strip any trailing /N from
-        # REDIS_URL first.
+        # Use a dedicated Redis DB index so rate-limiter keys never collide
+        # with dramatiq queues. Strip any trailing /N from REDIS_URL first.
         base = (
             redis_url.rstrip("/").rsplit("/", 1)[0]
             if redis_url.count("/") >= 3
@@ -70,7 +51,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute", "1000 per hour"],
     storage_uri=_limiter_storage_uri(),
-    # moving-window is more expensive but accurate for auth throttling —
-    # better than fixed-window which lets a burst slip through at the edge.
+    # moving-window is accurate for auth throttling; fixed-window would let
+    # a burst slip through at the edge.
     strategy="moving-window",
 )

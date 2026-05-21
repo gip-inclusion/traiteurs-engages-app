@@ -17,12 +17,6 @@ import pytest
 
 @pytest.fixture
 def seed_data_module(monkeypatch):
-    """Wipe any inherited dev markers before each test so the guard
-    starts from a clean slate. `_refuse_in_production` reads `os.getenv`
-    on every call (no module-level snapshot), so the `importlib.reload`
-    isn't strictly required — it's belt-and-suspenders against any
-    future regression that would cache the markers at import time.
-    `monkeypatch` rolls back the env changes between tests."""
     monkeypatch.delenv("FLASK_DEBUG", raising=False)
     monkeypatch.delenv("SEED_FIXTURES_ALLOW", raising=False)
     import seed_data
@@ -31,10 +25,6 @@ def seed_data_module(monkeypatch):
 
 
 def test_seed_refuses_without_dev_marker(seed_data_module, monkeypatch, capsys):
-    """A naked `python seed_data.py` (no FLASK_DEBUG, no
-    SEED_FIXTURES_ALLOW) must hard-fail before any DB write — that's the
-    only thing standing between a compromised Scalingo console and 7
-    password-fixed accounts."""
     monkeypatch.delenv("FLASK_DEBUG", raising=False)
     monkeypatch.delenv("SEED_FIXTURES_ALLOW", raising=False)
 
@@ -59,11 +49,6 @@ def test_seed_refuses_without_dev_marker(seed_data_module, monkeypatch, capsys):
     ids=["debug=1", "debug=true", "debug=yes", "allow=1", "allow=TRUE"],
 )
 def test_seed_guard_lifts_with_marker(seed_data_module, monkeypatch, marker, value):
-    """Any of the documented opt-in markers must lift the guard. Tested
-    with whitespace-free values across upper/lower casing — the parser
-    in `_refuse_in_production` lowercases + strips before checking, so a
-    stray `FLASK_DEBUG=" 1 "` from a shell-escape mishap would still
-    work."""
     monkeypatch.delenv("FLASK_DEBUG", raising=False)
     monkeypatch.delenv("SEED_FIXTURES_ALLOW", raising=False)
     monkeypatch.setenv(marker, value)
@@ -79,10 +64,6 @@ def test_seed_guard_lifts_with_marker(seed_data_module, monkeypatch, marker, val
     ids=["empty", "0", "false", "no", "off", "production"],
 )
 def test_seed_guard_rejects_falsy_marker(seed_data_module, monkeypatch, value):
-    """Defensive: an operator who set FLASK_DEBUG to a falsy-ish value
-    should NOT inadvertently lift the guard. `FLASK_DEBUG=0` is the
-    canonical "production-leaning" override and must be treated as
-    'guard active', same as if the var were absent."""
     monkeypatch.delenv("FLASK_DEBUG", raising=False)
     monkeypatch.delenv("SEED_FIXTURES_ALLOW", raising=False)
     monkeypatch.setenv("FLASK_DEBUG", value)

@@ -1,13 +1,5 @@
-"""Append-only admin audit logging.
-
-Call `log_admin_action()` from the handler that performs a sensitive action,
-right before `db.commit()`. The entry will be flushed atomically with the
-business change — either both happen, or neither does (no orphan logs, no
-silent actions).
-
-Never delete rows from `audit_logs` from application code.
-"""
-
+# Append-only by convention: call log_admin_action right before commit()
+# so the audit row and the business change land atomically.
 from __future__ import annotations
 
 import uuid
@@ -27,20 +19,7 @@ def log_admin_action(
     target_id: uuid.UUID | None = None,
     extra: dict[str, Any] | None = None,
 ) -> None:
-    """Append one row to audit_logs.
-
-    Args:
-        db: SQLAlchemy session.
-        actor: the User performing the action (typically `g.current_user`).
-            None is accepted for system-driven actions.
-        action: short identifier in `domain.verb` format, e.g.
-            `caterer.validate`, `quote_request.reject`. Indexed.
-        target_type: the kind of entity acted on (`caterer`, `quote_request`,
-            `order`, etc.). Optional but strongly encouraged.
-        target_id: UUID of the entity. Indexed.
-        extra: free-form JSON-serialisable dict for context (rejection
-            reason, before/after snapshot, etc.). Keep small (<2 KB).
-    """
+    # action: `domain.verb` (e.g. `caterer.validate`). Keep `extra` < 2 KB.
     ip = None
     ua = None
     if has_request_context():

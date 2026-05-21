@@ -13,7 +13,6 @@ import pytest
 
 
 def _seed_order():
-    """Create a minimal Quote → Order chain and return order.id."""
     import uuid as _uuid
     from decimal import Decimal
     from sqlalchemy import select
@@ -60,7 +59,6 @@ def _seed_order():
 
 
 def test_duplicate_stripe_invoice_id_is_rejected(app):
-    """Inserting two Payment rows with the same stripe_invoice_id must fail."""
     from sqlalchemy.exc import IntegrityError
 
     from database import session_factory

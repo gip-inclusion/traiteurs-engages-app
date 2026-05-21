@@ -1,13 +1,3 @@
-"""Structured JSON logging with per-request correlation IDs.
-
-The formatter is `python-json-logger` so each log line is a JSON object —
-trivially ingestible by Loki/ELK/Datadog/etc. without a fragile regex parser.
-
-Every HTTP request gets a `g.request_id` (client-provided via
-`X-Request-Id` header, or generated if absent) which is added to every
-log record emitted during that request via a contextvar filter.
-"""
-
 import logging
 import logging.config
 import uuid
@@ -46,7 +36,7 @@ LOGGING_CONFIG: dict = {
     },
     "root": {"level": "INFO", "handlers": ["stdout"]},
     "loggers": {
-        # Reduce gunicorn / werkzeug access-log noise — they re-log what we log.
+        # Dampen gunicorn/werkzeug access logs — we already log every request.
         "werkzeug": {"level": "WARNING", "handlers": ["stdout"], "propagate": False},
         "gunicorn.access": {"level": "WARNING"},
     },
@@ -58,7 +48,6 @@ def configure_logging():
 
 
 def install_request_id_hooks(app):
-    """Wire Flask before/after-request hooks to propagate X-Request-Id."""
     logger = logging.getLogger(__name__)
 
     @app.before_request
@@ -69,9 +58,8 @@ def install_request_id_hooks(app):
 
     @app.after_request
     def _log_request(response):
-        # CSRFProtect can short-circuit before our before_request fires, so
-        # g.request_id may be missing. Synthesise one so the log line still
-        # carries a correlation id.
+        # CSRFProtect can short-circuit before before_request fires; fall back
+        # to the contextvar so the log line still carries a correlation id.
         rid = g.get("request_id") or _request_id.get() or "-"
         logger.info(
             "request",

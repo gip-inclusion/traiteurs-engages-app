@@ -1,23 +1,6 @@
-"""Create 4 demo requests showcasing each caterer-side status flow.
-
-After running this script, log in as the ESAT demo caterer
-(`contact@saveurs-solidaires.fr` — credentials in `seed_data.py`) and visit /caterer/requests
-to see one row per badge: Nouvelle, Devis envoyé, Devis refusé, Commande
-créée. Each row's detail page exercises a different layout branch in
-templates/caterer/requests/detail.html.
-
-Run inside the running app container:
-
-    docker compose exec app python scripts/demo_caterer_statuses.py
-
-Idempotent: every fixture is tagged with [STATUS_DEMO] in
-message_to_caterer; re-running this script wipes the previous demo set
-before re-creating it, so it's safe to call after every db reset.
-
-Pre-req: scripts/seed_data.py must have run first (we reuse its caterer
-ESAT and the Acme Solutions client, instead of re-seeding the world).
-"""
-
+# Creates 4 demo requests showcasing each caterer-side badge. Idempotent
+# via the [STATUS_DEMO] tag — reruns wipe and recreate. Requires seed_data.py
+# to have run first (reuses its ESAT caterer + Acme client).
 from __future__ import annotations
 
 import datetime
@@ -25,9 +8,6 @@ import os
 import sys
 from decimal import Decimal
 
-# Living in scripts/, we need the project root on sys.path so the
-# top-level modules (database, models, …) can be imported the same way
-# the running app does.
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
@@ -56,11 +36,7 @@ DEMO_TAG = "[STATUS_DEMO]"
 
 
 def _wipe_previous_fixtures(db) -> int:
-    """Delete every QR previously created by this script (matched by tag).
-
-    Cascades the cleanup down to QRCs, Quotes, QuoteLines and Orders so
-    we don't leave orphans.
-    """
+    # Cascades to QRCs / Quotes / QuoteLines / Orders so no orphans remain.
     old_qrs = db.scalars(
         select(QuoteRequest).where(QuoteRequest.message_to_caterer.like(f"{DEMO_TAG}%"))
     ).all()
@@ -83,7 +59,6 @@ def main():
     now = datetime.datetime.utcnow()
 
     with get_session() as db:
-        # --- Resolve seed dependencies ---
         caterer = db.scalar(select(Caterer).where(Caterer.siret == "11111111111111"))
         if not caterer:
             print("Caterer ESAT not found — run seed_data.py first.", file=sys.stderr)
@@ -109,12 +84,10 @@ def main():
             )
             sys.exit(1)
 
-        # --- Wipe previous demo fixtures so the script stays idempotent ---
         wiped = _wipe_previous_fixtures(db)
         if wiped:
             print(f"Cleaned {wiped} previous demo request(s).")
 
-        # --- Common fields shared by the 4 fixtures ---
         common = dict(
             company_id=company.id,
             user_id=client_admin.id,
@@ -128,7 +101,6 @@ def main():
             vegetarian_count=5,
         )
 
-        # --- 1. Nouvelle (no quote yet) ---
         qr_new = QuoteRequest(
             **common,
             status=QuoteRequestStatus.sent_to_caterers,
@@ -143,7 +115,6 @@ def main():
             ),
         )
 
-        # --- 2. Devis envoyé ---
         qr_sent = QuoteRequest(
             **common,
             status=QuoteRequestStatus.sent_to_caterers,
@@ -158,7 +129,6 @@ def main():
             ),
         )
 
-        # --- 3. Devis refusé ---
         qr_refused = QuoteRequest(
             **common,
             status=QuoteRequestStatus.quotes_refused,
@@ -173,7 +143,6 @@ def main():
             ),
         )
 
-        # --- 4. Commande créée ---
         qr_accepted = QuoteRequest(
             **common,
             status=QuoteRequestStatus.completed,
@@ -191,7 +160,6 @@ def main():
         db.add_all([qr_new, qr_sent, qr_refused, qr_accepted])
         db.flush()
 
-        # --- QRCs (one per QR, all targeting our caterer) ---
         db.add_all(
             [
                 QuoteRequestCaterer(
@@ -224,9 +192,7 @@ def main():
         )
         db.flush()
 
-        # --- Quotes (3 of 4 — "Nouvelle" deliberately has none) ---
-        # Reference suffix uses a timestamp so reruns don't collide with
-        # the unique constraint on Quote.reference.
+        # Timestamp suffix so reruns don't collide on Quote.reference UNIQUE.
         ts = int(now.timestamp())
         prefix = caterer.invoice_prefix
 
@@ -316,7 +282,6 @@ def main():
         db.add_all([quote_sent, quote_refused, quote_accepted])
         db.flush()
 
-        # --- Order for the accepted quote ---
         order = Order(
             quote_id=quote_accepted.id,
             client_admin_id=client_admin.id,

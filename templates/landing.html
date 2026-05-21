@@ -2,15 +2,11 @@
 
 {% block title %}Les Traiteurs Engag&#233;s - Traiteurs inclusifs pour vos &#233;v&#233;nements{% endblock %}
 
-{#-
-  Landing publique. Style scope sous .landing-root (cf. static/css/app.css).
-  Porte du Next.js de reference (src/components/landing/LandingPage.tsx).
--#}
 
 {% block public_content %}
 <main class="landing-root" style="background-color:#FAF7F2;color:#1A3A52;">
 
-  {# ========== HEADER ========== #}
+
   <header class="fixed top-0 left-0 right-0 z-50" style="backdrop-filter: blur(8px); background-color: rgba(255,255,255,0.95);">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between" style="height:4.25rem;">
@@ -36,7 +32,7 @@
     </div>
   </header>
 
-  {# ========== HERO ========== #}
+
   <section id="hero" class="landing-hero" style="background-color:#FAF7F2;padding-top:6rem;padding-bottom:6rem;">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex flex-col lg:flex-row items-center" style="gap:2.5rem;">
@@ -50,13 +46,7 @@
             Facilitez vos prestations traiteurs, renforcez vos achats inclusifs.
           </p>
 
-          {# Bloc de recherche du catalogue traiteur — porte les deux champs
-             du header de /client/search (Localisation + Nombre de personnes)
-             + un bouton "Rechercher" qui submit vers /client/search.
-             Comportement post-clic à définir : la route est actuellement
-             gatée par @login_required, donc un visiteur déconnecté est
-             redirigé vers /login avec ?next= prérempli. À retravailler
-             quand on aura tranché le parcours public ↔ connecté. #}
+
           <form method="GET" action="{{ url_for('client.search') }}"
                 class="landing-search bg-white rounded-2xl p-4 mx-auto lg:mx-0"
                 style="max-width:32rem;box-shadow:0 4px 12px -2px rgba(0,0,0,0.08);">
@@ -86,9 +76,7 @@
             </button>
           </form>
 
-          {# Chiffres marketing figés au 2026-05. Pas de requête DB
-             (cf. landing route in app.py) — mise à jour manuelle à
-             chaque vague de comm, sinon ils pourrissent silencieusement. #}
+
           <div class="flex justify-center lg:justify-start" style="gap:2rem;margin-top:2.5rem;">
             <div class="text-center lg:text-left">
               <p class="landing-stat-num font-fraunces font-bold" style="font-size:2.25rem;line-height:1.1;color:#1A3A52;">15</p>
@@ -116,10 +104,8 @@
     </div>
   </section>
 
-  {# ========== COMMENT CA FONCTIONNE ========== #}
-  {# padding-bottom généreux (7rem) parce que le Step 4 est positionné
-     en absolute à top:94% du conteneur 600x600 — il faut laisser
-     respirer la dernière étape avant la section suivante. #}
+
+
   <section id="how-it-works" style="background-color:#FAF7F2;padding-top:6rem;padding-bottom:7rem;">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center" style="margin-bottom:3rem;">
@@ -131,9 +117,9 @@
         </p>
       </div>
 
-      {# Conteneur 600x600 desktop, stack vertical mobile #}
+
       <div class="relative w-full mx-auto" style="max-width:600px;">
-        {# Chemin SVG (desktop only) #}
+
         <div class="hidden sm:block absolute inset-0 pointer-events-none">
           <img src="{{ url_for('static', filename='img/landing/chemin-desktop.svg') }}"
                alt="" aria-hidden="true"
@@ -141,7 +127,7 @@
         </div>
 
         <div class="relative z-10 flex flex-col gap-10 sm:block" style="aspect-ratio:1/1;">
-          {# Step 1 - top right #}
+
           <div class="flex flex-col items-center text-center gap-3 sm:flex-row sm:items-start sm:text-left sm:absolute step-pos-1">
             <img src="{{ url_for('static', filename='img/landing/shape-mushroom.png') }}"
                  alt="" aria-hidden="true" style="width:110px;height:110px;object-fit:contain;flex-shrink:0;">
@@ -153,7 +139,7 @@
             </div>
           </div>
 
-          {# Step 2 - mid left #}
+
           <div class="flex flex-col items-center text-center gap-3 sm:flex-row-reverse sm:items-start sm:text-right sm:absolute step-pos-2">
             <img src="{{ url_for('static', filename='img/landing/shape-star-pink.png') }}"
                  alt="" aria-hidden="true" style="width:110px;height:110px;object-fit:contain;flex-shrink:0;">
@@ -165,7 +151,7 @@
             </div>
           </div>
 
-          {# Step 3 - mid right #}
+
           <div class="flex flex-col items-center text-center gap-3 sm:flex-row sm:items-start sm:text-left sm:absolute step-pos-3">
             <img src="{{ url_for('static', filename='img/landing/shape-butterfly.png') }}"
                  alt="" aria-hidden="true" style="width:110px;height:110px;object-fit:contain;flex-shrink:0;">
@@ -177,7 +163,7 @@
             </div>
           </div>
 
-          {# Step 4 - bottom left #}
+
           <div class="flex flex-col items-center text-center gap-3 sm:flex-row-reverse sm:items-start sm:text-right sm:absolute step-pos-4">
             <img src="{{ url_for('static', filename='img/landing/shape-scallop-pink.png') }}"
                  alt="" aria-hidden="true" style="width:110px;height:110px;object-fit:contain;flex-shrink:0;">
@@ -193,7 +179,7 @@
     </div>
   </section>
 
-  {# ========== PLATEFORME TOUT-EN-UN ========== #}
+
   <section id="coming-soon" class="relative" style="background-color:#1A3A52;padding-top:4rem;padding-bottom:4rem;">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
       <div class="text-center" style="margin-bottom:3rem;">
@@ -249,7 +235,7 @@
     </div>
   </section>
 
-  {# ========== PLATEFORME DE L'INCLUSION ========== #}
+
   <section id="inclusion" style="background-color:#FAF7F2;padding-top:6rem;padding-bottom:6rem;">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex flex-col lg:flex-row items-center" style="gap:2.5rem;">
@@ -276,7 +262,7 @@
     </div>
   </section>
 
-  {# ========== CTA FINAL ========== #}
+
   <section id="cta-final" class="relative overflow-hidden" style="background-color:#FFDDDD;padding-top:6rem;padding-bottom:6rem;">
     <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
       <h2 class="landing-h2 font-fraunces font-bold" style="font-size:1.875rem;line-height:1.2;margin-bottom:1.25rem;color:#B70102;">
@@ -294,7 +280,7 @@
     </div>
   </section>
 
-  {# ========== FOOTER ========== #}
+
   <footer style="background-color:#1A3A52;padding-top:2.5rem;padding-bottom:2.5rem;">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex flex-col md:flex-row items-center md:items-start justify-between" style="gap:2rem;">
@@ -307,11 +293,7 @@
           <a href="{{ url_for('client.search') }}">Consulter le catalogue traiteur</a>
           <a href="{{ url_for('auth.signup') }}">S'inscrire</a>
           <a href="{{ url_for('auth.login') }}">Se connecter</a>
-          {# TODO(#58): replace `/cgs` with url_for('legal.cgs_current')
-             once the legal blueprint lands on main. The literal path is
-             a placeholder — `url_for` would raise BuildError today because
-             the route doesn't exist yet on this branch. #}
-          <a href="/cgs">CGU/CGV</a>
+          <a href="{{ url_for('legal.cgs_current') }}">CGU/CGV</a>
         </nav>
       </div>
     </div>

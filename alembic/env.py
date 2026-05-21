@@ -4,7 +4,6 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# Make project root importable so we can pull in models + config.
 import os
 import sys
 
@@ -15,8 +14,8 @@ from models import Base
 
 config = context.config
 
-# Inject the live DATABASE_URL from our pydantic settings rather than from
-# alembic.ini — keeps secrets in env, matches what the app actually uses.
+# Inject the live DATABASE_URL from pydantic settings so alembic uses the
+# same source of truth as the app (and secrets stay out of alembic.ini).
 config.set_main_option("sqlalchemy.url", app_config.DATABASE_URL)
 
 if config.config_file_name is not None:
@@ -24,24 +23,8 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -55,12 +38,6 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

@@ -1,20 +1,3 @@
-"""Password-reset token lifecycle.
-
-Three responsibilities, each its own function so unit tests can drive
-the rule without going through the HTTP layer:
-
-* `issue_token(user)` — mint a fresh token, persist it, return the
-  PasswordResetToken row.
-* `consume_token(raw_token, new_password)` — validate (exists, not
-  used, not expired), flip `used_at`, hash + write the new password.
-* `kick_off_reset(email)` — public entry-point. Looks up the user,
-  issues a token, queues the email. **Always** runs in constant time
-  whether the email exists or not, to avoid leaking account existence
-  through response timing (audit-style account-enumeration defence).
-
-No commit — caller commits.
-"""
-
 from __future__ import annotations
 
 import datetime
@@ -31,35 +14,20 @@ from services.email import render_and_send_async
 
 
 def _hash_token(raw: str) -> str:
-    """SHA-256 hex digest of a raw token.
-
-    What lives in the DB is the digest, not the raw value. The raw only
-    travels via the reset-link in the user's email; if the DB is leaked
-    (backup, malicious DBA, future SQLi), no live token is reusable
-    because the attacker would have to invert SHA-256.
-    """
+    # Only the digest lives in the DB; a DB leak doesn't yield reusable tokens.
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-# 1 hour is the industry-standard window for password reset links —
-# long enough for the email to arrive + the user to click, short enough
-# that a leaked link from logs / referrer headers expires fast.
 RESET_TOKEN_TTL = datetime.timedelta(hours=1)
 
 
 class ResetTokenInvalid(Exception):
-    """Token is unknown, already used, or expired. Same exception for
-    all three so the route handler can't accidentally leak which case
-    it is to the caller (would help a brute-force attacker)."""
+    """One opaque exception for unknown / used / expired so handlers
+    can't accidentally distinguish them to a brute-forcer."""
 
 
 def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
-    """Mint a one-shot reset token. Returns `(row, raw_token)`.
-
-    The raw token is what travels in the email URL; the row stores only
-    the SHA-256 digest. Callers MUST use `raw_token` to build the user
-    link, NEVER `row.token` (which is now the digest).
-    """
+    # Callers MUST use raw_token in the link, never row.token (digest).
     raw = secrets.token_urlsafe(32)
     row = PasswordResetToken(
         user_id=user.id,
@@ -72,18 +40,9 @@ def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
 
 
 def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
-    """Verify `raw_token`, atomically flip `used_at`, hash + write the
-    new password on the owning User. Returns the updated user.
-
-    Raises `ResetTokenInvalid` for any failure mode.
-    """
     if not raw_token:
         raise ResetTokenInvalid
-    # SELECT ... FOR UPDATE serializes concurrent redemption attempts on
-    # the same token. Without the lock, two simultaneous POSTs would both
-    # see used_at IS NULL and both proceed to write a (possibly different)
-    # password — last-write-wins is harmless in isolation, but a real
-    # serialization here is cheap and obvious.
+    # FOR UPDATE serializes concurrent redemption attempts.
     row = db.scalar(
         select(PasswordResetToken)
         .where(PasswordResetToken.token == _hash_token(raw_token))
@@ -98,8 +57,6 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
 
     user = db.get(User, row.user_id)
     if user is None or not user.is_active:
-        # Owning user vanished or got deactivated since the token was
-        # issued — refuse the consume. Same opaque error.
         raise ResetTokenInvalid
 
     now = datetime.datetime.utcnow()
@@ -107,38 +64,22 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     user.password_hash = bcrypt.hashpw(
         new_password.encode("utf-8"), bcrypt.gensalt()
     ).decode("utf-8")
-    # Bumping this column invalidates every existing session for the
-    # user — `app.load_current_user` compares the live value against
-    # the snapshot the session was issued with.
+    # Bumping invalidates every existing session (see load_current_user).
     user.password_changed_at = now
     db.flush()
     return user
 
 
 def kick_off_reset(db: Session, *, email: str) -> None:
-    """Trigger the password-reset email flow for a given email.
-
-    Exactly one of two paths runs:
-      * email matches an active user → mint token, queue email.
-      * no match (or inactive) → no-op.
-
-    The function returns None either way and the route renders the
-    same "if your email exists, a link is on its way" success page —
-    that's how we avoid leaking account existence. A bcrypt hash is
-    computed on the no-match path so the response time tracks the
-    real path closely.
-    """
+    # Always returns None and the caller renders the same success page so
+    # account existence isn't leaked. Dummy bcrypt on the no-match path
+    # tracks the timing of the real path.
     user = db.scalar(select(User).where(User.email == (email or "").lower().strip()))
     if user is None or not user.is_active:
-        # Constant-time-ish dummy work so the response doesn't expose
-        # "no account here" through a fast no-op return.
         bcrypt.hashpw(b"timing-noise", bcrypt.gensalt())
         return
 
     _row, raw_token = issue_token(db, user=user)
-    # The auth blueprint is mounted at /, not /auth/, so the route is
-    # /reset-password/<token>. Hardcoding the path beats a `url_for`
-    # that would need a server-name config to produce an absolute URL.
     reset_url = f"{config.BASE_URL}/reset-password/{raw_token}"
 
     render_and_send_async(

@@ -1,20 +1,3 @@
-"""Flask CLI commands for operational tasks.
-
-Registered in app.py via app.cli.add_command(...). Run with:
-    docker compose exec app flask <command>
-
-Available command groups:
-    flask admin create               — interactive prompt, never logs the password
-    flask admin reset-password EMAIL — interactive prompt
-    flask admin list                 — list all super-admins
-    flask uploads migrate-to-s3      — one-shot migration of legacy fs uploads to S3
-
-Audit reference: P3 / "Provisionner le super-admin via une CLI dediee".
-The ADMIN_INITIAL_PASSWORD env var bootstrap remains for first-boot use
-but should not be relied on day to day — once the platform is live, all
-admin lifecycle goes through this CLI.
-"""
-
 from __future__ import annotations
 
 import datetime
@@ -37,7 +20,6 @@ admin_cli = AppGroup("admin", help="Manage super-admin accounts.")
 
 
 def _read_password_twice(prompt: str = "Mot de passe") -> str:
-    """Prompt twice to avoid typo-locking the account, with policy validation."""
     while True:
         first = getpass.getpass(f"{prompt} : ")
         if not first:
@@ -68,10 +50,8 @@ def create_admin(email: str, first_name: str, last_name: str):
 
         password = _read_password_twice()
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        # Stamp `password_changed_at` so the first password rotation does
-        # invalidate active sessions. `before_request` compares this against
-        # `session["pwd_changed_at"]` — a null value would silently disable
-        # the session-invalidation tripwire for newly-created admins.
+        # Stamp so the session-invalidation tripwire (load_current_user) has
+        # a snapshot to compare against on the first password rotation.
         now = datetime.datetime.utcnow()
 
         session.add(
@@ -104,10 +84,8 @@ def reset_password(email: str):
 
         password = _read_password_twice("Nouveau mot de passe")
         user.password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        # Audit H-5 (2026-05-13): the CLI is the incident-response tool
-        # ops reach for when a session is suspected compromised. Without
-        # bumping `password_changed_at`, the existing session keeps
-        # working — the very fix becomes a no-op against the attacker.
+        # Audit H-5: bump password_changed_at so the active session of a
+        # compromised admin is invalidated by this incident-response reset.
         user.password_changed_at = datetime.datetime.utcnow()
         click.echo(f"Mot de passe reinitialise pour {email}.")
 
@@ -148,10 +126,6 @@ def disable_admin(email: str):
         click.echo(f"Super-admin desactive : {email}")
 
 
-# ---------------------------------------------------------------------------
-# Uploads — one-shot migration from local filesystem to S3
-# ---------------------------------------------------------------------------
-
 uploads_cli = AppGroup(
     "uploads",
     help="Manage user-uploaded assets (logos, photos).",
@@ -167,12 +141,6 @@ def _is_legacy_fs_url(url: str | None) -> bool:
 
 
 def _legacy_url_to_paths(url: str) -> tuple[str, str, str]:
-    """Map `/static/uploads/<rest>` to (fs_path, s3_key, new_url).
-
-    `fs_path` is where the file lives on disk today. `s3_key` is what we
-    write to in the bucket. `new_url` is what should land in DB after
-    the upload so the Flask proxy can serve it.
-    """
     rest = url[len(_LEGACY_PREFIX) :]
     fs_path = os.path.join(os.path.dirname(__file__), "static", "uploads", rest)
     s3_key = f"uploads/{rest}"
@@ -199,22 +167,9 @@ def _legacy_url_to_paths(url: str) -> tuple[str, str, str]:
     help="Print every file processed (default: only summary + errors).",
 )
 def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
-    """Push every fs-backed caterer logo/photo to S3 and rewrite the URL in DB.
-
-    Behaviour:
-      * Logos (`Caterer.logo_url`) and photo galleries (`Caterer.photos`)
-        are scanned. Other tables don't currently store uploads.
-      * URLs already pointing at `/uploads/*` are skipped (already on S3).
-      * URLs whose file is missing on disk are reported as warnings and
-        the column is NULLed out (logo) or the entry dropped from the
-        list (photos) so dead refs stop crashing templates.
-      * The command is safe to re-run: on the second pass nothing matches.
-
-    Exit codes: 0 on success, 1 if any upload failed (DB still committed
-    for whatever succeeded).
-    """
-    # Lazy imports — boto3 is heavy and we don't want the rest of the
-    # CLI to pay its cost on `flask --help`.
+    # Idempotent: scans Caterer.logo_url + Caterer.photos, uploads any
+    # remaining /static/uploads/* to S3, rewrites the URL, and prunes dead
+    # filesystem refs. Lazy import: boto3 is heavy.
     from botocore.exceptions import BotoCoreError, ClientError
 
     from config import settings
@@ -237,7 +192,6 @@ def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
     with get_session() as session:
         caterers = session.scalars(select(Caterer)).all()
         for c in caterers:
-            # --- logo ---------------------------------------------------
             if _is_legacy_fs_url(c.logo_url):
                 fs_path, s3_key, new_url = _legacy_url_to_paths(c.logo_url)
                 if not os.path.isfile(fs_path):
@@ -278,7 +232,6 @@ def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
             elif c.logo_url:
                 skipped_already += 1
 
-            # --- photos -------------------------------------------------
             if c.photos:
                 new_photos: list[str] = []
                 changed = False
@@ -299,15 +252,11 @@ def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
                         if not dry_run:
                             changed = True
                         else:
-                            # In dry-run we want to preserve the legacy
-                            # URL in the rebuilt list so the printed
-                            # summary doesn't lie about counts. The drop
-                            # is reported but not applied.
                             new_photos.append(url)
                         continue
                     if dry_run:
                         click.echo(f"  · [{c.id}] would upload photo → {s3_key}")
-                        new_photos.append(url)  # keep legacy URL under dry-run
+                        new_photos.append(url)
                         continue
                     try:
                         content_type, _ = mimetypes.guess_type(fs_path)
@@ -333,7 +282,7 @@ def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
                             err=True,
                         )
                         errors += 1
-                        new_photos.append(url)  # keep legacy on failure
+                        new_photos.append(url)
                 if changed and not dry_run:
                     c.photos = new_photos or None
 

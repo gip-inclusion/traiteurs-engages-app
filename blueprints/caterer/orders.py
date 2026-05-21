@@ -16,8 +16,6 @@ from services import workflow
 from services.quotes import build_pdf_preview
 
 
-# Filter tabs visible on /caterer/orders. Keys map to ?status= URL params,
-# values are the labels rendered in the tab pill.
 ORDER_STATUS_TABS = {
     "all": "Toutes",
     "upcoming": "À venir",
@@ -28,8 +26,8 @@ ORDER_STATUS_TABS = {
 }
 
 
-# "invoiced" tab covers both `invoicing` (Stripe call in flight) and `invoiced`
-# (invoice issued) — the caterer experiences them as the same stage.
+# "invoiced" merges `invoicing` (Stripe in flight) + `invoiced` (issued);
+# the caterer experiences both as the same stage.
 _TAB_TO_STATUSES = {
     "upcoming": (OrderStatus.confirmed,),
     "delivered": (OrderStatus.delivered,),
@@ -119,11 +117,9 @@ def register(bp):
         try:
             order = workflow.mark_delivered(db, order_id=order_id, caterer=caterer)
         except workflow.OrderNotFound:
-            # `mark_delivered` raises OrderNotFound for two cases: the
-            # order genuinely doesn't exist (or doesn't belong to this
-            # caterer) → real 404; or it's already past `confirmed`
-            # (typical replay: 2nd click, browser back+resubmit, stale
-            # tab) → flash + redirect, not an error.
+            # OrderNotFound covers two cases: genuinely missing → 404, or
+            # already-past-confirmed replays (double-click, back+resubmit)
+            # → flash + redirect, not an error.
             existing = db.scalar(
                 select(Order)
                 .join(Quote, Order.quote_id == Quote.id)
@@ -134,10 +130,9 @@ def register(bp):
             flash("Cette commande a deja ete marquee comme livree.", "info")
             return redirect(url_for("caterer.order_detail", order_id=order_id))
 
-        # `settings.billing_enabled` est l'interrupteur global : tant qu'il est
-        # off, la facturation reste manuelle (admin pilote la transition via
-        # /admin/orders/<id>/transition) et aucune facture Stripe ne part,
-        # même si le traiteur est entièrement onboardé sur Connect.
+        # billing_enabled OFF = facturation manuelle pilotée par l'admin
+        # (/admin/orders/<id>/transition) ; aucune facture Stripe ne part
+        # même si le traiteur est onboardé sur Connect.
         if (
             settings.billing_enabled
             and caterer.stripe_account_id

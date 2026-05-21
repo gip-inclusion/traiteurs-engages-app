@@ -20,8 +20,6 @@ from services import reviews as reviews_service
 from services.quotes import build_pdf_preview
 
 
-# Filter tabs visible on /client/orders. Keys map to ?status= URL params,
-# values are the labels rendered in the tab pill.
 ORDER_STATUS_TABS = {
     "all": "Toutes",
     "upcoming": "À venir",
@@ -31,18 +29,13 @@ ORDER_STATUS_TABS = {
 
 
 def _derive_order_display_status(order):
-    """Collapse OrderStatus into the three buckets the client cares about.
-
-    Returns one of: 'upcoming', 'to_pay', 'paid'. The mapping mirrors
-    the labels and badge colours used in templates/components/status_badge.html.
-    """
+    # Returns upcoming / to_pay / paid. confirmed/delivered/invoicing/
+    # disputed all surface as "à venir" — nothing actionable until the
+    # invoice is ready.
     if order.status == OrderStatus.paid:
         return "paid"
     if order.status == OrderStatus.invoiced:
         return "to_pay"
-    # confirmed / delivered / invoicing / disputed all surface as
-    # "À venir" — the client has nothing actionable until the invoice is
-    # ready.
     return "upcoming"
 
 
@@ -104,14 +97,8 @@ def register(bp):
         )
 
         caterer = order.quote.caterer
-        # `caterer_user` drives the "Envoyer un message" modal in the
-        # template — modal handles the existing-thread-or-compose
-        # logic itself via /api/messages, no thread-lookup needed
-        # server-side.
         caterer_user = caterer.users[0] if caterer.users else None
 
-        # Existing review for this order (if any), so the detail page
-        # shows "Vous avez deja note ce traiteur" instead of the form.
         existing_review = db.scalar(
             select(CatererReview).where(CatererReview.order_id == order.id)
         )
@@ -142,12 +129,7 @@ def register(bp):
     @login_required
     @role_required("client_admin", "client_user")
     def order_review(order_id):
-        """Persist a CatererReview for a paid order.
-
-        Gating lives in `services.reviews.submit_review`: only the
-        original requester (qr.user_id == g.current_user.id) of a paid
-        order can post, and only once per order.
-        """
+        # Eligibility gate lives in services.reviews.submit_review.
         user = g.current_user
         db = get_db()
         try:
@@ -162,9 +144,7 @@ def register(bp):
             flash("Merci de selectionner une note entre 1 et 5 etoiles.", "error")
             return redirect(url_for("client.order_detail", order_id=order_id))
         except reviews_service.OrderNotReviewable:
-            # Either order doesn't exist, isn't paid, viewer isn't the
-            # original requester, or the review was already posted.
-            # Don't leak which one — just 404.
+            # Don't leak which gate failed — just 404.
             abort(404)
         db.commit()
         flash("Merci, votre avis a bien ete enregistre.", "success")

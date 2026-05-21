@@ -32,26 +32,16 @@ from models import (
     UserRole,
 )
 
-# Markers that opt-in to seeding a database with the dev-grade fixtures
-# below. Either is sufficient:
-#   * FLASK_DEBUG=1            — set by docker-compose.dev.yml, so a
-#                                local `docker compose exec app python
-#                                seed_data.py` just works.
-#   * SEED_FIXTURES_ALLOW=1    — explicit opt-in for CI / a freshly
-#                                rebuilt staging that needs demo data.
-# Outside both, the seeder refuses to run. Audit C-3 (2026-05-13):
-# the Procfile's `if SEED_FIXTURES=true` postdeploy chain has been
-# removed, but a stray `scalingo run python seed_data.py` would
-# otherwise still execute. This guard fail-closes inside the seeder.
+# Audit C-3: seeder fail-closes unless an explicit dev opt-in is present,
+# so a stray `scalingo run python seed_data.py` can't repopulate prod.
 _DEV_OPT_IN_MARKERS = ("FLASK_DEBUG", "SEED_FIXTURES_ALLOW")
 
 PASSWORD_HASH = bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode()
 
 
 def _refuse_in_production():
-    """Bail out unless one of the dev opt-in markers is set. Called first
-    thing inside `seed()` so importing this module never has a side effect
-    (tests import freely; only running the seeder triggers the check)."""
+    # Called first thing in seed() so importing this module stays side-effect
+    # free for tests.
     enabled = any(
         os.getenv(m, "").strip().lower() in ("1", "true", "yes")
         for m in _DEV_OPT_IN_MARKERS
@@ -66,15 +56,9 @@ def _refuse_in_production():
 
 
 def _ensure_admin_employee_rows(db):
-    """Idempotent backfill: every client_admin / client_user with a
-    `company_id` should have a matching CompanyEmployee row so they show
-    up in /client/team. Re-run safely on every boot — only inserts the
-    rows that are missing.
-
-    Runs unconditionally even when the heavy seed early-returns, because
-    the seed guard skips block-by-block creation; this pass is the only
-    way an existing DB without effectifs rows for its admins gets fixed.
-    """
+    # Idempotent backfill so client_admin / client_user accounts always have
+    # a matching CompanyEmployee row visible in /client/team — runs even on
+    # the heavy-seed early-return path so legacy DBs eventually heal.
     rows = db.scalars(
         select(User).where(
             User.role.in_([UserRole.client_admin, UserRole.client_user]),
@@ -93,8 +77,7 @@ def _ensure_admin_employee_rows(db):
             )
         )
         if existing:
-            # Make sure the link to the user is set (covers rows the admin
-            # pre-created with the same email then approved later).
+            # Link rows pre-created by the admin (same email) to the user.
             if existing.user_id != u.id:
                 existing.user_id = u.id
             continue
@@ -116,13 +99,9 @@ def seed():
     with get_session() as db:
         if db.scalar(select(Company).where(Company.name == "Acme Solutions")):
             print("Seed data already exists, skipping.")
-            # Still run the effectifs backfill — fixes DBs created before
-            # the auth flow started inserting CompanyEmployee on signup,
-            # and any account whose row got dropped.
             _ensure_admin_employee_rows(db)
             return
 
-        # --- Companies ---
         acme = Company(
             name="Acme Solutions",
             siret="12345678901234",
@@ -140,7 +119,6 @@ def seed():
         db.add_all([acme, techcorp])
         db.flush()
 
-        # --- Company services ---
         svc_direction = CompanyService(
             company_id=acme.id, name="Direction", annual_budget=25000
         )
@@ -151,7 +129,6 @@ def seed():
         db.add_all([svc_direction, svc_marketing, svc_rh])
         db.flush()
 
-        # --- Users ---
         db.scalar(select(User).where(User.role == UserRole.super_admin))
 
         alice = User(
@@ -184,7 +161,6 @@ def seed():
         db.add_all([alice, bob, claire])
         db.flush()
 
-        # --- Caterers ---
         cat_esat = Caterer(
             name="ESAT Les Saveurs Solidaires",
             siret="11111111111111",
@@ -269,7 +245,6 @@ def seed():
         db.add_all([cat_esat, cat_ea, cat_ei])
         db.flush()
 
-        # --- Caterer users ---
         user_esat = User(
             email="contact@saveurs-solidaires.fr",
             password_hash=PASSWORD_HASH,
@@ -300,7 +275,6 @@ def seed():
         db.add_all([user_esat, user_ea, user_ei])
         db.flush()
 
-        # --- Quote requests ---
         today = datetime.date.today()
 
         qr_draft = QuoteRequest(
@@ -371,7 +345,6 @@ def seed():
         db.add_all([qr_draft, qr_sent, qr_completed])
         db.flush()
 
-        # --- QRCs for qr_sent ---
         qrc_esat = QuoteRequestCaterer(
             quote_request_id=qr_sent.id,
             caterer_id=cat_esat.id,
@@ -387,7 +360,6 @@ def seed():
         db.add_all([qrc_esat, qrc_ei])
         db.flush()
 
-        # --- QRC for qr_completed ---
         qrc_ea = QuoteRequestCaterer(
             quote_request_id=qr_completed.id,
             caterer_id=cat_ea.id,
@@ -398,7 +370,6 @@ def seed():
         db.add(qrc_ea)
         db.flush()
 
-        # --- Quotes ---
         quote_sent = Quote(
             quote_request_id=qr_sent.id,
             caterer_id=cat_esat.id,
@@ -459,7 +430,6 @@ def seed():
         db.add_all([quote_sent, quote_accepted])
         db.flush()
 
-        # --- Order ---
         order = Order(
             quote_id=quote_accepted.id,
             client_admin_id=bob.id,
@@ -471,7 +441,6 @@ def seed():
         db.add(order)
         db.flush()
 
-        # --- Messages ---
         thread_alice_esat = uuid.uuid5(
             uuid.NAMESPACE_URL,
             ":".join(sorted([str(alice.id), str(user_esat.id)])),
@@ -511,7 +480,6 @@ def seed():
         db.add_all(messages)
         db.flush()
 
-        # --- Notifications ---
         notifications = [
             Notification(
                 user_id=alice.id,
@@ -540,8 +508,6 @@ def seed():
         ]
         db.add_all(notifications)
 
-        # Backfill effectifs rows for the seeded admins/users so they
-        # appear under /client/team for parity with the signup flow.
         _ensure_admin_employee_rows(db)
 
     print("Seed data created:")
@@ -562,5 +528,4 @@ def seed():
 
 
 if __name__ == "__main__":
-    # Schema management lives in alembic — run `alembic upgrade head` first.
     seed()

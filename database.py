@@ -19,13 +19,11 @@ ScopedSession = scoped_session(session_factory)
 
 
 def get_db() -> Session:
-    """Return the current scoped session (one per request/thread)."""
     return ScopedSession()
 
 
 @contextmanager
 def get_session():
-    """Standalone session context for scripts (init_db, seed, etc.)."""
     session: Session = session_factory()
     try:
         yield session

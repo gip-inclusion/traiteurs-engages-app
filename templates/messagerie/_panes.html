@@ -1,33 +1,3 @@
-{# Shared two-pane "Messagerie" layout used by client, caterer and
-   super_admin. Driven by a `messagerie_ctx` dict assembled in the route:
-
-     {
-       "threads": [
-         {"thread_id", "other_name", "other_role", "other_avatar_url",
-          "other_avatar_kind" ('caterer'|'client'|'unknown'),
-          "last_message", "last_at", "unread"}, ...
-       ],
-       "active_thread_id": str|None,
-       "active": {  # only when active_thread_id is set
-         "other_user_id": str,
-         "other_name": str,
-         "other_role": str,
-         "other_avatar_url": str|None,
-         "other_avatar_kind": str,
-         "contact_full_name": str,
-         "detail_url": str|None,
-       },
-       "list_endpoint": str (e.g. "client.messages"),
-       "thread_endpoint": str (e.g. "client.message_thread"),
-       "show_role_badges": bool,         # super_admin only
-       "read_only": bool,                # super_admin only — disables form
-       "current_user_id": str,
-     }
-
-   Avatar rendering is left tile-style (LEGO-square in the mockup)
-   rather than circular: it works just as well for a caterer logo,
-   a company logo, or the building/utensils fallback icons.
-#}
 {% set ctx = messagerie_ctx %}
 
 {% macro avatar(kind, url, size_class='w-12 h-12') %}
@@ -62,7 +32,7 @@
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-  {# ---- Left pane : threads ---- #}
+
   <div class="bg-white rounded-lg lg:col-span-1">
     <div class="px-5 py-4 border-b border-soft">
       <p class="text-xs font-bold uppercase tracking-wider text-mute">
@@ -107,10 +77,10 @@
     {% endif %}
   </div>
 
-  {# ---- Right pane : active thread or empty state ---- #}
+
   <div class="bg-white rounded-lg lg:col-span-2 flex flex-col" style="min-height:70vh;">
     {% if ctx.active %}
-      {# Header #}
+
       <div class="px-6 py-4 border-b border-soft flex items-center justify-between gap-4">
         <div class="flex items-center gap-3 min-w-0">
           {{ avatar(ctx.active.other_avatar_kind, ctx.active.other_avatar_url, size_class='w-12 h-12') }}
@@ -135,7 +105,7 @@
         {% endif %}
       </div>
 
-      {# Tabs : Conversation / Pieces jointes #}
+
       <div class="px-6 border-b border-soft">
         <div class="flex gap-6">
           <button type="button" data-action="messagerie-tab" data-target="messagerie-conversation"
@@ -149,7 +119,7 @@
         </div>
       </div>
 
-      {# Conversation pane #}
+
       <div id="messagerie-conversation" class="messagerie-tab-pane flex-1 flex flex-col">
         <div id="messages-container"
              class="flex-1 overflow-y-auto p-6"
@@ -166,16 +136,8 @@
         {% else %}
         <form id="message-form" class="border-t border-soft p-4 flex items-center gap-2">
           <input type="hidden" name="recipient_id" value="{{ ctx.active.other_user_id }}">
-          {# Bouton « Joindre un fichier » masqué tant que l'import de
-             pièces jointes n'est pas implémenté — à réactiver avec la
-             fonctionnalité. #}
-          {#
-          <button type="button"
-                  class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-cream transition-colors text-mute flex-shrink-0"
-                  title="Joindre un fichier (bientôt)" disabled>
-            <i data-lucide="paperclip" class="w-4 h-4"></i>
-          </button>
-          #}
+
+
           <input type="text" name="body"
                  placeholder="Votre message... (Entrée pour envoyer)"
                  class="flex-1 border rounded-full px-4 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default"
@@ -189,14 +151,14 @@
         {% endif %}
       </div>
 
-      {# Attachments pane #}
+
       <div id="messagerie-attachments" class="messagerie-tab-pane flex-1 hidden p-12 text-center">
         <i data-lucide="paperclip" class="w-10 h-10 text-disabled mx-auto mb-3"></i>
         <p class="text-sm text-mute">Aucune pièce jointe dans cette conversation.</p>
       </div>
 
     {% else %}
-      {# Empty state when no thread is selected #}
+
       <div class="flex-1 flex items-center justify-center p-12 text-center">
         <div>
           <i data-lucide="message-circle" class="w-12 h-12 text-disabled mx-auto mb-3"></i>

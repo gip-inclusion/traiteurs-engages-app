@@ -1,16 +1,7 @@
-"""Instance-level access scoping helpers.
-
-Every query that fetches a resource owned by a client company or caterer
-MUST go through these helpers so the ownership filter cannot be forgotten.
-
-For requests/orders, the role of the caller decides the scope:
-  - `client_admin`  → sees every demand/commande of the company.
-  - `client_user`   → sees only the demands they created themselves
-                      (and the commandes that flow from those).
-This keeps a regular user's space focused on their own activity, while
-the admin keeps the company-wide overview needed to coordinate.
-"""
-
+# Every query for a resource owned by a client company or caterer MUST go
+# through these helpers so the ownership filter is never forgotten.
+#   client_admin → sees every demand/commande of the company
+#   client_user  → sees only the demands they created (and their orders)
 from flask import abort
 from sqlalchemy import select
 
@@ -28,37 +19,16 @@ from models import (
 
 
 def own_requests_filter(user):
-    """SQL predicate restricting QuoteRequest to the user's own demands
-    when they are a `client_user`. For `client_admin` (and other roles),
-    returns None so the caller can skip the filter without branching.
-
-    Use as:
-        stmt = select(QuoteRequest).where(QuoteRequest.company_id == user.company_id)
-        own_only = own_requests_filter(user)
-        if own_only is not None:
-            stmt = stmt.where(own_only)
-    """
+    # Returns None for non-client_user so callers can skip the filter
+    # without branching.
     if user.role == UserRole.client_user:
         return QuoteRequest.user_id == user.id
     return None
 
 
-# ---------------------------------------------------------------------------
-# Client-side: scope by company_id (and by user_id for client_user)
-# ---------------------------------------------------------------------------
-
-
 def get_company_request(request_id, user, *, for_update: bool = False):
-    """Fetch a QuoteRequest the `user` is allowed to see, or abort 404.
-
-    `user` is the current User; admin sees the whole company, client_user
-    sees only their own demands.
-
-    `for_update=True` (defaults to False) acquires a row-level lock
-    until the surrounding transaction commits. Use it on routes that
-    perform a status-gated mutation (e.g. the client edit handler vs.
-    a concurrent admin approval) to close the read-then-write race.
-    """
+    # for_update=True acquires a row-level lock — use on status-gated
+    # mutations to close the read-then-write race against admin actions.
     db = get_db()
     stmt = select(QuoteRequest).where(
         QuoteRequest.id == request_id,
@@ -76,16 +46,8 @@ def get_company_request(request_id, user, *, for_update: bool = False):
 
 
 def get_company_order(order_id, user, *, options=None):
-    """Fetch an Order the `user` is allowed to see, or abort 404.
-
-    Scoped via the underlying QuoteRequest: admins see all the company's
-    orders, client_user sees only the orders flowing from QRs they
-    themselves created.
-
-    `options` is forwarded to `Select.options(...)` so callers can
-    eager-load relationships in a single round-trip rather than relying
-    on lazy loads.
-    """
+    # Scoped via the underlying QuoteRequest so client_user only sees
+    # orders flowing from their own demands.
     db = get_db()
     stmt = (
         select(Order)
@@ -105,7 +67,6 @@ def get_company_order(order_id, user, *, options=None):
 
 
 def get_company_service(service_id, company_id):
-    """Fetch a CompanyService owned by `company_id`, or abort 404."""
     db = get_db()
     service = db.scalar(
         select(CompanyService).where(
@@ -119,7 +80,6 @@ def get_company_service(service_id, company_id):
 
 
 def get_company_employee(employee_id, company_id):
-    """Fetch a CompanyEmployee owned by `company_id`, or abort 404."""
     db = get_db()
     employee = db.scalar(
         select(CompanyEmployee).where(
@@ -133,7 +93,6 @@ def get_company_employee(employee_id, company_id):
 
 
 def get_pending_user(user_id, company_id):
-    """Fetch a pending User in `company_id`, or abort 404."""
     from models import MembershipStatus
 
     db = get_db()
@@ -149,13 +108,7 @@ def get_pending_user(user_id, company_id):
     return user
 
 
-# ---------------------------------------------------------------------------
-# Caterer-side: scope by caterer_id
-# ---------------------------------------------------------------------------
-
-
 def get_caterer_qrc(qr_id, caterer_id):
-    """Fetch a QuoteRequestCaterer for `caterer_id`, or abort 404."""
     db = get_db()
     qrc = db.scalar(
         select(QuoteRequestCaterer)
@@ -168,7 +121,6 @@ def get_caterer_qrc(qr_id, caterer_id):
 
 
 def get_caterer_quote(qr_id, quote_id, caterer_id):
-    """Fetch a Quote owned by `caterer_id` for a given request, or abort 404."""
     db = get_db()
     quote = db.scalar(
         select(Quote)
@@ -182,12 +134,6 @@ def get_caterer_quote(qr_id, quote_id, caterer_id):
 
 
 def get_caterer_order(order_id, caterer_id, *, options=None):
-    """Fetch an Order whose Quote belongs to `caterer_id`, or abort 404.
-
-    `options` is forwarded to `Select.options(...)` so callers can
-    eager-load relationships in a single round-trip rather than relying
-    on lazy loads.
-    """
     db = get_db()
     stmt = (
         select(Order)

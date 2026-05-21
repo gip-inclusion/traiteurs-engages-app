@@ -1,8 +1,3 @@
-"""Unit tests for services.quotes.calculate_quote_totals.
-
-No DB, no app, no fixtures — pure Decimal math. These are the first real
-tests for the financial code path that ships numbers to Stripe.
-"""
 
 from decimal import Decimal
 
@@ -12,7 +7,6 @@ from services.quotes import calculate_quote_totals
 
 
 def _line(**kwargs):
-    """Build a line dict with sensible defaults."""
     return {
         "section": "principal",
         "description": "test",
@@ -23,9 +17,6 @@ def _line(**kwargs):
     }
 
 
-# ---------------------------------------------------------------------------
-# Totals
-# ---------------------------------------------------------------------------
 
 
 def test_empty_lines_returns_zeros():
@@ -67,9 +58,6 @@ def test_guest_count_none_amount_per_person_is_zero():
     assert t["amount_per_person"] == Decimal("0.00")
 
 
-# ---------------------------------------------------------------------------
-# TVA grouping
-# ---------------------------------------------------------------------------
 
 
 def test_mixed_tva_rates_grouped_correctly():
@@ -106,9 +94,6 @@ def test_section_totals_split_correctly():
     assert t["section_totals"]["extras"] == Decimal("25.00")
 
 
-# ---------------------------------------------------------------------------
-# Platform fee (5 % HT, no TVA — platform isn't a VAT collector for now)
-# ---------------------------------------------------------------------------
 
 
 def test_platform_fee_is_5pct_of_ht():
@@ -124,7 +109,6 @@ def test_platform_fee_is_5pct_of_ht():
 
 
 def test_platform_fee_independent_of_line_tva_rates():
-    """Platform fee carries no TVA regardless of the line TVA rates."""
     t_low = calculate_quote_totals(
         [_line(quantity=10, unit_price_ht=100, tva_rate=10)],
         guest_count=10,
@@ -138,9 +122,6 @@ def test_platform_fee_independent_of_line_tva_rates():
     assert t_low["platform_fee_ttc"] == t_high["platform_fee_ttc"] == Decimal("50.00")
 
 
-# ---------------------------------------------------------------------------
-# Decimal precision — catches any sneaky float arithmetic
-# ---------------------------------------------------------------------------
 
 
 def test_cent_precision_preserved_across_many_lines():
@@ -178,9 +159,6 @@ def test_returned_values_are_decimal_not_float():
         )
 
 
-# ---------------------------------------------------------------------------
-# Non-list input guard
-# ---------------------------------------------------------------------------
 
 
 def test_non_list_input_treated_as_empty():
@@ -190,9 +168,6 @@ def test_non_list_input_treated_as_empty():
         assert t["total_ht"] == Decimal("0.00")
 
 
-# ---------------------------------------------------------------------------
-# Missing line fields default to zero
-# ---------------------------------------------------------------------------
 
 
 def test_line_missing_fields_default_to_zero():
@@ -201,9 +176,6 @@ def test_line_missing_fields_default_to_zero():
     assert t["total_tva"] == Decimal("0.00")
 
 
-# ---------------------------------------------------------------------------
-# Parametrized smoke across realistic scenarios
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

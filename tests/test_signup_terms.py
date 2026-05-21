@@ -1,28 +1,6 @@
-"""Red/green tests for the CGS-acceptance gate on signup.
-
-Four server-side paths create a User and each must (a) refuse the
-signup when `accept_terms` is absent, and (b) stamp the active
-`TermsVersion` id + the wall-clock `terms_accepted_at` on the new
-row. These tests freeze that contract so a refactor of the signup
-flow can't silently lose the legal trace.
-
-Coverage:
-  * POST /signup as client_admin on a fresh SIRET
-  * POST /signup as client_admin against an existing SIRET (pending)
-  * POST /signup as caterer
-  * POST /signup/invite/<token>
-  * services.terms.current_terms_version date-tie selection
-"""
 
 
 def _wipe_signup_users():
-    """Remove users this suite seeds so cross-test state stays clean.
-
-    Signup auto-creates a CompanyEmployee row tied to every new
-    client_admin / client_user via `_ensure_admin_employee_rows`, so we
-    must drop those FK-referencing rows before the users themselves —
-    otherwise the delete trips `company_employees_user_id_fkey`.
-    """
     from sqlalchemy import select
 
     from database import session_factory
@@ -46,13 +24,6 @@ def _wipe_signup_users():
 
 
 def _wipe_signup_companies(siret_prefix: str = "9999"):
-    """Drop any Company seeded with a `terms-*` SIRET prefix.
-
-    Signup auto-seeds a CompanyService and CompanyEmployee row for a
-    freshly-created Company, so we drop those FK-referencing rows
-    first — otherwise the delete trips company_services_company_id_fkey
-    / company_employees_company_id_fkey.
-    """
     from sqlalchemy import select
 
     from database import session_factory
@@ -83,8 +54,6 @@ def _wipe_signup_companies(siret_prefix: str = "9999"):
 
 
 def _seed_extra_terms_version(slug: str, effective_at):
-    """Insert one extra TermsVersion so the date-resolver has multiple
-    rows to choose from. Returns its id."""
     from database import session_factory
     from models import TermsVersion
 
@@ -129,8 +98,6 @@ def _fetch_user(email):
 
 
 def _active_terms_id():
-    """Return the id of whichever TermsVersion is currently in force,
-    as the route would resolve it at submit time."""
     from database import session_factory
     from services.terms import current_terms_version
 
@@ -141,16 +108,9 @@ def _active_terms_id():
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Gate: no accept_terms → no User
-# ---------------------------------------------------------------------------
 
 
 def test_signup_client_admin_refuses_without_accept_terms(client):
-    """Without `accept_terms`, the new-SIRET client_admin path must
-    re-render the form (200) and create no User. The legal gate is the
-    headline contract of this PR — it can't be bypassed by omitting the
-    field."""
     try:
         r = client.post(
             "/signup",
@@ -177,8 +137,6 @@ def test_signup_client_admin_refuses_without_accept_terms(client):
 
 
 def test_signup_caterer_refuses_without_accept_terms(client):
-    """Same gate must hold for the caterer signup path — it's a
-    different branch of the same handler, easy to miss in a refactor."""
     try:
         r = client.post(
             "/signup",
@@ -200,8 +158,6 @@ def test_signup_caterer_refuses_without_accept_terms(client):
 
 
 def test_signup_invite_refuses_without_accept_terms(client):
-    """The invite-redemption path creates a third User-instantiation
-    site — must enforce the same gate."""
     import datetime as _dt
 
     from sqlalchemy import select
@@ -260,14 +216,9 @@ def test_signup_invite_refuses_without_accept_terms(client):
             s.close()
 
 
-# ---------------------------------------------------------------------------
-# Stamp: accepted → version + timestamp on the User
-# ---------------------------------------------------------------------------
 
 
 def test_signup_client_admin_stamps_terms_version_and_timestamp(client):
-    """Successful signup must persist the active TermsVersion id and a
-    non-null acceptance timestamp — that's the legal trace."""
     active_id = _active_terms_id()
     try:
         r = client.post(
@@ -328,15 +279,9 @@ def test_signup_pending_client_user_stamps_terms_too(client):
         _wipe_signup_users()
 
 
-# ---------------------------------------------------------------------------
-# Resolver: which version is in force on a given date?
-# ---------------------------------------------------------------------------
 
 
 def test_current_terms_version_picks_the_latest_effective_row(app):
-    """When two versions exist, the helper must return the one with the
-    highest `effective_at <= today`. Future versions stay invisible
-    until their effective date arrives."""
     import datetime as _dt
 
     from database import session_factory

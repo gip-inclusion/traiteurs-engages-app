@@ -23,18 +23,15 @@
   }
 
   function updateNotificationBadge() {
-    // The server pre-renders the count + visibility on every page load
-    // via the `_inject_notifications` context processor; this poll
-    // only refreshes the value live. A failed/non-JSON response leaves
-    // the SSR value intact rather than wiping the badge to 0.
+    // Server pre-renders the count; this poll only refreshes live. A
+    // non-JSON response leaves the SSR value rather than wiping to 0.
     fetch('/api/notifications', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data || typeof data.unread_count !== 'number') return;
         var n = Math.max(0, data.unread_count);
         document.querySelectorAll('.notification-badge').forEach(function (badge) {
-          // No-op short-circuit: avoid 4 DOM writes per tick when the
-          // count hasn't moved (the common case on idle tabs).
+          // Short-circuit when the count hasn't moved — saves DOM writes on idle tabs.
           if (badge.dataset.count === String(n)) return;
           var plural = n === 1 ? '' : 's';
           badge.classList.toggle('hidden', n <= 0);
@@ -43,7 +40,7 @@
           badge.setAttribute('aria-label', n + ' notification' + plural + ' non lue' + plural);
         });
       })
-      .catch(function () { /* leave the SSR value intact */ });
+      .catch(function () {});
   }
 
   var ACTIONS = {
@@ -74,9 +71,6 @@
       if (!window.confirm(el.dataset.confirm || 'Confirmer ?')) ev.preventDefault();
     },
     'copy-to-clipboard': function (el) {
-      // Copy `data-value` (or the textContent of #data-target) to the
-      // user's clipboard. Briefly swaps the button label so they get a
-      // visual confirmation.
       var text = el.dataset.value;
       if (!text && el.dataset.target) {
         var src = document.getElementById(el.dataset.target);
@@ -93,7 +87,7 @@
         navigator.clipboard.writeText(text).then(done, function () {});
         return;
       }
-      // execCommand fallback for older browsers / non-HTTPS contexts.
+      // Fallback for older browsers / non-HTTPS contexts.
       var ta = document.createElement('textarea');
       ta.value = text;
       ta.style.position = 'fixed';
@@ -112,9 +106,8 @@
     if (fn) fn(el, ev);
   });
 
-  // Notifications dropdown: close on click outside the panel or its
-  // trigger. Runs after the toggle-hidden action above, so opening the
-  // dropdown via the bell isn't immediately undone by this handler.
+  // Close on click outside; relies on running after the toggle-hidden
+  // handler so the bell can still open the dropdown.
   document.addEventListener('click', function (ev) {
     var dropdown = document.getElementById('notifications-modal');
     if (!dropdown || dropdown.classList.contains('hidden')) return;
@@ -135,10 +128,7 @@
     });
   }
 
-  // Auto-dismiss flash toasts — different durations by category so an
-  // error stays long enough to read while a success doesn't linger.
-  // Hovering the toast pauses the timer; mouseleave restarts it from
-  // scratch, so the user can read at their own pace.
+  // Per-category auto-dismiss; hover pauses the timer.
   function initFlashToasts() {
     var FLASH_DURATIONS = { success: 4000, info: 5000, error: 7000 };
     var toasts = document.querySelectorAll('.flash-toast');
@@ -149,8 +139,7 @@
 
       function dismiss() {
         toast.classList.add('flash-toast-leaving');
-        // Wait for the CSS opacity/transform transition before removing
-        // so screen readers don't see the node disappear mid-flight.
+        // Wait for the CSS transition so SR doesn't lose the node mid-flight.
         setTimeout(function () {
           if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 280);
@@ -160,8 +149,6 @@
 
       toast.addEventListener('mouseenter', clear);
       toast.addEventListener('mouseleave', start);
-      // Clicking the X button instantly removes the parent — no need
-      // for the timer afterwards.
       toast.addEventListener('click', function (ev) {
         if (ev.target.closest('[data-action="dismiss-parent"]')) clear();
       });
@@ -177,9 +164,7 @@
     updateLayout();
     window.addEventListener('resize', updateLayout);
     if (document.querySelector('.notification-badge')) {
-      // Pause the poll while the tab is hidden — saves a request every
-      // 30s on backgrounded tabs and runs a fresh fetch the moment the
-      // user comes back, so the count is current at the first glance.
+      // Pause polling on hidden tabs; fresh fetch fires on resume.
       var pollId = null;
       function startPolling() {
         if (pollId !== null) return;

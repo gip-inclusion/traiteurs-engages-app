@@ -1,13 +1,3 @@
-"""Public legal pages — CGS (Conditions Générales de Services).
-
-Each version's body lives in a Jinja template under `templates/legal/`.
-The `TermsVersion` table is the registry: which slug is current, where
-its template lives, when it took effect.
-
-Pages are public on purpose: prospective users must read the CGS before
-signing up, and existing users (or anyone) can re-read any past version.
-"""
-
 from flask import Blueprint, abort, make_response, redirect, render_template, url_for
 from sqlalchemy import select
 
@@ -19,9 +9,8 @@ from services.terms import current_terms_version
 legal_bp = Blueprint("legal", __name__)
 
 
-# Mirrors inclusion.gouv.fr/.well-known/security.txt — same operator (GIP
-# Plateforme de l'inclusion), same security inbox. Renew `Expires` < 1 year
-# before the deadline (the GIP rotates it on inclusion.gouv.fr — keep in sync).
+# Mirror of inclusion.gouv.fr/.well-known/security.txt (same operator).
+# Renew `Expires` < 1 year before the deadline, in sync with inclusion.gouv.fr.
 _SECURITY_TXT = (
     "Contact: mailto:security@inclusion.gouv.fr\n"
     "Policy: https://inclusion.gouv.fr/.well-known/security-policy.txt\n"
@@ -34,7 +23,6 @@ _SECURITY_TXT = (
 
 @legal_bp.route("/.well-known/security.txt")
 def security_txt():
-    """RFC 9116 security disclosure file."""
     response = make_response(_SECURITY_TXT, 200)
     response.headers["Content-Type"] = "text/plain; charset=utf-8"
     response.headers["Cache-Control"] = "public, max-age=3600"
@@ -43,12 +31,8 @@ def security_txt():
 
 @legal_bp.route("/cgs")
 def cgs_current():
-    """Redirect to the currently-in-force CGS version.
-
-    The 302 (not a direct render) keeps URLs version-stable: a link
-    saved today points at /cgs/v1; once /cgs/v2 ships, the new visitors
-    land there but the saved link still resolves correctly.
-    """
+    # 302 (not a direct render) so URLs stay version-stable: a link saved
+    # today as /cgs/v1 still resolves to v1 after /cgs/v2 ships.
     db = get_db()
     return redirect(url_for("legal.cgs_by_slug", slug=current_terms_version(db).slug))
 

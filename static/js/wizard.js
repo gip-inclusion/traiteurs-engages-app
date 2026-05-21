@@ -1,12 +1,6 @@
-// When the user submits the wizard, the next "back" navigation can
-// restore this very page from bfcache (Chrome/Firefox), with the DOM
-// frozen at step 7 — even though the response carried
-// `Cache-Control: no-store`. `pageshow` with `event.persisted === true`
-// is THE signal that the page was restored from bfcache; we redirect
-// to whatever URL the template configured (typically the requests
-// list) so the user never lands back on a stale, already-submitted
-// form. Scoped via `data-back-redirect` so this only fires on pages
-// that opt in (new.html), not on edit.html.
+// pageshow + event.persisted detects a bfcache restore (Chrome/Firefox),
+// which Cache-Control: no-store doesn't always defeat. Opt-in via
+// data-back-redirect so only new.html (not edit.html) bounces away.
 window.addEventListener('pageshow', function (e) {
   if (!e.persisted) return;
   var f = document.getElementById('wizard-form');
@@ -71,12 +65,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (submitBtn) submitBtn.style.display = currentStep === totalSteps ? 'inline-flex' : 'none';
   }
 
-  // Validation visuelle des champs obligatoires — applique les classes
-  // .wizard-field-error / .wizard-radio-error définies dans app.css.
-  // Les classes Tailwind de l'ancienne version (border-coral-red-400 /
-  // ring-coral-red-400) n'existaient pas dans le bundle curated du projet,
-  // donc rien ne s'affichait. Aussi : insère un banner en haut de l'étape
-  // et scrolle vers le premier champ invalide.
+  // Applique les classes d'erreur app.css, insère un banner, et scrolle
+  // vers le premier champ invalide.
   function clearStepErrors(section) {
     section.querySelectorAll('.wizard-field-error').forEach(function (el) {
       el.classList.remove('wizard-field-error');
@@ -114,9 +104,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     required.forEach(function (field) {
       if (field.type === 'radio') {
-        // Un groupe de radios partage `name` — on ne veut compter le
-        // groupe qu'une fois et ne styliser que si AUCUNE option n'est
-        // cochée.
+        // Compter le groupe une seule fois (radios partagent `name`).
         var name = field.name;
         if (seenRadioGroups[name]) return;
         seenRadioGroups[name] = true;
@@ -138,12 +126,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
-    // Validation des groupes "au moins un rempli" (data-required-group).
-    // Utilisé par le step 3 (Budget) où soit budget_global soit
-    // budget_per_person doit être renseigné — pas les deux. Si aucun
-    // n'est rempli, on stylise tous les champs du groupe et on incrémente
-    // invalidCount d'une seule unité (une erreur logique, pas une par
-    // input).
+    // Groupes "au moins un rempli" (data-required-group) : utilisé au step
+    // Budget où budget_global OU budget_per_person doit être renseigné.
     var groups = {};
     section.querySelectorAll('[data-required-group]').forEach(function (el) {
       var g = el.dataset.requiredGroup;
@@ -163,31 +147,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (invalidCount > 0) {
       showErrorBanner(section, invalidCount);
-      // Scroll en douceur vers le 1er champ invalide pour que l'utilisateur
-      // voie immédiatement quoi corriger, puis focus pour activer
-      // l'aide-saisie native du navigateur.
       if (firstInvalid && firstInvalid.scrollIntoView) {
         firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        try { firstInvalid.focus({ preventScroll: true }); } catch (e) { /* IE/Safari */ }
+        try { firstInvalid.focus({ preventScroll: true }); } catch (e) {  }
       }
       return false;
     }
     return true;
   }
 
-  // Auto-clear de l'erreur d'un champ dès que l'utilisateur tape ou
-  // sélectionne quelque chose — sinon le rouge reste tant qu'on ne
-  // re-clique pas Suivant, c'est anxiogène.
+  // Auto-clear : enlever le rouge dès que l'utilisateur corrige.
   if (form) {
     form.addEventListener('input', function (ev) {
       var t = ev.target;
       if (!t || !t.classList) return;
-      // Cas standard : l'input rempli enlève l'erreur sur lui-même
       if (t.classList.contains('wizard-field-error') && String(t.value || '').trim()) {
         t.classList.remove('wizard-field-error');
       }
-      // Cas groupe "au moins un" : un seul input rempli rend le groupe
-      // valide → on enlève l'erreur sur TOUS les inputs du groupe.
+      // Group "au moins un rempli" : un seul input rempli efface tout.
       if (t.dataset && t.dataset.requiredGroup && String(t.value || '').trim()) {
         var g = t.dataset.requiredGroup;
         form.querySelectorAll('[data-required-group="' + g + '"]').forEach(function (el) {
@@ -198,8 +175,6 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('change', function (ev) {
       var t = ev.target;
       if (!t) return;
-      // Radio : si on coche une option, on enlève le ring d'erreur sur
-      // tout le groupe.
       if (t.type === 'radio' && t.checked && t.name) {
         var group = form.querySelectorAll('input[name="' + t.name + '"]');
         group.forEach(function (r) {
@@ -212,14 +187,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Step 3 — affichage de la fourchette quand la flexibilité est ±5%
-  // ou ±10%. On lit le budget global ET le budget par personne (les
-  // deux étant souvent renseignés via le sync), on calcule le min et
-  // le max correspondants, et on affiche dans #budget-range-display.
-  // En mode "exact", on cache la zone.
+  // Step Budget : affiche la fourchette ±5%/±10% sous le champ.
   function formatEur(n) {
-    // Pas de décimales si entier, 2 sinon. Espace fine entre chiffres
-    // et symbole pour rester typographiquement propre.
     var rounded = Math.round(n * 100) / 100;
     if (Math.abs(rounded - Math.round(rounded)) < 0.005) {
       return String(Math.round(rounded));
@@ -238,15 +207,10 @@ document.addEventListener('DOMContentLoaded', function () {
       display.classList.add('hidden');
       return;
     }
-    var pct = parseInt(flex, 10) / 100; // 0.05 ou 0.10
+    var pct = parseInt(flex, 10) / 100;
     var bg = parseFloat(budgetGlobal && budgetGlobal.value);
     var bpp = parseFloat(budgetPerPerson && budgetPerPerson.value);
 
-    // Format demandé :
-    //   Budget global : 1425 € - 1575 €
-    //   Budget par personne : 27 € - 33 €
-    // Une ligne par dimension renseignée ; aucune ligne si rien n'est
-    // saisi (zone cachée).
     var parts = [];
     if (bg > 0) {
       parts.push('Budget global : ' + formatEur(bg * (1 - pct)) + ' € - ' + formatEur(bg * (1 + pct)) + ' €');
@@ -255,13 +219,10 @@ document.addEventListener('DOMContentLoaded', function () {
       parts.push('Budget par personne : ' + formatEur(bpp * (1 - pct)) + ' € - ' + formatEur(bpp * (1 + pct)) + ' €');
     }
     if (parts.length === 0) {
-      // Pas encore de budget saisi → on cache la fourchette en attendant
       display.classList.add('hidden');
       return;
     }
-    // Vide le wrapper et remplit avec une ligne par dimension. On évite
-    // innerHTML pour rester sur du textContent (audit VULN-45) ; les
-    // lignes sont des nodes <div> distincts.
+    // VULN-45: pas d'innerHTML, on construit des <div> en textContent.
     text.innerHTML = '';
     parts.forEach(function (line) {
       var div = document.createElement('div');
@@ -280,8 +241,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (budgetGlobal) budgetGlobal.addEventListener('input', updateBudgetRange);
   if (budgetPerPerson) budgetPerPerson.addEventListener('input', updateBudgetRange);
-  // Premier appel au chargement pour gérer les pre-fills (edit) +
-  // le default `checked` sur "Exact" → la zone reste cachée.
   updateBudgetRange();
 
   var prevBtn = document.getElementById('btn-prev');
@@ -301,13 +260,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Le wizard est un seul <form> a 7 etapes. Toute soumission qui part
-  // avant l'etape finale (typiquement : Entree dans un champ declenche
-  // la soumission implicite du navigateur) enverrait les etapes
-  // suivantes vides. Le handler `submit` est la garde definitive : il
-  // intercepte TOUTE tentative de soumission, quel qu'en soit le
-  // declencheur (Entree, bouton, script). La soumission reelle ne part
-  // que depuis le bouton « Soumettre » de l'etape 7.
+  // Empêche la soumission implicite (Entrée) avant l'étape finale ;
+  // seul le bouton « Soumettre » de l'étape 7 doit déclencher l'envoi.
   if (form) {
     form.addEventListener('submit', function (ev) {
       if (currentStep < totalSteps) {
@@ -337,7 +291,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Budget sync: bidirectional between budget_global and budget_per_person
   var budgetGlobal = document.getElementById('budget_global');
   var budgetPerPerson = document.getElementById('budget_per_person');
   var guestCount = document.getElementById('guest_count');
@@ -366,7 +319,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Dietary checkboxes: show/hide count input
   document.querySelectorAll('.dietary-toggle').forEach(function (cb) {
     cb.addEventListener('change', function () {
       var countInput = document.getElementById(cb.dataset.countTarget);
@@ -377,7 +329,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Service en salle: show/hide details
   var waitstaffCb = document.getElementById('wants_waitstaff');
   var waitstaffDetails = document.getElementById('waitstaff-details-wrapper');
   if (waitstaffCb && waitstaffDetails) {
@@ -386,11 +337,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Installation / mise en place : on toggle la zone des précisions ET
-  // on bascule l'attribut `required` sur l'input horaire en fonction
-  // de l'état de la checkbox. Comme ça `validateStep` (qui filtre sur
-  // [required]) déclenche l'erreur si la case est cochée mais qu'il
-  // n'y a pas d'horaire, et passe sans broncher si la case est décochée.
+  // Bascule l'attribut required sur l'horaire en miroir de la checkbox
+  // pour que validateStep réagisse en cohérence.
   var setupCb = document.getElementById('wants_setup');
   var setupWrapper = document.getElementById('setup-details-wrapper');
   var setupTime = document.getElementById('service_setup_time');
@@ -403,21 +351,16 @@ document.addEventListener('DOMContentLoaded', function () {
       setupWrapper.classList.add('hidden');
       if (setupTime) {
         setupTime.required = false;
-        // L'input reste rempli si l'utilisateur l'avait saisi puis
-        // décoche — pas besoin de l'effacer, ça permet une coche/décoche
-        // sans perdre la saisie. Les détails idem.
+        // On garde la saisie pour permettre coche/décoche sans perte.
         setupTime.classList.remove('wizard-field-error');
       }
     }
   }
   if (setupCb) {
     setupCb.addEventListener('change', syncSetupRequired);
-    // Premier appel pour gérer le pré-fill côté edit (qr.wants_setup
-    // déjà coché à l'ouverture).
     syncSetupRequired();
   }
 
-  // Compare mode toggle
   var compareModeYes = document.getElementById('is_compare_mode_yes');
   var compareModeNo = document.getElementById('is_compare_mode_no');
   var catererSelect = document.getElementById('caterer-select-wrapper');
@@ -430,10 +373,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Populate summary (step 7)
   function populateSummary() {
-    // Labels mirror MEAL_TYPE_LABELS in models.py. Keep in sync if
-    // either side changes — there is no JSON-bridge between them.
+    // Mirror of MEAL_TYPE_LABELS in models.py — no JSON bridge.
     var mealTypeLabels = {
       petit_dejeuner: 'Petit-déjeuner',
       pause_gourmande: 'Pause gourmande',
@@ -459,9 +400,8 @@ document.addEventListener('DOMContentLoaded', function () {
       return checked ? checked.value : '';
     }
 
-    // Renamed mentally from setHtml: callers only pass plain text (form values,
-    // joined labels). Using textContent closes audit VULN-45 (DOM-based XSS via
-    // pre-filled fields decoded by the browser before injection).
+    // VULN-45: textContent (not innerHTML) so pre-filled values can't
+    // become DOM-based XSS.
     function setHtml(id, text) {
       var el = document.getElementById(id);
       if (el) el.textContent = text;
@@ -471,9 +411,6 @@ document.addEventListener('DOMContentLoaded', function () {
     setHtml('summary-meal-type', mealTypeLabels[mealType] || mealType || '-');
     setHtml('summary-service-type', val('service_type') || '-');
     setHtml('summary-event-date', val('event_date') || '-');
-    // Horaires : "HH:MM – HH:MM" if at least one is set, with "?" for the
-    // missing side; else "-". Mirrors the chip on the QR/order detail
-    // pages so the wizard recap and the persisted display stay aligned.
     var startT = val('event_start_time');
     var endT = val('event_end_time');
     var timesText = '-';
@@ -514,10 +451,6 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.drink-checkbox:checked').forEach(function (cb) {
       drinkItems.push(cb.dataset.label);
     });
-    // Le radio drinks_alcohol a été retiré de l'UI (redondant avec les
-    // checkboxes Bières/Vins/Champagne). On ne l'affiche plus dans le
-    // recap. La valeur reste tolérée côté backend pour les anciennes
-    // demandes en BDD.
     var drinksText = val('drinks_details');
     setHtml('summary-drinks', (drinkItems.length > 0 ? drinkItems.join(', ') : 'Aucune selection') + (drinksText ? ' - ' + drinksText : ''));
 

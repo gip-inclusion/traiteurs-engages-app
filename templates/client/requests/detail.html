@@ -30,7 +30,7 @@
       {% endif %}
     </div>
 
-    {# Layout 70/30 : details a gauche, "Devis recus" en sidebar a droite. #}
+
     <div class="split-detail">
       <div class="split-main">
 
@@ -180,9 +180,7 @@
           </div>
           {% endfor %}
         </div>
-        {# Guard each detail line on its `wants_*` flag so a stale value
-           left over after the checkbox was unticked never surfaces as an
-           orphan paragraph below the pills. #}
+
         {% if qr.wants_waitstaff and qr.service_waitstaff_details %}
         <p class="text-xs mt-2 text-mute">
           <span class="font-bold">Service en salle :</span> {{ qr.service_waitstaff_details }}
@@ -230,43 +228,23 @@
       {% endif %}
     </div>
 
-      </div>{# /.split-main #}
+      </div>
 
       <aside class="split-aside">
 
     <!-- Devis recus -->
     <div class="mb-8">
-      {# Titre unique en tête de colonne — on ne le répète plus à chaque
-         devis pour ne pas surcharger le mode comparatif (3 devis). #}
+
       {% if quotes %}
       <h2 class="font-display font-bold text-xl mb-4 text-text">Devis reçus</h2>
       <div class="space-y-6">
         {% for quote in quotes %}
-        {# Un seul bloc par devis — les infos traiteur et les infos
-           devis cohabitent dans la même carte, séparées par un liseré
-           horizontal (`border-t border-soft`). Cohérent avec ce qu'on
-           fait par exemple côté /client/orders/<id> où un order =
-           une carte. Le bouton "Envoyer un message" (icône cloche, à
-           droite du header traiteur) ouvre la modale `send_message_modal`
-           dès qu'un devis a été reçu — utile pour poser une question
-           avant d'accepter, autant pour le mode direct que pour le
-           comparateur 3 devis. #}
-        {# `quote.caterer_user` est pré-résolu côté route (un seul appel
-           à caterer.users par quote). Si le traiteur n'a pas encore de
-           user actif, c'est None et on cache le bouton message —
-           fallback graceful, pas d'erreur. #}
+
+
         {% set caterer_user = quote.caterer_user %}
-        {# Le label "Traiteur" est remplacé par le type de structure
-           complet (ESAT / Entreprise Adaptée / Entreprise d'Insertion /
-           Atelier et Chantier d'Insertion) dans le même style typo
-           (uppercase 10px mute). Plus de pastille verte top-right :
-           l'info est portée par le label. #}
+
         <div class="bg-white rounded-lg p-6">
-          {# Ligne Ref + statut tout en haut de la section — sur le mode
-             "sent" on cache le badge (les boutons Accepter/Refuser plus
-             bas signalent déjà l'état actionnable). Sur les autres
-             statuts (accepted / refused / expired) le badge porte
-             l'info. #}
+
           <div class="flex items-center justify-between mb-4">
             <span class="text-xs text-mute">Ref. {{ quote.reference }}</span>
             {% if quote.status != QuoteStatus.sent %}
@@ -274,10 +252,7 @@
             {% endif %}
           </div>
 
-          {# Section haute : infos traiteur (cliquable, fond cream au
-             hover pour signaler l'affordance vers la fiche publique).
-             Le bouton "Envoyer un message" est un sibling du <a> pour
-             ne pas piéger le click utilisateur dans une nav non voulue. #}
+
           <div class="flex items-center gap-3">
             <a href="{{ url_for('client.caterer_detail', caterer_id=quote.caterer.id) }}"
                class="flex items-center gap-3 flex-1 min-w-0 -mx-2 px-2 -my-1 py-1 rounded-lg hover:bg-cream transition-colors">
@@ -307,9 +282,7 @@
             {% endif %}
           </div>
 
-          {# Liseré séparant infos traiteur (haut) des infos devis (bas).
-             mt-3 pt-3 (au lieu de mt-6 pt-6) — espace plus serré sous
-             les infos traiteur, demandé pour resserrer la carte. #}
+
           <div class="mt-3 pt-3 border-t border-soft">
 
           <dl class="space-y-2 mb-4 text-sm">
@@ -427,8 +400,7 @@
           </div>
           {% endif %}
 
-          {# CTA "Voir la commande" en bas du bloc, pleine largeur, meme
-             format que les boutons Accepter/Refuser des autres devis. #}
+
           {% if quote.status == QuoteStatus.accepted and quote.order %}
           <div class="pt-3 border-t border-soft">
             <a href="{{ url_for('client.order_detail', order_id=quote.order.id) }}"
@@ -438,27 +410,16 @@
             </a>
           </div>
           {% endif %}
-          </div>{# /.mt-6 pt-6 border-t — sous-section infos devis #}
+          </div>
         </div>
         {% endfor %}
       </div>
       {% else %}
-        {# Pas encore de devis reçu : deux affichages selon le mode.
-           - Demande directe (1 traiteur) : on rend une carte avec les
-             infos du traiteur ciblé + bouton Message + texte d'attente
-             en dessous. Le client voit qui il a sollicité avant
-             d'attendre la réponse.
-           - Comparateur 3 devis : on évite la liste de cartes "en
-             attente" pour ne pas brouiller la lecture (3 cartes
-             vides juste pour les remplacer plus tard) ; on affiche
-             juste un texte d'attente au pluriel. Dès qu'au moins un
-             devis arrive, ce texte disparaît au profit de la liste
-             classique des devis reçus. #}
+
         {% if not qr.is_compare_mode and qrcs %}
           {% set pending_qrc = qrcs[0] %}
           {% set pending_caterer = pending_qrc.caterer %}
-          {# `pending_qrc.caterer_user` pré-résolu côté route — mêmes
-             garde-fous (None si pas de user actif côté traiteur). #}
+
           {% set pending_caterer_user = pending_qrc.caterer_user %}
           {% set pending_modal_id = 'send-message-pending-' ~ (pending_qrc.id|string) %}
           <div class="bg-white rounded-lg p-6">
@@ -490,10 +451,7 @@
               </button>
               {% endif %}
             </div>
-            {# Bandeau "en attente" : même boîte blanche que les infos
-               traiteur, séparé par un liseré + pastille soft-navy
-               (icône clock + texte) pour signaler visuellement
-               l'attente sans jurer avec la card. #}
+
             <div class="mt-4 pt-4 border-t border-soft">
               <div class="inline-flex items-start gap-2 px-3 py-2 rounded-lg bg-navy-soft text-navy">
                 <i data-lucide="clock" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
@@ -502,10 +460,7 @@
             </div>
           </div>
         {% else %}
-          {# Mode comparateur 3 devis, 0 reçu : même pastille soft-navy
-             dans une boîte blanche dédiée — pas de cards "en attente"
-             traiteur par traiteur (3 cards vides juste pour les
-             remplacer plus tard, c'était trop chargé). #}
+
           <div class="bg-white rounded-lg p-6">
             <div class="inline-flex items-start gap-2 px-3 py-2 rounded-lg bg-navy-soft text-navy">
               <i data-lucide="clock" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
@@ -516,16 +471,10 @@
       {% endif %}
     </div>
 
-      </aside>{# /.split-aside #}
-    </div>{# /.split-detail #}
+      </aside>
+    </div>
 
-    {# ============================================================
-       Per-quote read-only PDF preview modals.
-       Rendered at the page bottom (one per quote with line items) so
-       there's no z-index fight with the sticky sidebar above. The
-       "Voir le devis" buttons reference each modal by id via
-       data-target.
-       ============================================================ #}
+
     {% for quote in quotes %}
       {% if quote.pdf_preview %}
       <div id="quote-pdf-modal-{{ quote.id }}"
@@ -538,10 +487,7 @@
               <p class="text-sm mt-1 text-mute">Réf. {{ quote.reference }}</p>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
-              {# Server-rendered PDF — identical content to this preview
-                 (same _pdf_preview.html partial). Goes through the
-                 client.quote_pdf route which company-scopes the
-                 access and reuses services.quote_pdf.render_quote_pdf. #}
+
               <a href="{{ url_for('client.quote_pdf', request_id=qr.id, q_id=quote.id) }}"
                  class="inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 btn-ghost-navy no-underline">
                 <i data-lucide="download" class="w-3.5 h-3.5"></i>
@@ -566,13 +512,8 @@
       {% endif %}
     {% endfor %}
 
-    {# ============================================================
-       Per-quote "Envoyer un message" modals.
-       One <dialog> per quote whose caterer has a contactable user.
-       Posts to /api/messages with the quote_request_id so the first
-       message in a brand-new thread satisfies the VULN-04 gate.
-       `quote.caterer_user` is pre-resolved by the route.
-       ============================================================ #}
+    {# VULN-04: passing quote_request_id lets a brand-new thread's first send
+       clear the business-relationship gate. #}
     {% for quote in quotes %}
       {% if quote.caterer_user %}
       {{ send_message_modal(
@@ -584,9 +525,7 @@
       {% endif %}
     {% endfor %}
 
-    {# Modal pour le bouton Message de la card "traiteur en attente"
-       (mode direct, 0 devis reçu). Rendue uniquement quand la card
-       l'a affiché. `qrc.caterer_user` est aussi pré-résolu côté route. #}
+
     {% if not quotes and not qr.is_compare_mode and qrcs %}
       {% set pending_qrc = qrcs[0] %}
       {% if pending_qrc.caterer_user %}

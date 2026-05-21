@@ -1,13 +1,6 @@
-"""Regression: form input that names a foreign-key UUID outside the user's
-scope must be ignored, not 500.
-
-These cases would crash the app prior to PR 14 because the handler accepted
-any well-formed UUID and let Postgres reject the INSERT with FK violation.
-"""
 
 
 def _own_company_service_id(client, login):
-    """Create a CompanyService for alice and return its id (str)."""
     from database import get_db
     from models import CompanyService
     from sqlalchemy import select
@@ -58,7 +51,6 @@ def test_employee_with_bogus_service_id_does_not_500(client, login):
 
 
 def test_quote_request_cannot_attach_to_other_company_service(client, login):
-    """Even if alice knows bob's service_id, the form must drop it."""
     from database import get_db
     from models import Company, CompanyService
     from sqlalchemy import select

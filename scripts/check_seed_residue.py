@@ -1,23 +1,6 @@
-"""Audit script — list any demo-seed accounts that ever made it into a
-running database.
-
-Audit C-3 follow-up (2026-05-13): removing the postdeploy seeding hook
-disarms the ingress, but accounts already created by a prior seed run
-keep the same `password123` bcrypt hash forever. This script reads the
-canonical seeded emails out of `seed_data.py`'s source (so the list
-stays in sync without duplication) and queries the database for any
-that still resolve.
-
-Read-only — no writes. Safe to run on prod / staging via
-`scalingo --app <name> run python scripts/check_seed_residue.py` or
-`docker compose exec app python scripts/check_seed_residue.py` in dev.
-
-Exit code:
-  0 — none of the seeded accounts exist in the DB. Clean.
-  1 — at least one seeded account is still present. Investigate
-      (rotate password or `flask admin disable <email>`).
-"""
-
+# Audit C-3 follow-up: read-only check listing demo-seed accounts that
+# linger in the DB with the shared `password123` hash. Exit 0 = clean,
+# 1 = remediate (rotate or disable).
 from __future__ import annotations
 
 import re
@@ -26,9 +9,6 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-# `database` reads DATABASE_URL at import time — the same env the app
-# uses, so this script naturally targets whatever DB the operator has
-# pointed their shell at.
 from database import session_factory
 from models import User
 
@@ -36,11 +16,8 @@ _SEED_FILE = Path(__file__).resolve().parent.parent / "seed_data.py"
 
 
 def _seeded_emails() -> list[str]:
-    """Extract the canonical list of seeded emails directly from
-    `seed_data.py`. Keeping a single source of truth avoids drift
-    between this audit and the seeder itself."""
+    # Parse the seeder directly so the canonical list never drifts.
     source = _SEED_FILE.read_text(encoding="utf-8")
-    # The seeder spells every email as a `email="…@…"` kwarg to User(…).
     return sorted(set(re.findall(r'email="([^"]+@[^"]+)"', source)))
 
 

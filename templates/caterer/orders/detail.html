@@ -33,7 +33,7 @@
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-  {# ---- LEFT ~67% : stepper + livraison + détail devis (+ paiements/facture) ---- #}
+
   <div class="lg:col-span-2 flex flex-col gap-6">
 
     <!-- Wizard stepper timeline -->
@@ -46,8 +46,7 @@
           ('invoiced', 'Facturee'),
           ('paid', 'Payee'),
         ] %}
-        {# `invoicing` shares the `delivered` step (idx 1) — phase 2 in flight,
-           no separate UI affordance needed beyond the status badge below. #}
+
         {% set status_order = {'confirmed': 0, 'delivered': 1, 'invoicing': 1, 'invoiced': 2, 'paid': 3, 'disputed': -1} %}
         {% set current_idx = status_order.get(order.status|string, 0) %}
         {% for step_val, step_label in steps %}
@@ -174,16 +173,10 @@
 
   </div>
 
-  {# ---- RIGHT ~33% : montants + bloc client ---- #}
+
   <div class="flex flex-col gap-6">
 
-    {# Notification "facture envoyée + paiement en route" — visible
-       uniquement sur les commandes au statut `invoiced` (la facture
-       Stripe a été émise et envoyée au client, le virement vers le
-       compte connecté du traiteur suit automatiquement le webhook
-       payment_intent.succeeded). Même pattern que le bloc côté client
-       sur /client/orders/<id> : carte blanche, bordure gauche navy,
-       tuile d'icône bg-navy-soft, titre bold + sous-titre muted. #}
+
     {% if order.status == OrderStatus.invoiced %}
     <div class="bg-white rounded-lg p-6 border-l-4 border-navy">
       <div class="flex items-start gap-3">

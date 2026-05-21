@@ -1,23 +1,3 @@
-"""Integration tests for the team self-delete + invite-link feature
-(branch feat/no-self-delete-effectifs).
-
-Covers:
-- Server-side self-delete guard on team_employee_delete (defense-in-depth
-  for the disabled trash button in the UI).
-- Invite token lifecycle: rotation, revocation, redemption, single-use,
-  TTL expiry. Tokens are unguessable (~256 bits) so we don't test
-  brute-force; we test the state-machine.
-- /signup/invite/<token> contract: email + name come from the
-  CompanyEmployee row, never from POST data.
-- Duplicate-email guard on team_employee_create.
-- team_approve clears any stale invite token when it links an existing
-  row (regression for the review-fix in commit 5b3518b).
-- own_requests_filter: client_admin sees the company's QuoteRequests,
-  client_user sees only their own.
-
-Tests use distinct emails per case to stay independent of session state
-across the suite.
-"""
 
 import datetime as _dt
 import hashlib as _hashlib
@@ -28,16 +8,9 @@ from sqlalchemy import select
 
 
 def _digest(raw: str) -> str:
-    """Mirror of `blueprints.client.team._hash_invite_token`. Kept inline
-    here so the test file is decoupled from the production hashing
-    primitive — if the prod code switches algorithm, this assertion
-    breaks loudly and the operator updates both sides deliberately."""
     return _hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _acme_id():
@@ -74,14 +47,6 @@ def _bob_id():
 
 
 def _ensure_employee(email, *, user_id=None, invite_token=None, invited_at=None):
-    """Idempotent: create or update a CompanyEmployee under ACME with the
-    given fields. Returns its id (UUID).
-
-    `invite_token` here is the RAW token a real admin would have minted —
-    we store its SHA-256 digest in the DB to mirror the production write
-    path. The tests then POST to `/signup/invite/<raw>` so the
-    `_resolve_invite` lookup (which hashes its input) matches.
-    """
     from database import session_factory
     from models import CompanyEmployee
 
@@ -122,14 +87,9 @@ def _fetch_employee(employee_id):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Self-delete protection
-# ---------------------------------------------------------------------------
 
 
 def test_admin_cannot_delete_own_effectifs_row(client, login):
-    """Server-side guard for the disabled trash button: even a tampered
-    POST that targets the admin's own row must leave it intact."""
     row_id = _ensure_employee("alice-self@test.local", user_id=_alice_id())
 
     login("alice@test.local")
@@ -143,11 +103,6 @@ def test_admin_cannot_delete_own_effectifs_row(client, login):
 
 
 def test_admin_can_delete_other_effectifs_row(client, login):
-    """Regression: the self-delete guard must not break the normal
-    'delete a colleague' path. The colleague is linked to bob's user
-    account (not user_id=None) so we exercise the realistic case where
-    the guard's `employee.user_id == user.id` check has a non-null LHS
-    that simply differs from the admin's id."""
     row_id = _ensure_employee("colleague-to-delete@test.local", user_id=_bob_id())
 
     login("alice@test.local")
@@ -158,14 +113,9 @@ def test_admin_can_delete_other_effectifs_row(client, login):
     assert _fetch_employee(row_id) is None, "non-self deletes must still work"
 
 
-# ---------------------------------------------------------------------------
-# Invite token lifecycle
-# ---------------------------------------------------------------------------
 
 
 def test_create_employee_generates_invite_token(client, login):
-    """team_employee_create must mint an unguessable token + invited_at,
-    and redirect with ?invite=<id> so the modal pops on next render."""
     login("alice@test.local")
     resp = client.post(
         "/client/team/employees",
@@ -209,8 +159,6 @@ def test_create_employee_generates_invite_token(client, login):
 
 
 def test_invite_rotation_changes_token(client, login):
-    """Re-POSTing /invite on an already-invited row rotates the token —
-    needed when the previous link leaks."""
     employee_id = _ensure_employee(
         "rotate-target@test.local",
         invite_token="initial-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -255,9 +203,6 @@ def test_invite_revoke_clears_token(client, login):
 
 
 def test_invite_for_already_linked_employee_is_noop(client, login):
-    """An employee already attached to a User shouldn't get a new token.
-    Assert *both* token and invited_at stay untouched so a regression that
-    silently sets invited_at without minting a token still fails."""
     employee_id = _ensure_employee("already-linked@test.local", user_id=_bob_id())
 
     login("alice@test.local")
@@ -267,9 +212,6 @@ def test_invite_for_already_linked_employee_is_noop(client, login):
     assert row.invited_at is None, "must not stamp invited_at for a linked employee"
 
 
-# ---------------------------------------------------------------------------
-# /signup/invite/<token> redemption
-# ---------------------------------------------------------------------------
 
 
 def test_signup_invite_get_renders_form_for_valid_token(client):
@@ -290,7 +232,6 @@ def test_signup_invite_invalid_token_returns_404(client):
 
 
 def test_signup_invite_expired_token_returns_404(client):
-    """invited_at older than INVITE_TOKEN_TTL_DAYS (7d) → token is dead."""
     token = "expired-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     _ensure_employee(
         "expired@test.local",
@@ -338,7 +279,6 @@ def test_signup_invite_redemption_creates_user_and_consumes_token(client):
 
 
 def test_signup_invite_token_is_single_use(client):
-    """Once redeemed, the same token must fail re-redemption with 404."""
     token = "single-use-token-ddddddddddddddddddddddddddd"
     _ensure_employee(
         "single-use@test.local",
@@ -360,8 +300,6 @@ def test_signup_invite_token_is_single_use(client):
 
 
 def test_signup_invite_ignores_tampered_email_in_post(client):
-    """Even if the POST body smuggles a different email/name, the user
-    must be created with the values stored on the CompanyEmployee row."""
     token = "tamper-test-token-eeeeeeeeeeeeeeeeeeeeeeeeee"
     _ensure_employee(
         "real-email@test.local",
@@ -421,9 +359,6 @@ def test_signup_invite_weak_password_rejected(client):
 
 
 def test_signup_invite_collision_with_existing_user_redirects_to_login(client):
-    """If a User with the row's email already exists (e.g., separate signup
-    landed first), redemption must surface a clean message and redirect to
-    /login — no 500."""
     token = "collision-token-ggggggggggggggggggggggggggg"
     _ensure_employee(
         "preexisting@test.local",
@@ -462,16 +397,6 @@ def test_signup_invite_collision_with_existing_user_redirects_to_login(client):
 
 
 def test_signup_invite_handles_integrity_error_at_flush(client, monkeypatch):
-    """Race-condition path of the review fix: if a parallel signup grabs
-    the User.email between the pre-check `select` and the flush, libpq
-    raises IntegrityError. The handler must catch it, rollback, and
-    redirect to /login — not 500.
-
-    Simulated by monkey-patching Session.flush to raise IntegrityError
-    only when the racing User is in `session.new`. The pre-check
-    `db.scalar(select(User)...)` runs *before* anything is added so
-    autoflush at that point has no pending changes and is unaffected.
-    """
     from sqlalchemy.exc import IntegrityError
     from sqlalchemy.orm import Session
 
@@ -524,9 +449,6 @@ def test_signup_invite_handles_integrity_error_at_flush(client, monkeypatch):
     assert row.user_id is None
 
 
-# ---------------------------------------------------------------------------
-# Duplicate-email guard (review fix)
-# ---------------------------------------------------------------------------
 
 
 def test_create_employee_rejects_duplicate_email_in_company(client, login):
@@ -560,15 +482,9 @@ def test_create_employee_rejects_duplicate_email_in_company(client, login):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# team_approve clears stale invite token (review fix)
-# ---------------------------------------------------------------------------
 
 
 def test_approve_clears_stale_invite_token_on_existing_row(client, login):
-    """If admin pre-creates an invite for someone who later signs up via
-    the SIRET pending flow, approving them must link the row AND wipe
-    the now-dead invite token (would burn the unique index slot otherwise)."""
     pending_email = "approve-stale@test.local"
 
     # Pre-create the admin-side invite row.
@@ -613,13 +529,9 @@ def test_approve_clears_stale_invite_token_on_existing_row(client, login):
     assert row.invited_at is None
 
 
-# ---------------------------------------------------------------------------
-# own_requests_filter scoping
-# ---------------------------------------------------------------------------
 
 
 def _seed_quote_request(user_id):
-    """Add a QuoteRequest under ACME owned by user_id. Returns its id."""
     from database import session_factory
     from models import QuoteRequest, QuoteRequestStatus
 
@@ -643,9 +555,6 @@ def _seed_quote_request(user_id):
 
 
 def test_client_user_sees_only_own_requests(client, login):
-    """bob (client_user) must only see his own QuoteRequests on
-    /client/requests, not those created by other users in the same
-    company."""
     alice_qr = _seed_quote_request(_alice_id())
     bob_qr = _seed_quote_request(_bob_id())
 
@@ -660,8 +569,6 @@ def test_client_user_sees_only_own_requests(client, login):
 
 
 def test_client_admin_sees_all_company_requests(client, login):
-    """Symmetric guard: alice (client_admin) must still see the full
-    company-wide list."""
     alice_qr = _seed_quote_request(_alice_id())
     bob_qr = _seed_quote_request(_bob_id())
 
@@ -674,8 +581,6 @@ def test_client_admin_sees_all_company_requests(client, login):
 
 
 def test_client_user_cannot_load_other_users_request_detail(client, login):
-    """get_company_request must 404 for a client_user trying to open a
-    QR they didn't create — even within their own company."""
     alice_qr = _seed_quote_request(_alice_id())
 
     login("bob@test.local")

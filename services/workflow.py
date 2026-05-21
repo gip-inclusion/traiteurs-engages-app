@@ -1,15 +1,6 @@
-"""Domain transitions de statut métier.
-
-Conventions :
-- 1er argument = `db` (session SQLAlchemy). Tout le reste en kwargs.
-- Aucune fonction ne commit : le caller (handler HTTP, CLI) commit.
-- Rejet métier = exception typée (sous-classe de `WorkflowError`).
-- Pas d'import Flask : pas de `g`, pas de `request`, pas de `flash`.
-
-But : transitions testables sans contexte HTTP, point d'entrée unique
-par règle métier, démarcation transactionnelle visible côté caller.
-"""
-
+# Convention: `db` first, everything else kwargs. Aucune fonction ne
+# commit. Rejet métier = exception typée (sous-classe de WorkflowError).
+# Pas d'import Flask pour rester testable hors contexte HTTP.
 from __future__ import annotations
 
 import datetime
@@ -38,41 +29,36 @@ from services.notifications import (
 
 
 class WorkflowError(Exception):
-    """Rejet métier : le caller mappe sur flash + redirect."""
+    pass
 
 
 class RequestNotFound(WorkflowError):
-    """La demande de devis n'existe pas dans le scope de l'appelant."""
+    pass
 
 
 class QuoteNotFound(WorkflowError):
-    """Le devis n'existe pas, ou n'appartient pas à la demande."""
+    pass
 
 
 class QuoteNotAvailable(WorkflowError):
-    """Le devis n'est pas en statut `sent` (déjà accepté, refusé, draft)."""
+    pass
 
 
 class QuoteExpired(WorkflowError):
-    """La date de validité du devis est dépassée."""
+    pass
 
 
 class QuoteRequestClosed(WorkflowError):
-    """Cette demande est clôturée pour ce traiteur : trois autres ont déjà
-    transmis leur devis au client. Levée par `submit_quote` quand la QRC
-    du traiteur courant est passée en `QRCStatus.closed`."""
+    """3-first-responders rule a fermé ce traiteur (QRC closed)."""
 
 
 class QuoteRequestNotOpen(WorkflowError):
-    """La demande n'est plus `sent_to_caterers` (devis accepté → `completed`,
-    annulée, ou tous les devis refusés). Distincte de `QuoteRequestClosed` :
-    la fermeture vient de la demande elle-même, pas de la règle des 3 ; le
-    message utilisateur diffère."""
+    """La demande elle-même est sortie de `sent_to_caterers` (distinct
+    de QuoteRequestClosed pour différencier le message utilisateur)."""
 
 
 class OrderNotFound(WorkflowError):
-    """La commande n'existe pas, n'appartient pas au caterer, ou n'est
-    plus en statut `confirmed`."""
+    pass
 
 
 def refuse_quote(
@@ -83,14 +69,7 @@ def refuse_quote(
     user: User,
     reason: str | None,
 ) -> None:
-    """Refuse un devis. Si plus aucun devis n'est en `sent`, passe la
-    demande en `quotes_refused`.
-
-    Reproduit à l'identique le comportement de `blueprints/client.py:refuse_quote`
-    pour que cette extraction soit visiblement no-op. Les durcissements
-    éventuels (filtrer `quote.status == sent`, par exemple) sont des
-    commits séparés.
-    """
+    # Si plus aucun devis n'est en `sent`, la demande passe en `quotes_refused`.
     qr = db.execute(
         select(QuoteRequest).where(
             QuoteRequest.id == request_id,
@@ -112,8 +91,6 @@ def refuse_quote(
     quote.status = QuoteStatus.refused
     quote.refusal_reason = reason or None
 
-    # Notify the caterer that their quote was turned down. Reason (if
-    # any) goes into the body so they can adjust their next proposal.
     body = "Votre devis a été refusé."
     if reason:
         body += f" Motif : {reason}"
@@ -145,18 +122,9 @@ def accept_quote(
     quote_id: uuid.UUID,
     user: User,
 ) -> Order:
-    """Accepte un devis, refuse les autres, crée la commande, clôt la demande.
-
-    Garde-fous (audit #5) : seul un quote en statut `sent` et non expiré peut
-    être accepté. Les pairs en `sent` sont passés en `refused`. La demande
-    passe en `completed`.
-
-    Lève RequestNotFound (404), QuoteNotAvailable / QuoteExpired (flash).
-    """
-    # VULN-41: SELECT FOR UPDATE on the request serializes concurrent
-    # accept_quote calls so two clicks (or two tabs) cannot both create an
-    # Order. Order.quote_id UNIQUE is a backstop, but locking earlier avoids
-    # IntegrityError noise and double Stripe round-trips downstream.
+    # Audit #5 garde-fous: only a `sent` non-expired quote can be accepted.
+    # VULN-41: FOR UPDATE serializes concurrent accept_quote so two clicks
+    # can't both create an Order; Order.quote_id UNIQUE is a backstop.
     qr = db.execute(
         select(QuoteRequest)
         .where(
@@ -168,9 +136,8 @@ def accept_quote(
     if not qr:
         raise RequestNotFound
 
-    # VULN-32: only requests that completed admin qualification can be acted on.
-    # Skipping this check let a draft request whose quotes were somehow set to
-    # `sent` slip through, bypassing approve_quote_request.
+    # VULN-32: only qualified requests can be acted on; a draft with stray
+    # `sent` quotes would otherwise bypass approve_quote_request.
     if qr.status != QuoteRequestStatus.sent_to_caterers:
         raise QuoteNotAvailable
 
@@ -216,9 +183,8 @@ def accept_quote(
 
     qr.status = QuoteRequestStatus.completed
 
-    # Close losing caterers' QRC so the caterer UI shows « Clôturée » and
-    # `submit_quote` refuses a late entry. `rejected` (caterer declined) and
-    # `closed` (3-responders rule) are terminal states — leave them alone.
+    # Close losing QRCs so the UI shows « Clôturée » and submit_quote
+    # refuses late entries. `rejected` / `closed` are terminal — skip.
     losing_qrcs = (
         db.execute(
             select(QuoteRequestCaterer).where(
@@ -235,10 +201,8 @@ def accept_quote(
     for losing_qrc in losing_qrcs:
         losing_qrc.status = QRCStatus.closed
 
-    # Tell the winning caterer they got the deal. The losing caterers
-    # already got their `status -> refused` flip silently — sending them
-    # « un autre traiteur a été choisi » mails would be spammy and isn't
-    # critical for V1.
+    # Only notify the winner; "un autre traiteur a été choisi" mails to
+    # losers would be spammy and not critical for V1.
     notify_users(
         db,
         caterer_user_ids(db, accepted.caterer_id),
@@ -256,33 +220,12 @@ def approve_quote_request(
     *,
     request_id: uuid.UUID,
 ) -> list[QuoteRequestCaterer]:
-    """Qualification admin : crée un QRC `selected` pour chaque traiteur
-    `is_validated`, passe la demande en `sent_to_caterers`.
-
-    Le contrôle d'autorisation reste côté handler (`@role_required("super_admin")`).
-
-    Fan-out : toute demande approuvée part vers l'ensemble du catalogue
-    validé. L'ancien pré-filtre (distance / budget / capacité / régimes)
-    a été retiré : il faisait doublon avec les filtres que chaque
-    traiteur applique déjà sur sa propre liste de demandes.
-
-    Si le catalogue est vide (zéro traiteur `is_validated`), on laisse
-    la demande en `pending_review` : la marquer `sent_to_caterers` sans
-    aucun QRC créerait un état mensonger ("envoyée" mais personne ne la
-    verra). Le handler admin flash un message pour prévenir l'opérateur.
-
-    Lève RequestNotFound.
-    """
+    # Fan-out to every is_validated caterer. Empty catalogue ⇒ stays
+    # pending_review (admin handler flashes a warning).
     qr = db.get(QuoteRequest, request_id)
     if not qr:
         raise RequestNotFound
 
-    # Admin approval fans out to every validated caterer on the
-    # platform. The previous pass through a `find_matching_caterers`
-    # pre-filter (distance / budget / capacity / régimes) was retired
-    # because it created an opaque second gate on top of the catalog —
-    # caterers already discard what doesn't fit via their own catalog
-    # filters.
     targets = list(
         db.scalars(select(Caterer).where(Caterer.is_validated.is_(True))).all()
     )
@@ -300,15 +243,8 @@ def approve_quote_request(
     if targets:
         qr.status = QuoteRequestStatus.sent_to_caterers
 
-        # Notify every targeted caterer, plus the original requester.
-        # When targets is empty (no validated caterer at all) the demand
-        # stays in pending_review — no notification, the admin handler
-        # flashes the warning.
-        #
-        # Pre-fetch every targeted caterer's active users in a single
-        # query, group by caterer_id, then iterate. The previous shape
-        # (one `caterer_user_ids` call per caterer) was N+1 — each
-        # admin approval scaled with len(targets) DB round-trips.
+        # Group users by caterer_id in one query — avoids N+1 caterer_user_ids
+        # calls on each admin approval.
         target_ids = [c.id for c in targets]
         users_by_caterer: dict = {}
         for uid, cid in db.execute(
@@ -350,18 +286,12 @@ def reject_quote_request(
     request_id: uuid.UUID,
     reason: str | None,
 ) -> None:
-    """Rejet admin d'une demande de devis. Stocke la raison sur la demande.
-
-    Lève RequestNotFound.
-    """
     qr = db.get(QuoteRequest, request_id)
     if not qr:
         raise RequestNotFound
     qr.status = QuoteRequestStatus.cancelled
     qr.message_to_caterer = reason or ""
 
-    # Let the requester know their demand was rejected by the platform
-    # admin (with the reason if they provided one).
     if qr.user_id is not None:
         body = "Votre demande de devis a été refusée par notre équipe."
         if reason:
@@ -384,28 +314,9 @@ def submit_quote(
     quote_id: uuid.UUID,
     caterer: Caterer,
 ) -> Quote:
-    """Le traiteur soumet un devis. Flip Quote→sent, QRC→transmitted_to_client.
-
-    Règle des 3 premiers répondants :
-    - les 3 premiers à soumettre voient leur devis transmis au client
-      (rang 1, 2 ou 3) ;
-    - le 3e déclenche la fermeture (`QRCStatus.closed`) des QRC encore
-      en `selected` ;
-    - une 4e soumission lève `QuoteRequestClosed`. C'est plus strict
-      qu'avant (où le 4e atterrissait silencieusement en `responded`
-      sans être transmis), pour faire correspondre l'état persisté à
-      ce que le traiteur voit dans l'UI ("Demande clôturée").
-
-    Sérialisation : `SELECT ... FOR UPDATE` sur la QR pose un verrou
-    exclusif jusqu'au commit, ce qui empêche deux répondants simultanés
-    d'atteindre tous les deux le rang 3 (ou de glisser à 4).
-
-    Lève QuoteNotFound (devis introuvable, mauvais caterer, ou pas en
-    `draft`), QuoteRequestClosed (QRC `closed` ou ≥3 transmitted déjà),
-    QuoteRequestNotOpen (demande plus en `sent_to_caterers`).
-    """
-    # Verrou exclusif : sérialise les répondants concurrents et l'éventuel
-    # `accept_quote` en cours.
+    # Règle des 3 premiers répondants : rang 1/2/3 transmis ; le 3e ferme
+    # les QRC en `selected` ; la 4e soumission lève QuoteRequestClosed.
+    # FOR UPDATE sur la QR sérialise les répondants concurrents.
     qr = db.scalar(
         select(QuoteRequest).where(QuoteRequest.id == request_id).with_for_update()
     )
@@ -434,10 +345,6 @@ def submit_quote(
     if not qrc:
         raise QuoteNotFound
 
-    # The "3 first responders" rule may already have closed this caterer
-    # out — either via the explicit close step from a prior 3rd submit,
-    # or by an inconsistent state where 3 are already transmitted but
-    # this QRC was not yet closed (defensive). Either way: refuse.
     if qrc.status == QRCStatus.closed:
         raise QuoteRequestClosed
 
@@ -447,12 +354,8 @@ def submit_quote(
         .where(QuoteRequestCaterer.status == QRCStatus.transmitted_to_client)
     )
     if transmitted >= 3:
-        # Self-heal the inconsistency: 3 are transmitted but our QRC was
-        # never closed by the prior 3rd-submit step (race that beat the
-        # lock, manual data import, partial rollback). Mark it closed so
-        # the next admin/caterer view sees a coherent state. The caller
-        # is expected to db.commit() on QuoteRequestClosed to persist
-        # this fix-up.
+        # Self-heal: caller is expected to db.commit() on QuoteRequestClosed
+        # so the state stays coherent for the next view.
         qrc.status = QRCStatus.closed
         raise QuoteRequestClosed
 
@@ -470,9 +373,7 @@ def submit_quote(
         for r in remaining:
             r.status = QRCStatus.closed
 
-    # The quote reaches the client whenever the QRC flips to
-    # `transmitted_to_client` (rank 1, 2 or 3). Notify the requester
-    # for every transmission, not just the closing-third one.
+    # Notify the requester for every transmission, not just the third.
     if qr.user_id is not None:
         notify(
             db,
@@ -494,15 +395,7 @@ def mark_delivered(
     order_id: uuid.UUID,
     caterer: Caterer,
 ) -> Order:
-    """Le traiteur passe la commande de `confirmed` à `delivered`.
-
-    Préserve à l'identique la surface du handler `caterer.order_deliver` :
-    seules les commandes en `confirmed` du caterer authentifié transitionnent.
-    Le déclenchement de la facturation Stripe reste côté handler pour
-    cette PR ; il sera découplé en deux phases dans la PR B.
-
-    Lève OrderNotFound.
-    """
+    # Stripe invoicing trigger reste côté handler pour cette itération.
     order = db.scalar(
         select(Order)
         .join(Quote, Order.quote_id == Quote.id)
@@ -515,8 +408,6 @@ def mark_delivered(
         raise OrderNotFound
     order.status = OrderStatus.delivered
 
-    # Tell the company admins their commande just got marked delivered
-    # by the caterer. They'll typically expect an invoice next.
     qr = order.quote.quote_request
     notify_users(
         db,

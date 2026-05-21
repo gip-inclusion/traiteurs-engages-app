@@ -1,14 +1,3 @@
-"""Email-trigger functions in services/email_triggers.py.
-
-Strategy : monkey-patch `services.email.send_email_async.send` so each
-trigger's call shape is recorded without actually enqueuing on dramatiq.
-That way we can assert on subject + recipient + presence of CTA URL +
-critical body fragments without needing a real broker.
-
-Convention d'imports lazy : same as test_password_reset.py — services
-+ database are imported inside test functions so conftest can switch
-DATABASE_URL to traiteurs_test before the engine is created.
-"""
 
 import datetime as _dt
 import uuid
@@ -31,8 +20,6 @@ def session(app):
 
 @pytest.fixture
 def captured_emails(monkeypatch):
-    """Capture every send_email_async.send invocation. Each entry is the
-    kwargs dict the trigger passed."""
     calls = []
 
     def _record(**kwargs):
@@ -52,7 +39,6 @@ def _alice(s):
     return s.scalar(select(User).where(User.email == "alice@test.local"))
 
 
-# --- E2 — welcome --------------------------------------------------------
 
 
 def test_welcome_signup_client(app, session, captured_emails):
@@ -90,8 +76,6 @@ def test_welcome_signup_caterer(app, session, captured_emails):
 
 
 def test_welcome_signup_swallows_render_error(app, session, captured_emails):
-    """The @_safe decorator must swallow template errors so a signup
-    bug never rolls back the user account."""
     from services import email_triggers
 
     alice = _alice(session)
@@ -104,12 +88,9 @@ def test_welcome_signup_swallows_render_error(app, session, captured_emails):
     assert len(captured_emails) in (0, 1)
 
 
-# --- E5 — quote received -------------------------------------------------
 
 
 def _seed_transmitted_quote(session):
-    """Seed an end-to-end fixture: company + caterer + QR + quote +
-    QRC(transmitted_to_client). Returns (quote, caterer)."""
     from sqlalchemy import select
 
     from models import (
@@ -189,9 +170,6 @@ def test_quote_received_emails_the_requester(app, session, captured_emails):
 
 
 def test_quote_received_skips_when_qrc_not_transmitted(app, session, captured_emails):
-    """Defensive : the trigger must noop when the QRC isn't actually
-    in `transmitted_to_client`. Models 4th-responder / no-match cases
-    where workflow.submit_quote raised before promoting the QRC."""
     from sqlalchemy import select
 
     from models import QRCStatus, QuoteRequestCaterer
@@ -212,7 +190,6 @@ def test_quote_received_skips_when_qrc_not_transmitted(app, session, captured_em
     assert captured_emails == []
 
 
-# --- E6 — order confirmed ------------------------------------------------
 
 
 def _seed_order_for_email(session):

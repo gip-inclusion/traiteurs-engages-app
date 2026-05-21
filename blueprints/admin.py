@@ -50,9 +50,8 @@ from blueprints._notifications import register as _register_notifications
 
 logger = logging.getLogger(__name__)
 
-# Mirror of the cap on caterer/client routes — refuses to render a
-# quote whose line items list is implausibly long. Stops a malicious
-# row from saturating the WeasyPrint worker.
+# Mirror of the caterer/client cap to keep a malicious line-count from
+# saturating the WeasyPrint worker.
 _MAX_PDF_LINES = 500
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -76,12 +75,8 @@ def dashboard():
     orders_this_month = db.scalar(
         select(func.count(Order.id)).where(Order.created_at >= month_start)
     )
-    # Le bloc "File de qualification" du dashboard ne doit lister QUE les
-    # demandes effectivement à qualifier (status pending_review). Les
-    # demandes déjà approuvées / envoyées aux traiteurs / clôturées
-    # n'attendent plus rien de l'admin et ne doivent plus polluer la
-    # file. Cohérent avec /admin/qualification qui filtre sur le même
-    # statut.
+    # File de qualification : uniquement pending_review, en miroir de
+    # /admin/qualification.
     recent_requests = (
         db.scalars(
             select(QuoteRequest)
@@ -94,9 +89,8 @@ def dashboard():
         .all()
     )
 
-    # "Commandes à facturer" : orders that have been delivered but not yet
-    # invoiced. Eager-load the chain Order → Quote → (QuoteRequest, Caterer)
-    # so the template can render company + caterer + amount without N+1.
+    # Eager-load Order → Quote → (QuoteRequest, Caterer) to avoid N+1
+    # in the dashboard "à facturer" block.
     orders_to_invoice = (
         db.scalars(
             select(Order)
@@ -145,9 +139,6 @@ def qualification():
     )
 
 
-# Tab labels for the /admin/requests page. Keys map to the URL
-# `?status=` param; values are the human-readable tab label. "all"
-# (no filter) is the default landing tab.
 _REQUEST_STATUS_TABS: dict[str, str] = {
     "all": "Toutes",
     QuoteRequestStatus.pending_review.value: "En attente",
@@ -167,28 +158,17 @@ _REQUESTS_PAGE_SIZE = 25
 @login_required
 @role_required("super_admin")
 def requests_list():
-    """Exhaustive list of every QuoteRequest on the platform.
-
-    `/qualification` only shows the pending-review queue (admin's
-    work-to-do view); this page is the full read-only registry, with
-    a tab filter on `status`. The detail link reuses
-    `/qualification/<id>` since that route already accepts any status.
-
-    Paginated to 25 rows/page — mirrors `/admin/messages` (cf.
-    `_MESSAGES_PAGE_SIZE`, VULN-21 rationale): rendering 10k+ rows in
-    one go OOMs the worker and chokes the browser; pure SQL paging
-    keeps the registry usable as the platform grows.
-    """
+    # Full read-only registry; /qualification is the work-to-do view.
+    # SQL paging mirrors /admin/messages (VULN-21) so a 10k-row platform
+    # doesn't OOM the worker.
     db = get_db()
     status_filter = request.args.get("status", "all")
     if status_filter not in _REQUEST_STATUS_TABS:
         status_filter = "all"
     page = max(1, request.args.get("page", 1, type=int) or 1)
 
-    # Sort: pending_review first only on the "all" tab (highest-priority
-    # work-to-do floats up). Once the user is on a status-specific tab,
-    # all rows share the filter so the CASE is dead weight — drop it to
-    # keep the SQL plan clean.
+    # Float pending_review only on the "all" tab; once filtered, the CASE
+    # is dead weight.
     stmt = select(QuoteRequest).options(joinedload(QuoteRequest.company))
     count_stmt = select(func.count(QuoteRequest.id))
     if status_filter != "all":
@@ -267,9 +247,9 @@ def qualification_approve(request_id):
     if qrcs:
         flash(f"Demande approuvee et envoyee a {len(qrcs)} traiteur(s).", "success")
     else:
-        # `approve_quote_request` fans out to every validated caterer,
-        # so reaching this branch means the catalogue itself is empty.
-        # Tell the admin so they can follow up with the client.
+        # Catalogue empty: workflow fans out to all validated caterers, so
+        # an empty fanout means no validated caterer exists. Surface so the
+        # admin can follow up with the client.
         flash(
             "Demande approuvee, mais aucun traiteur valide n'est present "
             "dans le catalogue. Pensez a contacter le client.",
@@ -562,14 +542,12 @@ def stats():
         .group_by(QuoteRequest.meal_type)
         .order_by(func.count(QuoteRequest.id).desc())
     ).all()
-    # Slug → label via the canonical MEAL_TYPE_LABELS dict so the
-    # stats page stays in sync with whatever the wizard / caterer
-    # profile actually offers.
     meal_slug_to_label = {m.value: label for m, label in MEAL_TYPE_LABELS.items()}
     meal_data = [
         {"type": meal_slug_to_label.get(r.meal_type, r.meal_type), "count": r.cnt}
         for r in meal_rows
     ]
+
 
     return render_template(
         "admin/stats.html",
@@ -604,8 +582,8 @@ _TAB_TO_STATUSES = {
     "disputed": (OrderStatus.disputed,),
 }
 
-# Manual transitions the super-admin can apply from the order detail page.
-# Each move requires the order's current status to match the source.
+# Manual transitions: each move requires the order's current status to
+# match the source.
 _ADMIN_ORDER_TRANSITIONS = {
     "invoice": (OrderStatus.delivered, OrderStatus.invoiced),
     "pay": (OrderStatus.invoiced, OrderStatus.paid),
@@ -682,16 +660,7 @@ def order_detail(order_id):
 @role_required("super_admin")
 @limiter.limit("20 per minute")
 def quote_pdf(q_id):
-    """Download any quote as a server-rendered PDF (admin observer view).
-
-    Mirrors `caterer.quote_pdf` and `client.quote_pdf` but with no
-    company- or caterer-scope check — super_admin sees every quote on
-    the platform. The PDF reuses the same `_pdf_preview.html` partial
-    as the in-app modals so the file is byte-for-byte aligned with
-    what either side sees on screen.
-    """
-    # Lazy import — WeasyPrint pulls Cairo/Pango bindings at import
-    # time. Same rationale as the other quote_pdf routes.
+    # Lazy import: WeasyPrint loads Cairo/Pango at import time.
     from services.quote_pdf import render_quote_pdf
 
     db = get_db()
@@ -762,9 +731,6 @@ def order_transition(order_id):
         extra={"from": previous.value, "to": target.value},
     )
 
-    # Both sides of the order want to know about the transition. The
-    # body wording is per-action so the notification reads sensibly
-    # without exposing the raw status enum.
     qr = order.quote.quote_request
     caterer_id = order.quote.caterer_id
     if action == "invoice":
@@ -802,9 +768,8 @@ def order_transition(order_id):
         related_entity_id=order_id,
     )
 
-    # Invite the requester to review when the order has just landed in
-    # `paid`. `notify_review_invite` is idempotent so the manual admin
-    # path + the Stripe webhook path can both call it safely.
+    # notify_review_invite is idempotent so both admin and webhook paths
+    # can call it.
     if target == OrderStatus.paid:
         from services.reviews import notify_review_invite
 
@@ -815,12 +780,6 @@ def order_transition(order_id):
 
 
 def _admin_messagerie_ctx(*, threads, active_thread_id, active):
-    """Bundle the messagerie_ctx the unified template expects.
-
-    The super_admin participates like any other role — its own
-    conversations, with a working composer. `show_role_badges` stays on
-    so Client/Traiteur rows stay disambiguated in the admin's inbox.
-    """
     return {
         "threads": threads,
         "active_thread_id": active_thread_id,
@@ -837,7 +796,6 @@ def _admin_messagerie_ctx(*, threads, active_thread_id, active):
 @login_required
 @role_required("super_admin")
 def messages():
-    """Thread overview for the super_admin's own conversations."""
     db = get_db()
     threads = messagerie_service.threads_for_viewer(db, g.current_user)
     return render_template(
@@ -877,10 +835,6 @@ def message_thread(thread_id):
 @login_required
 @role_required("super_admin")
 def profile():
-    """Page « Mon profil » du super_admin. Édition de prénom / nom /
-    email (le changement d'email demande une re-authentification par
-    mot de passe — cf. `services.account.apply_profile_form`) + lien
-    vers la modif du mot de passe."""
     user = g.current_user
     if request.method == "POST":
         form = UserProfileForm()

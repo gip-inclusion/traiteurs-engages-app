@@ -1,9 +1,3 @@
-"""Smoke test for the caterer PDF download route.
-
-Just enough to catch the obvious regressions: a missing template variable
-in `_pdf_preview.html`, a renamed loader option, a broken filename header.
-WeasyPrint's actual rendering quality is not in scope.
-"""
 
 import datetime as _dt
 from decimal import Decimal
@@ -101,8 +95,6 @@ def test_pdf_route_returns_pdf(client, login):
 
 
 def test_pdf_route_rejects_other_caterer(client, login):
-    """The scoping query must 404 when the quote belongs to a different
-    caterer — same guarantee `get_caterer_quote` provides elsewhere."""
     qr_id, q_id, _ = _seed_request_with_quote_lines()
     # alice is a client_admin, not a caterer — role_required short-circuits
     # to 403/redirect before the query, so test with no login (401-ish).

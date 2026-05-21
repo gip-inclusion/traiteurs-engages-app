@@ -1,15 +1,8 @@
-"""Smoke tests for the UI macros in templates/components/ui.html.
-
-Renders each macro inside a minimal Jinja template and asserts the output
-contains the structural markers that downstream pages rely on. Catches
-broken macros before they ship to a real page that uses them.
-"""
 
 from flask import render_template_string
 
 
 def _render(app, snippet: str) -> str:
-    """Render a Jinja snippet inside the app context (so url_for works)."""
     with app.test_request_context("/"):
         return render_template_string(snippet)
 

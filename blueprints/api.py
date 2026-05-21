@@ -39,25 +39,20 @@ logger = logging.getLogger(__name__)
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
-# Terminal payment states that a subsequent webhook must NEVER downgrade.
-# Stripe delivers events out of order and retries on failure, so a stale
-# `invoice.payment_failed` can arrive after `invoice.paid`.
+# Stripe delivers out of order and retries; a stale invoice.payment_failed
+# can land after invoice.paid, so terminal paid states are sticky.
 _TERMINAL_PAID_STATES = {PaymentStatus.succeeded, PaymentStatus.refunded}
 
-# Hard cap on message body length. Matches the HTML maxlength on the
-# send-message modal so the API doesn't accept payloads the UI can't
-# produce; the DB column is TEXT so this is enforced here, not at the
-# schema level.
+# Cap enforced server-side (DB column is TEXT). Mirrors the modal's maxlength.
 MESSAGE_BODY_MAX = 5000
 
 
 @api_bp.route("/webhooks/stripe", methods=["POST"])
 @csrf.exempt
-@limiter.exempt  # Stripe retries legitimately and sends bursts
+@limiter.exempt
 def stripe_webhook():
-    # Fail closed when the shared secret is missing. HMAC with an empty key
-    # is trivially computable by anyone, so accepting such signatures would
-    # let any caller forge events. Audit finding #1 (2026-04-24).
+    # Audit #1: fail closed without a webhook secret — an empty HMAC key lets
+    # anyone forge events.
     if not config.STRIPE_WEBHOOK_SECRET:
         logger.error("STRIPE_WEBHOOK_SECRET is not configured; refusing webhook")
         return jsonify({"error": "webhook not configured"}), 503
@@ -73,31 +68,21 @@ def stripe_webhook():
         logger.warning("Invalid Stripe webhook signature")
         return jsonify({"error": "invalid signature"}), 400
 
-    # `event` is a stripe.Event (not a plain dict and not a subclass of dict
-    # in current SDKs) — use subscript access + getattr-style helpers instead
-    # of `.get(...)`. Audit finding #2 (2026-04-24).
+    # Audit #2: stripe.Event isn't a dict subclass, so use subscript access.
     event_id = event["id"]
     event_type = event["type"]
     data_object = event["data"]["object"]
 
     def _field(obj, key, default=None):
-        """Read a field from a StripeObject OR plain dict."""
         try:
             return obj[key]
         except (KeyError, TypeError):
             return default
 
-    # Atomic dedup + business mutations: the StripeEvent INSERT and every
-    # mutation it gates MUST share one transaction. Audit C-1 (2026-05-13):
-    # the previous shape committed the dedup row first, so if the business
-    # commit failed the dedup row survived — Stripe's retry hit the UNIQUE
-    # violation, returned 200, and the payment was permanently lost.
-    #
-    # `flush()` raises IntegrityError on duplicate without persisting the
-    # row outside the surrounding transaction; on the happy path the
-    # single `commit()` at the end makes both INSERT and mutations durable
-    # atomically. On exception we `rollback()` and return 500 so Stripe
-    # retries — the dedup row is undone with everything else.
+    # Audit C-1: dedup INSERT and business mutations share one transaction.
+    # The previous shape committed the dedup row first, so a failed business
+    # commit + Stripe retry hit the UNIQUE violation, returned 200, and the
+    # payment was permanently lost.
     db = get_db()
     db.add(StripeEvent(id=event_id, event_type=event_type))
     try:
@@ -107,11 +92,8 @@ def stripe_webhook():
         logger.info("Ignoring duplicate Stripe event %s (%s)", event_id, event_type)
         return jsonify({"status": "duplicate"}), 200
 
-    # Audit C-2 (2026-05-13): wrap the body so an exception in
-    # `notify_review_invite`, a flush failure, or any future side-effect
-    # cannot leak an HTML 500 page into the Stripe dashboard. Stripe sees
-    # a structured 500 with the event_id and retries; ops sees a logged
-    # exception they can grep on.
+    # Audit C-2: wrap so any side-effect raising can't leak an HTML 500 page
+    # into the Stripe dashboard — return structured JSON with the event_id.
     try:
         if event_type == "invoice.paid":
             stripe_invoice_id = _field(data_object, "id")
@@ -124,9 +106,6 @@ def stripe_webhook():
                 order = db.scalar(select(Order).where(Order.id == payment.order_id))
                 if order:
                     order.status = OrderStatus.paid
-                    # Notify both sides that the cycle is closed. The
-                    # caterer's payout is processed downstream by Stripe
-                    # Connect; we just confirm receipt here.
                     qr = order.quote.quote_request
                     notify_users(
                         db,
@@ -146,8 +125,7 @@ def stripe_webhook():
                         related_entity_type="order",
                         related_entity_id=order.id,
                     )
-                    # Invite the original requester to review the caterer.
-                    # The helper is idempotent (skips on retry/redelivery).
+                    # Idempotent: helper skips on retry/redelivery.
                     from services.reviews import notify_review_invite
 
                     notify_review_invite(db, order=order)
@@ -199,9 +177,8 @@ def stripe_webhook():
 def get_messages(thread_id):
     user = g.current_user
     db = get_db()
-    # Every role — super_admin included — only reads threads it takes
-    # part in. The admin is a real participant of its own conversations,
-    # not a platform-wide observer.
+    # super_admin reads only threads it actually participates in — it's not
+    # a platform-wide observer.
     messages = db.scalars(
         select(Message)
         .where(Message.thread_id == thread_id)
@@ -242,16 +219,10 @@ def get_messages(thread_id):
 
 
 def _allowed_recipients_for(db, user, *, order_id=None, quote_request_id=None):
-    """Return the set of user IDs the current user is allowed to message in
-    the context of the given order or quote_request. VULN-04 (audit 1).
-
-    Membership rule (Option A — strict):
-    - Order context: client company users + the assigned caterer's users.
-    - Quote-request context: client company users + every solicited caterer's
-      users (so a caterer who hasn't quoted yet can still ask questions).
-    Returns an empty set when the current user has no relation to the entity,
-    or when the entity does not exist. Self is always excluded.
-    """
+    # VULN-04 strict membership: order context → client company users + the
+    # assigned caterer's users; QR context → client company users + every
+    # solicited caterer's users (so a caterer who hasn't quoted can still
+    # ask questions). Empty set means caller isn't a party. Self excluded.
     qr_id = quote_request_id
     caterer_ids: set[uuid.UUID] = set()
     company_id: uuid.UUID | None = None
@@ -271,8 +242,8 @@ def _allowed_recipients_for(db, user, *, order_id=None, quote_request_id=None):
         if not qr:
             return set()
         company_id = qr.company_id
-        # Include every caterer solicited on the QR, not just those who quoted —
-        # a caterer reviewing a brief must be able to message the client.
+        # Include every solicited caterer (not only those who quoted) so a
+        # caterer reviewing a brief can still message the client.
         qrc_caterer_ids = db.scalars(
             select(QuoteRequestCaterer.caterer_id).where(
                 QuoteRequestCaterer.quote_request_id == qr_id
@@ -280,18 +251,16 @@ def _allowed_recipients_for(db, user, *, order_id=None, quote_request_id=None):
         ).all()
         caterer_ids.update(qrc_caterer_ids)
 
-    # Caller must themselves be a party — otherwise a stranger could enumerate
-    # company/caterer membership by probing recipient IDs.
+    # Caller must be a party; otherwise probing recipient IDs would enumerate
+    # company/caterer membership.
     user_in_company = bool(company_id and user.company_id == company_id)
     user_in_caterers = bool(user.caterer_id and user.caterer_id in caterer_ids)
     if not (user_in_company or user_in_caterers):
         return set()
 
-    # Split the allowed set by side. A client-side user can reach every
-    # solicited caterer on the QR; a caterer-side user can only reach the
-    # client (NOT the other caterers also solicited on the same QR — they
-    # are competitors). The previous shape merged both sides into one set
-    # so caterer A could DM caterer B about a shared QR.
+    # Split by side: a caterer can reach the client but NOT the competitors
+    # solicited on the same QR. The previous shape merged both sets so
+    # caterer A could DM caterer B about a shared QR.
     allowed: set[uuid.UUID] = set()
     if user_in_company:
         if caterer_ids:
@@ -309,7 +278,7 @@ def _allowed_recipients_for(db, user, *, order_id=None, quote_request_id=None):
             allowed.update(
                 db.scalars(select(User.id).where(User.company_id == company_id)).all()
             )
-        # Same-caterer teammates stay reachable; competitors do not.
+        # Same-caterer teammates only — competitors stay out of reach.
         allowed.update(
             db.scalars(select(User.id).where(User.caterer_id == user.caterer_id)).all()
         )
@@ -331,10 +300,6 @@ def send_message():
     body = (data.get("body") or "").strip()
     if not body:
         return jsonify({"error": "Le message ne peut pas etre vide."}), 400
-    # Mirrors the textarea maxlength in the send_message_modal macro.
-    # Without a server-side cap, a curl client could shove arbitrary
-    # payloads at us — the constant lives at module scope so the cap
-    # stays in one place if either side changes.
     if len(body) > MESSAGE_BODY_MAX:
         return jsonify(
             {"error": f"Le message ne peut pas depasser {MESSAGE_BODY_MAX} caracteres."}
@@ -353,7 +318,6 @@ def send_message():
         except (ValueError, TypeError):
             quote_request_id = None
 
-    # Thread per user-pair: look up existing thread or create a random one.
     db = get_db()
     existing = db.scalar(
         select(Message.thread_id)
@@ -371,47 +335,25 @@ def send_message():
     )
     thread_id = existing if existing else uuid.uuid4()
 
-    # The recipient must be a real, active account no matter who sends —
-    # otherwise the message lands on a ghost row no one can read.
     is_admin = user.role == "super_admin"
     recipient = db.get(User, recipient_id)
     if recipient is None or not recipient.is_active:
         return jsonify({"error": "Destinataire introuvable ou inactif."}), 404
 
-    # VULN-04: gate every message on a currently-active business
-    # relationship — not just the first message of a thread. Persisting
-    # access on a stale thread would let a user keep messaging a contact
-    # after they leave the company, after a QR is rejected, or after an
-    # order is deleted.
-    #
-    # Two parties skip the business-relationship gate outright:
-    #   - a super_admin sender — a platform operator can reach anyone;
-    #   - any sender writing TO a designated support inbox — the platform
-    #     admin is a universal contact, so a client/caterer must be able
-    #     to reply or open a ticket. When `SUPPORT_USER_EMAILS` is set,
-    #     only the listed super_admin addresses qualify as "support";
-    #     other super_admin accounts still require the business gate so a
-    #     random staffer can't be enumerated as a free-form contact.
-    #
-    # Contexts to gate against otherwise:
-    #   - if the caller passed order_id / quote_request_id explicitly,
-    #     use them (single context).
-    #   - otherwise, inherit from the thread's history: every distinct
-    #     (order_id, quote_request_id) pair seen on a prior message.
-    #     Allow if any of them still resolves to a live relationship.
-    #     This preserves the standalone-Messagerie UX (no need to thread
-    #     QR/order context through every reply) while re-validating the
-    #     gate on every send.
+    # VULN-04: re-validate the business relationship on every send so a
+    # stale thread doesn't outlive the QR/order/membership that authorised
+    # it. super_admin senders and writes TO a designated support inbox
+    # skip the gate. Without explicit order/QR ids, inherit every distinct
+    # context from the thread's history and allow if any still resolves.
     recipient_is_support = recipient.role == "super_admin" and (
         not config.SUPPORT_USER_EMAILS
         or recipient.email.lower() in config.SUPPORT_USER_EMAILS
     )
     if not is_admin and not recipient_is_support:
         if recipient.role == "super_admin":
-            # A non-support super_admin is never a free-form contact for a
-            # regular user: it belongs to no company and no caterer, so no
-            # order/QR context could ever place it in `_allowed_recipients_for`.
-            # Reject directly rather than hinting at a missing context.
+            # Non-support super_admins belong to no company/caterer, so no
+            # context could ever allow them. Reject directly instead of
+            # hinting at a missing context.
             return jsonify({"error": "Destinataire non autorise."}), 403
         gate_contexts: list[tuple] = []
         if order_id or quote_request_id:
@@ -457,10 +399,8 @@ def send_message():
     db.add(msg)
     db.flush()
 
-    # Trace every admin-initiated outgoing message — the platform admin
-    # writing to a regular user is a sensitive action (support touch,
-    # qualification message, escalation) and must leave an audit row.
-    # Admin↔admin chatter is excluded as internal noise.
+    # Audit admin → user messages (support touches, qualification,
+    # escalation). Admin↔admin chatter is internal noise.
     if is_admin and recipient.role != "super_admin":
         log_admin_action(
             db,

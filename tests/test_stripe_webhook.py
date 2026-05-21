@@ -48,21 +48,13 @@ def _event(
     return json.dumps(ev, separators=(",", ":"))
 
 
-# ---------------------------------------------------------------------------
 # #1 — empty secret must never act as a valid key
-# ---------------------------------------------------------------------------
 
 
 TEST_SECRET = "whsec_test_" + "a" * 32
 
 
 def test_empty_webhook_secret_rejects_forged_event(client, monkeypatch):
-    """If STRIPE_WEBHOOK_SECRET is empty the endpoint MUST refuse to process.
-
-    Before the fix, an attacker could HMAC a payload with an empty key —
-    which trivially matches empty-key verification — and the handler
-    accepted it.
-    """
     import config
 
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", "")
@@ -81,17 +73,9 @@ def test_empty_webhook_secret_rejects_forged_event(client, monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------------
-# Helpers for the DB-touching tests below
-# ---------------------------------------------------------------------------
 
 
 def _seed_order_with_payment(stripe_invoice_id: str):
-    """Insert a minimal Quote → Order → Payment chain tied to the seeded
-    caterer and alice's company. Returns (order_id, payment_id) as UUIDs.
-
-    Imports are deferred: see module docstring.
-    """
     import uuid as _uuid
     from decimal import Decimal
     from sqlalchemy import select
@@ -181,15 +165,9 @@ def _load_order(order_id):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# #2 — a legitimately-signed invoice.paid event must actually process
-# ---------------------------------------------------------------------------
 
 
 def test_signed_invoice_paid_marks_payment_succeeded(client, monkeypatch):
-    """Before the fix, `event.get("type", "")` crashed with AttributeError
-    because stripe.Event does not inherit from dict — so real Stripe
-    webhooks could never mark anything paid."""
     import config
 
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", TEST_SECRET)
@@ -222,9 +200,6 @@ def test_signed_invoice_paid_marks_payment_succeeded(client, monkeypatch):
     assert order.status == OrderStatus.paid, order.status
 
 
-# ---------------------------------------------------------------------------
-# #3 — event.id idempotency + no-downgrade of succeeded payments
-# ---------------------------------------------------------------------------
 
 
 def test_payment_failed_after_paid_does_not_downgrade(client, monkeypatch):

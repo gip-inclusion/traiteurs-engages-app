@@ -1,16 +1,7 @@
-/**
- * caterer/profile.html — preview immediat du logo + grid photos
- * (drag-drop reorder, drop zone d'ajout, delete par photo).
- *
- * Servi en statique pour respecter la CSP `script-src 'self'` (audit
- * VULN-105) — pas d'inline script. Lu par le browser via `<script src>`.
- *
- * Le quota de photos n'est pas hardcode ici : il est passe via l'attribut
- * `data-photos-max` sur le `#photos-grid`, lui-meme alimente par Jinja.
- */
+// VULN-105: external script (no inline) so script-src can stay 'self'.
+// Photo quota: data-photos-max attribute on #photos-grid (set by Jinja).
 (function() {
-  // === Logo preview === Affiche immediatement le logo selectionne via
-  // URL.createObjectURL, sans attendre l'enregistrement.
+
   var logoInput = document.getElementById('logo');
   var logoPreview = document.getElementById('logo-preview');
   if (logoInput && logoPreview) {
@@ -23,8 +14,7 @@
     });
   }
 
-  // === Photos grid === Drag-drop pour reorganiser, drop zone pour ajouter,
-  // preview immediat des fichiers selectionnes/droppes.
+
   var grid = document.getElementById('photos-grid');
   if (!grid) return;
   var PHOTOS_MAX = parseInt(grid.dataset.photosMax || '10', 10);
@@ -35,9 +25,8 @@
   }
 
   function syncInputFiles() {
-    // Reconstruit input.files dans l'ordre exact des .photo-preview-item
-    // dans le DOM. Le serveur consomme les fichiers dans cet ordre via
-    // les sentinelles "__NEW__" du champ photos_order.
+    // Reconstruire input.files dans l'ordre du DOM ; le serveur consomme
+    // les fichiers via les sentinelles "__NEW__" du champ photos_order.
     var input = document.getElementById('photos-upload');
     if (!input) return;
     var dt = new DataTransfer();
@@ -78,11 +67,8 @@
     if (wrapper) wrapper.style.display = (remaining <= 0) ? 'none' : '';
   }
 
-  // Cree une .photo-preview-item dans la grille pour un fichier en attente
-  // d'upload. La preview ressemble a une vraie photo (drag-drop pour reorder
-  // + bouton delete) mais l'attribut data-url vaut "" et le hidden
-  // photos_order vaut "__NEW__" — le serveur consomme alors le prochain
-  // fichier de input.files dans cet ordre.
+  // data-url vide + photos_order="__NEW__" indique au serveur de consommer
+  // le prochain fichier de input.files dans l'ordre.
   function addPreviewItem(file) {
     var item = document.createElement('div');
     item.className = 'photo-item photo-preview-item';
@@ -131,8 +117,6 @@
     refreshRemainingCounter();
   }
 
-  // Drop zone : drag-drop de fichiers depuis le bureau + retour visuel.
-  // Le label est deja un proxy de l'input file pour le clic.
   var dropZone = document.getElementById('photo-drop-zone');
   var fileInput = document.getElementById('photos-upload');
   var selectedCountLabel = document.getElementById('photos-selected-count');
@@ -182,7 +166,6 @@
     }
   }
 
-  // Drag-drop reorder
   grid.addEventListener('dragstart', function(e) {
     var item = e.target.closest('.photo-item');
     if (!item) return;

@@ -1,13 +1,3 @@
-"""WTForms classes for the `client` blueprint.
-
-Centralises validation and type-coercion of POST inputs. Each handler binds
-`Form(request.form)` and calls `form.validate()` — invalid input is rejected
-with a flash message + re-render rather than raising and 500ing.
-
-Field names match the corresponding `<input name="...">` in the existing
-templates so no template changes are required for the binding to work.
-"""
-
 from flask_wtf import FlaskForm
 from wtforms import (
     BooleanField,
@@ -36,21 +26,14 @@ MEAL_TYPES = [(m.value, label) for m, label in MEAL_TYPE_LABELS.items()]
 
 
 class QuoteRequestForm(FlaskForm):
-    """Used by both POST /client/requests/new and POST /client/requests/<id>/edit."""
-
-    # When set by the route to a set of offering slugs, `validate_meal_type`
-    # rejects any meal_type outside that subset. None (default) = no
-    # restriction — open demand, edit, or no targeted caterer. Set this
-    # BEFORE calling `validate_on_submit()` so the cross-field rule
-    # actually fires.
+    # Set by the route before validate_on_submit so validate_meal_type can
+    # gate; None means no restriction (open demand or edit path).
     target_offerings: set | None = None
 
     company_service_id = StringField(validators=[Optional(), Length(max=36)])
     service_type = StringField(validators=[Optional(), Length(max=100)])
     meal_type = SelectField(choices=[("", "—")] + MEAL_TYPES, validators=[Optional()])
     event_date = DateField(format="%Y-%m-%d", validators=[Optional()])
-    # `<input type="time">` posts as "HH:MM" (24h, no seconds). WTForms
-    # TimeField auto-handles that.
     event_start_time = TimeField(format="%H:%M", validators=[Optional()])
     event_end_time = TimeField(format="%H:%M", validators=[Optional()])
     guest_count = IntegerField(validators=[Optional(), NumberRange(min=1, max=10000)])
@@ -84,12 +67,8 @@ class QuoteRequestForm(FlaskForm):
         validators=[Optional(), NumberRange(min=0, max=10000)]
     )
 
-    # `drinks_alcohol` is no longer collected from the form — it's
-    # derived server-side from the wizard's step-5 selection in
-    # `blueprints.client._helpers.apply_drinks`, so a tampered POST
-    # can't set it to True without ticking an alcoholic drink. The
-    # `drinks` JSON list (handled outside WTForms) is the source of
-    # truth.
+    # drinks_alcohol is derived server-side in apply_drinks; drinks list
+    # is the source of truth and isn't bound through WTForms.
     drinks_details = TextAreaField(validators=[Optional(), Length(max=5000)])
 
     wants_waitstaff = BooleanField()
@@ -99,37 +78,21 @@ class QuoteRequestForm(FlaskForm):
     wants_nappes = BooleanField()
     wants_livraison = BooleanField()
     wants_setup = BooleanField()
-    # Horaire + précisions liés à l'installation. UI rend `setup_time`
-    # obligatoire quand `wants_setup` est coché, mais on garde Optional
-    # côté serveur pour que les anciennes demandes (sans ces colonnes
-    # remplies) restent valides à la ré-édition.
+    # Optional côté serveur pour rester compatible avec les anciennes
+    # demandes lors d'une ré-édition.
     service_setup_time = TimeField(format="%H:%M", validators=[Optional()])
     service_setup_details = TextAreaField(validators=[Optional(), Length(max=5000)])
     wants_cleanup = BooleanField()
 
     is_compare_mode = BooleanField()
     message_to_caterer = TextAreaField(validators=[Optional(), Length(max=5000)])
-    # Set when the wizard was launched from a specific caterer profile
-    # (-> "Demander un devis" button on /caterers/<id>). Forces a
-    # single-caterer flow that skips the admin qualification fan-out.
+    # Targeted demand: set from /caterers/<id> "Demander un devis" to skip
+    # admin qualification fan-out.
     target_caterer_id = StringField(validators=[Optional(), Length(max=36)])
 
-    # The dietary checkboxes use value="1" in the templates; WTForms BooleanField
-    # treats "1"/"true"/"on" as True, anything else as False. Matches existing UI.
-
     def validate_meal_type(self, field):
-        """Cross-field gate: a targeted demand must pick a slug the caterer
-        actually publishes under Catalogue & tarifs.
-
-        The wizard's step-1 UI already filters the radio list down to the
-        caterer's offerings, but a tampered POST can still ship any of
-        the six canonical slugs. This validator closes that gap so the
-        DB never holds a `(target_caterer_id, meal_type)` pair the
-        caterer doesn't support.
-
-        Empty meal_type is allowed (the field is Optional); the rule
-        only kicks in when both a slug AND a target are present.
-        """
+        # Closes the tampered-POST gap: UI filters step-1 to the caterer's
+        # offerings, but the server must verify.
         if self.target_offerings is None or not field.data:
             return
         if field.data not in self.target_offerings:
@@ -139,16 +102,12 @@ class QuoteRequestForm(FlaskForm):
 
 
 class ServiceForm(FlaskForm):
-    """Service CRUD: POST /client/team/services and /edit."""
-
     name = StringField(validators=[InputRequired(), Length(min=1, max=255)])
     description = TextAreaField(validators=[Optional(), Length(max=5000)])
     annual_budget = DecimalField(places=2, validators=[Optional(), NumberRange(min=0)])
 
 
 class EmployeeForm(FlaskForm):
-    """Employee CRUD: POST /client/team/employees and /edit."""
-
     first_name = StringField(validators=[InputRequired(), Length(min=1, max=255)])
     last_name = StringField(validators=[InputRequired(), Length(min=1, max=255)])
     email = StringField(validators=[InputRequired(), Email(), Length(max=255)])
@@ -157,15 +116,8 @@ class EmployeeForm(FlaskForm):
 
 
 class UserProfileForm(FlaskForm):
-    """POST /client/profile, /caterer/account, /admin/profile.
-
-    `email` n'a pas de validateur `Email()` ici : la syntaxe est
-    contrôlée dans `services.account.apply_profile_form` uniquement
-    quand la valeur soumise diffère de l'email actuel. Évite de
-    cracher « adresse invalide » sur un simple changement de nom
-    où le champ email rebondit inchangé.
-    """
-
+    # Pas de validateur Email() : la syntaxe est vérifiée dans
+    # services.account.apply_profile_form uniquement quand la valeur change.
     first_name = StringField(validators=[Optional(), Length(max=255)])
     last_name = StringField(validators=[Optional(), Length(max=255)])
     email = StringField(validators=[Optional(), Length(max=255)])
@@ -173,8 +125,6 @@ class UserProfileForm(FlaskForm):
 
 
 class CompanySettingsForm(FlaskForm):
-    """POST /client/settings."""
-
     name = StringField(validators=[Optional(), Length(max=255)])
     siret = StringField(
         validators=[
@@ -189,17 +139,12 @@ class CompanySettingsForm(FlaskForm):
     address = StringField(validators=[Optional(), Length(max=500)])
     city = StringField(validators=[Optional(), Length(max=255)])
     zip_code = StringField(validators=[Optional(), Length(max=10)])
-    # logo file is read via request.files (WTForms FileField is overkill for a single optional logo)
 
 
 class QuoteAcceptForm(FlaskForm):
-    """POST /client/requests/<id>/accept-quote."""
-
     quote_id = StringField(validators=[InputRequired(), Length(max=36)])
 
 
 class QuoteRefuseForm(FlaskForm):
-    """POST /client/requests/<id>/refuse-quote."""
-
     quote_id = StringField(validators=[InputRequired(), Length(max=36)])
     refusal_reason = TextAreaField(validators=[Optional(), Length(max=5000)])
