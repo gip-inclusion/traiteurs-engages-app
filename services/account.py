@@ -27,22 +27,26 @@ def apply_profile_form(db, user, form) -> str | None:
     cas d'invalidité, ou `None` sur succès. Le caller commit.
 
     Règles :
-      * prénom / nom vides → on garde la valeur existante (UX : un envoi
-        partiel ne doit pas effacer une donnée déjà saisie).
-      * email vide → on garde la valeur existante.
+      * prénom / nom / email obligatoires (les 3 templates marquent les
+        champs `required` — on refuse un POST scripté qui les blanchirait
+        silencieusement).
+      * email inchangé → on s'arrête là (pas de re-auth, pas d'audit).
       * email différent → exige `current_password` correct + pas de
         collision avec un autre compte.
     """
-    if form.first_name.data is not None:
-        user.first_name = (form.first_name.data or "").strip() or user.first_name
-    if form.last_name.data is not None:
-        user.last_name = (form.last_name.data or "").strip() or user.last_name
-
+    first_name = (form.first_name.data or "").strip()
+    last_name = (form.last_name.data or "").strip()
     new_email = (form.email.data or "").strip().lower()
+    if not first_name or not last_name or not new_email:
+        return "Prénom, nom et adresse e-mail sont obligatoires."
+
+    user.first_name = first_name
+    user.last_name = last_name
+
     # Comparaison case-insensitive : un compte historique stocké en casse
     # mixte ne doit pas trébucher si l'utilisateur retape son email tel
     # quel (sinon : re-auth inutile + audit log parasite).
-    if not new_email or new_email == (user.email or "").lower():
+    if new_email == (user.email or "").lower():
         return None
 
     # Validation de la syntaxe e-mail uniquement quand l'utilisateur
