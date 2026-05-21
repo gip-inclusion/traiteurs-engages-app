@@ -141,7 +141,10 @@ def _format_code(raw_bytes: bytes) -> str:
 
 def generate_recovery_codes() -> list[str]:
     """Mint a fresh set of recovery codes — caller-displayed (plaintext)."""
-    return [_format_code(secrets.token_bytes(_RECOVERY_CODE_BYTES)) for _ in range(RECOVERY_CODE_COUNT)]
+    return [
+        _format_code(secrets.token_bytes(_RECOVERY_CODE_BYTES))
+        for _ in range(RECOVERY_CODE_COUNT)
+    ]
 
 
 def hash_recovery_codes(plain_codes: Iterable[str]) -> list[dict]:
@@ -152,7 +155,9 @@ def hash_recovery_codes(plain_codes: Iterable[str]) -> list[dict]:
     """
     return [
         {
-            "hash": bcrypt.hashpw(code.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+            "hash": bcrypt.hashpw(code.encode("utf-8"), bcrypt.gensalt()).decode(
+                "utf-8"
+            ),
             "used_at": None,
         }
         for code in plain_codes

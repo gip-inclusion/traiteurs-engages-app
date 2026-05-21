@@ -984,7 +984,9 @@ def _render_mfa_setup(user, secret: str):
     """Render the setup page. QR code is built server-side as a PNG
     data URL — keeps things first-party (no external QR service) and
     leverages the existing `img-src 'self' data:` CSP allowance."""
-    uri = mfa_service.provisioning_uri(secret, account_name=user.email, issuer=_MFA_ISSUER)
+    uri = mfa_service.provisioning_uri(
+        secret, account_name=user.email, issuer=_MFA_ISSUER
+    )
     import io as _io  # local import to avoid a top-of-file dependency for non-MFA routes
 
     import qrcode
@@ -994,7 +996,9 @@ def _render_mfa_setup(user, secret: str):
     img.save(buf, format="PNG")
     import base64 as _b64
 
-    qr_data_url = "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode("ascii")
+    qr_data_url = "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode(
+        "ascii"
+    )
     return render_template(
         "admin/mfa_setup.html",
         secret=secret,
