@@ -256,7 +256,7 @@ def create_app():
         # base. Exception : `auth.change_password`, route authentifiee
         # qui a besoin de g.current_user.
         if request.endpoint and (
-            request.endpoint in ("static", "health")
+            request.endpoint in ("static", "health", "legal.security_txt")
             or (
                 request.blueprint == "auth"
                 and request.endpoint != "auth.change_password"
