@@ -313,6 +313,19 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   color: var(--c-text);
 }
 
+/* Profile avatar — rounded initials disc on profile pages. */
+.avatar-navy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background-color: var(--c-navy);
+  color: #ffffff;
+}
+
 /* ============================================================
    Brand utilities (token-backed)
    Mirror Tailwind's API but resolve to brand tokens.
