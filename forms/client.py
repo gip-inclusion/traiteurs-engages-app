@@ -157,11 +157,18 @@ class EmployeeForm(FlaskForm):
 
 
 class UserProfileForm(FlaskForm):
-    """POST /client/profile."""
+    """POST /client/profile, /caterer/account, /admin/profile.
+
+    `email` n'a pas de validateur `Email()` ici : la syntaxe est
+    contrôlée dans `services.account.apply_profile_form` uniquement
+    quand la valeur soumise diffère de l'email actuel. Évite de
+    cracher « adresse invalide » sur un simple changement de nom
+    où le champ email rebondit inchangé.
+    """
 
     first_name = StringField(validators=[Optional(), Length(max=255)])
     last_name = StringField(validators=[Optional(), Length(max=255)])
-    email = StringField(validators=[Optional(), Email(), Length(max=255)])
+    email = StringField(validators=[Optional(), Length(max=255)])
     current_password = PasswordField(validators=[Optional()])
 
 

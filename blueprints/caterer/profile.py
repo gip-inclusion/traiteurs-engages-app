@@ -9,7 +9,9 @@ from blueprints.middleware import login_required, role_required
 from database import get_db
 from extensions import limiter
 from forms.caterer import CatererProfileForm
+from forms.client import UserProfileForm
 from models import SERVICE_OFFERING_LABELS
+from services.account import apply_profile_form
 from services.json_schemas import ServiceConfig
 from services.uploads import save_upload
 
@@ -93,6 +95,34 @@ def _aggregate_legacy_fields(caterer, specs: dict) -> None:
 
 
 def register(bp):
+    @bp.route("/account", methods=["GET"])
+    @login_required
+    @role_required("caterer")
+    def account():
+        """Page « Mon profil » du traiteur : infos personnelles (nom,
+        email) + lien vers la modif du mot de passe. Distincte de
+        `caterer.profile` (la « Fiche traiteur ») qui porte la fiche
+        m&#233;tier (logo, adresse, prestations…)."""
+        return render_template("caterer/account.html", user=g.current_user)
+
+    @bp.route("/account", methods=["POST"])
+    @login_required
+    @role_required("caterer")
+    def account_save():
+        user = g.current_user
+        form = UserProfileForm()
+        if not form.validate_on_submit():
+            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            return render_template("caterer/account.html", user=user), 400
+        db = get_db()
+        err = apply_profile_form(db, user, form)
+        if err:
+            flash(err, "error")
+            return render_template("caterer/account.html", user=user), 400
+        db.commit()
+        flash("Profil mis à jour.", "success")
+        return redirect(url_for("caterer.account"))
+
     @bp.route("/profile", methods=["GET"])
     @login_required
     @role_required("caterer")

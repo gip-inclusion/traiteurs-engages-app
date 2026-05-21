@@ -29,6 +29,7 @@ from models import (
     User,
     UserRole,
 )
+from services.audit import log_admin_action
 from services.notifications import (
     company_admin_user_ids,
     notify_users,
@@ -666,10 +667,12 @@ def change_password():
     new_password = request.form.get("new_password") or ""
     confirm = request.form.get("new_password_confirm") or ""
 
-    # `bcrypt.checkpw` runs in constant time, donc un mauvais mot de
-    # passe ne « fuit » pas par les timings. Pas de log applicatif sur
-    # l'échec : on évite de fournir un canal de timing/de stockage à un
-    # éventuel attaquant qui aurait déjà la session.
+    # `bcrypt.checkpw` compare le hash en temps constant. Le court-
+    # circuit `current == ""` court-circuite tout le compare et reste
+    # distinguable par timing d'un mauvais mot de passe, mais l'attaque
+    # est sans intérêt ici : l'attaquant a déjà la session, le mot de
+    # passe lui sert seulement à passer la re-auth. Pas de log applicatif
+    # sur l'échec — on évite un canal de stockage gratuit.
     if not bcrypt.checkpw(current.encode(), user.password_hash.encode()):
         flash("Mot de passe actuel incorrect.", "error")
         return render_template("auth/change_password.html"), 400
@@ -700,6 +703,16 @@ def change_password():
     # ré-écrit le nouveau snapshot dans la session courante pour qu'elle
     # ne se déconnecte pas elle-même au prochain `load_current_user`.
     user.password_changed_at = datetime.datetime.utcnow()
+    # Trace auto-mutation sensible : self-rotate du mot de passe.
+    # L'auteur et la cible sont le même user (rotation par soi-même) ;
+    # l'IP/UA sont capturées automatiquement par log_admin_action.
+    log_admin_action(
+        db,
+        user,
+        "account.password_change",
+        target_type="user",
+        target_id=user.id,
+    )
     db.commit()
     _stamp_session(user)
     flash("Mot de passe mis à jour.", "success")

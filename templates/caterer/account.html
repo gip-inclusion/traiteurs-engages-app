@@ -17,18 +17,18 @@
       </div>
       <div class="min-w-0">
         <h2 class="font-display font-bold text-2xl text-text">{{ user.first_name }} {{ user.last_name }}</h2>
-        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold mt-1 bg-navy-soft text-navy">
-          <i data-lucide="shield" class="w-3.5 h-3.5"></i>
-          Super administrateur
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold mt-1 badge-caterer">
+          <i data-lucide="store" class="w-3.5 h-3.5"></i>
+          Traiteur
         </span>
       </div>
     </div>
   </div>
 
-  {# ---- Modifier mes informations ---- #}
+  {# ---- Mes informations (éditable) ---- #}
   <div class="bg-white rounded-lg p-6 mb-6">
-    <h2 class="font-display font-bold text-xl mb-4 text-text">Modifier mes informations</h2>
-    <form method="POST" action="{{ url_for('admin.profile') }}" class="space-y-4">
+    <h2 class="font-display font-bold text-xl mb-4 text-text">Mes informations</h2>
+    <form method="POST" action="{{ url_for('caterer.account_save') }}" class="space-y-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -55,7 +55,7 @@
       </div>
       <div>
         <button type="submit"
-          class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 btn-navy">
+          class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 bg-navy text-white">
           <i data-lucide="user" class="w-4 h-4"></i>
           Enregistrer
         </button>
