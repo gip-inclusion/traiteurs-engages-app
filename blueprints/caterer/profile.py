@@ -93,6 +93,34 @@ def _aggregate_legacy_fields(caterer, specs: dict) -> None:
 
 
 def register(bp):
+    @bp.route("/account", methods=["GET"])
+    @login_required
+    @role_required("caterer")
+    def account():
+        """Page « Mon profil » du traiteur : infos personnelles (nom,
+        email) + lien vers la modif du mot de passe. Distincte de
+        `caterer.profile` (la « Fiche traiteur ») qui porte la fiche
+        m&#233;tier (logo, adresse, prestations…)."""
+        return render_template("caterer/account.html", user=g.current_user)
+
+    @bp.route("/account", methods=["POST"])
+    @login_required
+    @role_required("caterer")
+    def account_save():
+        user = g.current_user
+        first_name = (request.form.get("first_name") or "").strip()
+        last_name = (request.form.get("last_name") or "").strip()
+        if not first_name or not last_name:
+            flash("Le pr&#233;nom et le nom sont obligatoires.", "error")
+            return redirect(url_for("caterer.account"))
+        db = get_db()
+        db.add(user)
+        user.first_name = first_name
+        user.last_name = last_name
+        db.commit()
+        flash("Profil mis &#224; jour.", "success")
+        return redirect(url_for("caterer.account"))
+
     @bp.route("/profile", methods=["GET"])
     @login_required
     @role_required("caterer")

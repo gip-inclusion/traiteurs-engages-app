@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Mon profil - Les Traiteurs Engag&#233;s{% endblock %}
+
+{% block content %}
+<main class="bg-cream min-h-screen">
+
+  <h1 class="font-display font-bold text-4xl mb-6 text-text">Mon profil</h1>
+
+  {% set initials = ((user.first_name or '')[:1] ~ (user.last_name or '')[:1]) | upper %}
+
+  {# ---- Identité ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <div class="flex items-center gap-4">
+      <div class="avatar-navy font-display font-bold text-xl">
+        {{ initials or '?' }}
+      </div>
+      <div class="min-w-0">
+        <h2 class="font-display font-bold text-2xl text-text">{{ user.first_name }} {{ user.last_name }}</h2>
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold mt-1 badge-caterer">
+          <i data-lucide="store" class="w-3.5 h-3.5"></i>
+          Traiteur
+        </span>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Informations (email read-only) ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <h2 class="font-display font-bold text-xl mb-4 text-text">Informations</h2>
+    <div class="space-y-3">
+      <div class="flex items-center gap-3">
+        <i data-lucide="mail" class="w-4 h-4 text-mute flex-shrink-0"></i>
+        <span class="text-sm text-text">{{ user.email }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Mes informations (éditable : prénom + nom) ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <h2 class="font-display font-bold text-xl mb-4 text-text">Mes informations</h2>
+    <form method="POST" action="{{ url_for('caterer.account_save') }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-bold mb-2 text-text">Pr&#233;nom</label>
+          <input type="text" name="first_name" value="{{ user.first_name }}" required
+            class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+        </div>
+        <div>
+          <label class="block text-sm font-bold mb-2 text-text">Nom</label>
+          <input type="text" name="last_name" value="{{ user.last_name }}" required
+            class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+        </div>
+      </div>
+      <div>
+        <button type="submit"
+          class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 bg-navy text-white">
+          <i data-lucide="user" class="w-4 h-4"></i>
+          Enregistrer
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {# ---- Sécurité ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <h2 class="font-display font-bold text-xl mb-1 text-text">S&#233;curit&#233;</h2>
+    <p class="text-sm mb-4 text-mute">Mettez &#224; jour votre mot de passe r&#233;guli&#232;rement.</p>
+    <a href="{{ url_for('auth.change_password') }}"
+       class="inline-flex items-center gap-2 rounded-full text-sm font-bold px-4 py-2.5 btn-ghost-navy">
+      <i data-lucide="key-round" class="w-4 h-4"></i>
+      Modifier mon mot de passe
+    </a>
+  </div>
+
+</main>
+{% endblock %}

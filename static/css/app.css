@@ -42,6 +42,8 @@
   --c-mute:        #6B7280;
   --c-mute-soft:   #9CA3AF;
   --c-bronze:      #CD7F32;   /* 3rd-place ranking badge */
+  --c-caterer-bg:  rgba(214, 131, 77, 0.15); /* caterer role badge bg */
+  --c-caterer-fg:  #A24B0E;                  /* caterer role badge text */
   --c-disabled:    #D1D5DB;
 
   /* Surfaces & borders */
@@ -324,6 +326,12 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   border-radius: 9999px;
   background-color: var(--c-navy);
   color: #ffffff;
+}
+
+/* Caterer-role badge — used on the caterer profile page. */
+.badge-caterer {
+  background-color: var(--c-caterer-bg);
+  color: var(--c-caterer-fg);
 }
 
 /* ============================================================
