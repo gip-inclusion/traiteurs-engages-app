@@ -79,10 +79,11 @@ def apply_profile_form(db, user, form) -> str | None:
         return "Cette adresse e-mail ne peut pas être utilisée pour ce compte."
 
     # Trace auto-mutation sensible : changement d'adresse e-mail.
-    # On enregistre l'ancienne et la nouvelle adresse dans `extra` pour
-    # qu'un audit puisse reconstituer l'historique sans relire toutes
-    # les colonnes. L'IP/UA sont capturées automatiquement.
-    old_email = user.email
+    # On ne snapshot PAS l'ancienne / nouvelle adresse dans `extra` :
+    # la rétention d'`audit_logs` peut différer de celle de `users`, et
+    # dupliquer la PII y crée une zone d'effacement parallèle à gérer
+    # côté RGPD. `actor_id` + `actor_email` (snapshot au moment du log)
+    # + `target_id` + IP/UA suffisent pour la forensique.
     user.email = new_email
     log_admin_action(
         db,
@@ -90,6 +91,5 @@ def apply_profile_form(db, user, form) -> str | None:
         "account.email_change",
         target_type="user",
         target_id=user.id,
-        extra={"old_email": old_email, "new_email": new_email},
     )
     return None
