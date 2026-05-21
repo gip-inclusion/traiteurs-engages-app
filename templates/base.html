@@ -141,7 +141,11 @@
           <span>Compte en attente</span>
         </a>
         {% endif %}
-        <a href="{{ url_for('caterer.profile') }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors" data-page="profile">
+        <a href="{{ url_for('caterer.profile') }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors" data-page="caterer-card">
+          <i data-lucide="store" class="w-5 h-5 flex-shrink-0"></i>
+          <span>Fiche traiteur</span>
+        </a>
+        <a href="{{ url_for('caterer.account') }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors" data-page="profile">
           <i data-lucide="user" class="w-5 h-5 flex-shrink-0"></i>
           <span>Mon profil</span>
         </a>

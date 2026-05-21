@@ -1,11 +1,11 @@
 ﻿{% extends "base.html" %}
 {% from "components/structure_type_badge.html" import structure_type_badge %}
 
-{% block title %}Mon profil - Les Traiteurs Engages{% endblock %}
+{% block title %}Fiche traiteur - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
 <div class="mb-8">
-  <h1 class="font-display font-bold text-3xl text-black">Mon profil traiteur</h1>
+  <h1 class="font-display font-bold text-3xl text-black">Fiche traiteur</h1>
   <div class="flex items-center gap-2 mt-1">{{ structure_type_badge(caterer.structure_type) }}</div>
 </div>
 
@@ -231,16 +231,5 @@
     </button>
   </div>
 </form>
-
-{# ---- Card Sécurité — hors du formulaire de profil ---- #}
-<div class="bg-white rounded-lg p-6 mt-6">
-  <h2 class="font-display font-bold text-xl mb-1 text-text">S&#233;curit&#233;</h2>
-  <p class="text-sm mb-4 text-mute">Mettez &#224; jour votre mot de passe r&#233;guli&#232;rement.</p>
-  <a href="{{ url_for('auth.change_password') }}"
-     class="inline-flex items-center gap-2 rounded-full text-sm font-bold px-4 py-2.5 btn-ghost-navy">
-    <i data-lucide="key-round" class="w-4 h-4"></i>
-    Modifier mon mot de passe
-  </a>
-</div>
 
 {% endblock %}
