@@ -65,7 +65,7 @@
     </div>
 
     {# ---- Card 3 : modifier mes informations ---- #}
-    <div class="bg-white rounded-lg p-6">
+    <div class="bg-white rounded-lg p-6 mb-6">
       <h2 class="font-display font-bold text-xl mb-4 text-text">Modifier mes informations</h2>
       <form method="post" action="{{ url_for('client.profile') }}" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
