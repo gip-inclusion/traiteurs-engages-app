@@ -1,27 +1,4 @@
-// Address autocomplete using the BAN (Base Adresse Nationale) free API.
-//
-// Markup contract:
-//   <div data-address-autocomplete>
-//     <input data-address-input id="event_address" name="event_address">
-//     <ul data-address-suggestions class="hidden ..."></ul>
-//   </div>
-//   <input id="event_zip_code"  name="event_zip_code">
-//   <input id="event_city"      name="event_city">
-//   <input id="event_latitude"  name="event_latitude" type="hidden">
-//   <input id="event_longitude" name="event_longitude" type="hidden">
-//
-// On every keystroke (debounced 200ms), if the input is ≥ 3 chars we
-// query api-adresse.data.gouv.fr/search and render up to 6 suggestions.
-// Clicking a suggestion fills:
-//   - event_address  → housenumber + street ("12 rue de Rivoli")
-//   - event_zip_code → postcode
-//   - event_city     → city
-//   - event_latitude / event_longitude → from the result's geometry
-//
-// CORS is enabled by BAN; no proxy needed. The CSP carries
-// `https://api-adresse.data.gouv.fr` in connect-src (cf. app.py).
-//
-// CSP-safe: external script only, no inline JS.
+// BAN autocomplete. The CSP allows api-adresse.data.gouv.fr in connect-src.
 (function () {
   'use strict';
 
@@ -51,9 +28,6 @@
     var list = container.querySelector('[data-address-suggestions]');
     if (!input || !list) return;
 
-    // Sibling fields outside the container — looked up by id since
-    // the wizard already names them event_zip_code / event_city /
-    // event_latitude / event_longitude.
     var zip = document.getElementById('event_zip_code');
     var city = document.getElementById('event_city');
     var lat = document.getElementById('event_latitude');
@@ -84,8 +58,7 @@
           '<div style="font-weight:600;">' + escapeHtml(line1.trim()) + '</div>' +
           '<div style="font-size:0.75rem;color:#5A6F80;">' + escapeHtml(line2.trim()) + '</div>';
         li.addEventListener('mousedown', function (ev) {
-          // mousedown (not click) so the input's blur listener doesn't
-          // hide the dropdown before we get a chance to read the value.
+          // mousedown beats the input's blur listener.
           ev.preventDefault();
           select(f);
         });
@@ -107,8 +80,6 @@
     }
 
     var fetchSuggestions = debounce(function (q) {
-      // BAN sometimes errors on very short or punctuation-only queries;
-      // we already guard with MIN_QUERY_LEN.
       var url = BAN_ENDPOINT + '?q=' + encodeURIComponent(q) +
         '&limit=' + MAX_RESULTS + '&autocomplete=1';
       fetch(url, { credentials: 'omit' })

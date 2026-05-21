@@ -1,7 +1,5 @@
 (function () {
-  // Mirror of static/js/signup.js's password-rule + submit-disabled logic,
-  // stripped of the role / catering / company-name machinery the invite
-  // form doesn't need. Server still re-validates password policy.
+  // UX-only mirror of signup.js password rules; server re-validates.
   function passwordRules(pw) {
     pw = pw || "";
     var hasLower = /[a-z]/.test(pw);
@@ -71,7 +69,7 @@
   document.addEventListener("input", function (ev) {
     if (ev.target.closest("#signup-invite-form")) revalidate();
   });
-  // `input` doesn't fire for checkbox toggles in older browsers; `change` does.
+  // Older browsers don't fire `input` on checkbox toggles.
   document.addEventListener("change", function (ev) {
     if (ev.target.closest("#signup-invite-form")) revalidate();
   });

@@ -1,17 +1,4 @@
-/**
- * Lightbox photo generique. Convention :
- *   - Le conteneur de la galerie a `id="photos-gallery"` et porte
- *     `data-photos` = JSON array des URLs (ordre = ordre dans la galerie).
- *   - Chaque element cliquable porte `data-photo-index="N"` (0-based).
- *   - La modale doit etre dans le DOM avec `id="lightbox"` et les
- *     enfants attendus (lightbox-img, lightbox-counter, boutons
- *     data-action="close|prev|next").
- *
- * Clavier : Echap pour fermer, fleches gauche/droite pour naviguer.
- * Click hors de l'image (sur le backdrop) ferme la modale.
- *
- * Servi en statique pour respecter la CSP `script-src 'self'`.
- */
+
 (function() {
   var gallery = document.getElementById('photos-gallery');
   var lightbox = document.getElementById('lightbox');

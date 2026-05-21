@@ -1,15 +1,3 @@
-// Messagerie chat pane.
-//
-// Two responsibilities:
-//   1. Poll /api/messages/<thread_id> and render the bubble list inside
-//      #messages-container. The script no-ops cleanly if the container
-//      isn't on the page (e.g. when the right pane shows the empty
-//      state, or for the read-only super_admin view without an input).
-//   2. Wire the input form: Enter-to-send, paperclip stub, send-button
-//      enabled state mirroring the input value, and Pieces jointes /
-//      Conversation tab toggling.
-//
-// CSP : everything lives in this external file; no inline JS.
 (function () {
   'use strict';
 
@@ -30,7 +18,6 @@
     }
 
     function formatDate(iso) {
-      // "23 avril" or "23 avril 14:32" depending on whether it's today
       var d = new Date(iso);
       var months = ['janvier','février','mars','avril','mai','juin',
                     'juillet','août','septembre','octobre','novembre','décembre'];
@@ -44,9 +31,6 @@
     }
 
     function receivedAvatarHtml() {
-      // Match the tile-style avatar from the messagerie panes. Only used
-      // on received messages; sent messages skip the avatar entirely
-      // (justify-end pushes the bubble flush to the right edge).
       if (otherAvatarUrl) {
         return '<div class="w-8 h-8 rounded-lg flex items-center justify-center bg-cream flex-shrink-0" style="overflow:hidden;">' +
           '<img src="' + escapeHtml(otherAvatarUrl) + '" alt="" style="width:100%;height:100%;object-fit:contain;padding:0.0625rem;">' +
@@ -60,11 +44,8 @@
     function renderMessage(msg) {
       var isSent = msg.sender_id === currentUserId;
       var row = document.createElement('div');
-      // `flex-row-reverse` would be cleaner, but the project ships a
-      // pre-built Tailwind CSS that the JIT scanner can't see through
-      // (these bubbles are JS-rendered). `justify-end` is in the bundle
-      // because static templates use it; that's enough to push the
-      // sent-side group flush to the right.
+      // `flex-row-reverse` would be cleaner, but the curated Tailwind
+      // bundle doesn't include it; `justify-end` is already there.
       row.className = 'flex items-start gap-2 mb-4 ' + (isSent ? 'justify-end' : '');
 
       var bubbleWrap = document.createElement('div');
@@ -75,10 +56,6 @@
         '"><p class="whitespace-pre-line">' + escapeHtml(msg.body) + '</p></div>' +
         '<p class="text-xs mt-1 text-mute">' + escapeHtml(formatDate(msg.created_at)) + '</p>';
 
-      // Received: avatar (left) + bubble.
-      // Sent: bubble only — pushed right by justify-end. We skip the
-      // empty-avatar spacer that used to be there; with justify-end it
-      // would just push the bubble away from the right edge.
       if (!isSent) {
         var avatar = document.createElement('div');
         avatar.innerHTML = receivedAvatarHtml();
@@ -152,9 +129,7 @@
           })
           .then(function (res) {
             if (!res.ok) {
-              // Render an inline banner above the input so failures
-              // aren't swallowed silently — the messagerie has no flash
-              // surface of its own.
+              // Inline banner: the messagerie has no flash surface.
               showErrorBanner(res.data && res.data.error ? res.data.error : 'Erreur lors de l’envoi.');
               refreshSendBtn();
               return;
@@ -190,8 +165,6 @@
   });
 
   function setupTabs() {
-    // Conversation / Pieces jointes toggle. Each tab button has
-    // data-target pointing to a sibling pane id.
     document.addEventListener('click', function (ev) {
       var btn = ev.target.closest('[data-action="messagerie-tab"]');
       if (!btn) return;

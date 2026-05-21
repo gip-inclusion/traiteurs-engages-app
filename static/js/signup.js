@@ -55,10 +55,8 @@
     if (window.lucide) lucide.createIcons();
   }
 
-  // Mirror of blueprints/auth.py.validate_password — must stay in sync. Server
-  // re-validates on POST so client tampering with this code can't bypass
-  // policy; the client check exists only to disable the submit button and
-  // explain failures inline.
+  // Mirror of blueprints/auth.py.validate_password — server re-validates
+  // on POST so this is UX only.
   function passwordRules(pw) {
     pw = pw || '';
     var hasLower = /[a-z]/.test(pw);
@@ -84,16 +82,12 @@
   function isFormValid() {
     var form = document.getElementById('signup-form');
     if (!form || form.style.display === 'none') return false;
-    // Required fields: every visible required input must be non-empty.
-    // `form.querySelectorAll('[required]')` returns hidden ones too, so
-    // filter on `offsetParent !== null` (a quick "is visible" heuristic
-    // that's good enough for our small fixed form).
+    // offsetParent === null filters out the inputs hidden by role toggle.
     var fields = form.querySelectorAll('input[required], select[required]');
     for (var i = 0; i < fields.length; i++) {
       var f = fields[i];
-      if (f.offsetParent === null) continue; // hidden by role toggle
-      // Checkboxes carry value="on" even when unchecked, so the trim()
-      // heuristic always passes for them — branch explicitly on `checked`.
+      if (f.offsetParent === null) continue;
+      // Checkboxes always have value="on"; branch on `checked` instead.
       if (f.type === 'checkbox') {
         if (!f.checked) return false;
         continue;
@@ -142,9 +136,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Pré-sélectionne "Entreprise" — c'est le parcours par défaut sur
-    // la landing (CTA "S'inscrire" pointe vers ce formulaire). L'autre
-    // onglet ("Traiteur") reste un clic simple pour les structures.
+    // Default to "Entreprise" (parcours dominant depuis la landing).
     selectRole('client');
     revalidate();
   });

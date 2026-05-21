@@ -1,22 +1,3 @@
-// Star-rating input — visual layer only.
-//
-// Markup contract :
-//   <div data-rating-input>
-//     <label data-star-label data-star-value="1">
-//       <input type="radio" name="rating" value="1" required ...visually-hidden...>
-//       <span data-star-glyph><svg outline-star /></span>
-//     </label>
-//     ... (5 labels)
-//   </div>
-//
-// The control works WITHOUT this script :
-//   - clicking a label selects the radio (native behaviour);
-//   - submitting the form posts the chosen `rating`;
-//   - `required` triggers the browser's native validation tooltip if
-//     no radio is selected.
-//
-// This script paints filled / outline stars based on hover + selection.
-// CSP-safe (script-src 'self').
 (function () {
   'use strict';
 

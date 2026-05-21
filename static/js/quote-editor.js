@@ -2,29 +2,24 @@
   'use strict';
 
   var TVA_RATES = [
-    // 0% available because some caterers (auto-entrepreneurs sous le
-    // seuil de franchise, structures non assujetties, etc.) ne facturent
-    // pas la TVA. Server-side (services/quotes.py) handles tva_rate=0
-    // naturally — `lineHT * 0 / 100 == 0`.
+    // 0% pour les structures non assujetties à la TVA (auto-entrepreneurs
+    // sous le seuil de franchise, etc.).
     { value: '0', label: '0%' },
     { value: '5.5', label: '5,5%' },
     { value: '10', label: '10%' },
     { value: '20', label: '20%' },
   ];
-  var PLATFORM_FEE_RATE = 0.05;     // 5% commission added to the quote
-  // Platform isn't a VAT collector for now — fee carries no TVA. Kept
-  // as a constant so this is the single source of truth on the front
-  // (mirror of services/quotes.py:platform_fee_tva = Decimal("0")).
+  var PLATFORM_FEE_RATE = 0.05;
+  // Platform isn't a VAT collector yet — mirror of services/quotes.py.
   var PLATFORM_FEE_TVA_RATE = 0;
 
   var GUEST_COUNT = 0;
   var INITIAL_LINES = [];
   var lineCounter = 0;
 
-  // ---- Formatting helpers ------------------------------------------------
 
-  // French money formatter: "1 234,56 €". Falls back to a manual fixed-2
-  // implementation if Intl is unavailable (very old browsers).
+
+  // "1 234,56 €" — fallback for browsers without Intl.
   var moneyFormatter = (typeof Intl !== 'undefined' && Intl.NumberFormat)
     ? new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : null;
@@ -42,7 +37,7 @@
     });
   }
 
-  // ---- Line management ---------------------------------------------------
+
 
   function createLineHTML(section, data) {
     lineCounter++;
@@ -57,9 +52,6 @@
       return '<option value="' + r.value + '"' + sel + '>' + r.label + '</option>';
     }).join('');
 
-    // Largeurs : description prioritaire (flex-1 + min plus généreux),
-    // qté/prix réduits parce que les valeurs y sont courtes (entiers,
-    // 2 décimales) et n'ont pas besoin d'autant d'espace.
     return '<div class="flex flex-wrap items-start gap-2 p-3 rounded-lg border border-soft" id="' + id + '" data-section="' + section + '">' +
       '<div class="flex-1 min-w-[260px]">' +
         '<label class="block text-xs text-mute mb-1">Description</label>' +
@@ -123,7 +115,7 @@
     return lines;
   }
 
-  // ---- Totals computation (pure, also used by the preview renderer) ------
+
 
   function computeTotals(lines) {
     var totalHT = 0;
@@ -168,14 +160,12 @@
     var lines = collectLines();
     var totals = computeTotals(lines);
 
-    // Per-line totals
     document.querySelectorAll('.lines-container > div').forEach(function (row) {
       var qty = parseFloat(row.querySelector('.line-qty').value) || 0;
       var price = parseFloat(row.querySelector('.line-price').value) || 0;
       row.querySelector('.line-total').textContent = fmt(qty * price);
     });
 
-    // Section subtotals (kept hidden by default but updated for completeness)
     document.querySelectorAll('.section-subtotal').forEach(function (el) {
       var s = el.getAttribute('data-section');
       var v = totals.sectionTotals[s] || 0;
@@ -183,7 +173,6 @@
       el.hidden = v === 0;
     });
 
-    // Sidebar totals
     setText('display-total-ht', fmt(totals.totalHT));
     setText('display-total-ttc', fmt(totals.totalTTC));
     setText('display-fee-ht', fmt(totals.feeHT));
@@ -191,11 +180,8 @@
     setText('display-fee-ttc', fmt(totals.feeTTC));
     setText('display-grand-total', fmt(totals.grandTotal));
 
-    // Per-rate TVA breakdown (Prestation traiteur). One row per
-    // bucket that has at least one line attached (`base > 0`),
-    // ordered ascending. The 0% bucket is included on purpose — it
-    // confirms to the caterer that lines flagged sans-TVA contribute
-    // 0 € de TVA, plutôt que de masquer la ligne et laisser un doute.
+    // 0% bucket included on purpose : confirme aux caterers que les
+    // lignes sans-TVA contribuent bien 0 € (au lieu d'être masquées).
     var breakdown = document.getElementById('display-tva-breakdown');
     if (breakdown) {
       var rows = Object.keys(totals.tvaTotals)
@@ -212,11 +198,9 @@
       }).join('');
     }
 
-    // Enable "Save & send" only when there's something worth sending.
     var sendBtn = document.getElementById('btn-send');
     if (sendBtn) sendBtn.disabled = lines.length === 0 || totals.totalHT <= 0;
 
-    // Sync the hidden field for the form submission.
     var detailsField = document.getElementById('details-field');
     if (detailsField) detailsField.value = JSON.stringify(lines);
   }
@@ -226,7 +210,7 @@
     if (el) el.textContent = value;
   }
 
-  // ---- Form submission ---------------------------------------------------
+
 
   function submitWithAction(action) {
     var actionField = document.getElementById('action-field');
@@ -234,7 +218,7 @@
     document.getElementById('quote-form').submit();
   }
 
-  // ---- Preview overlay ---------------------------------------------------
+
 
   var SECTION_LABELS = {
     principal: 'PRESTATIONS PRINCIPALES',
@@ -249,12 +233,10 @@
 
     var html = '';
 
-    // Title
     html += '<div class="text-right mb-6">';
     html += '<h3 class="font-display font-bold text-lg text-text">DEVIS N° ' + escapeHtml(cfg.dataset.quoteReference) + '</h3>';
     html += '</div>';
 
-    // Plateforme + Prestataire
     html += '<div class="grid grid-cols-2 gap-6 mb-6 text-xs">';
     html += '<div>';
     html += '<p class="uppercase font-bold text-mute mb-2">Plateforme</p>';
@@ -273,7 +255,6 @@
     html += '</div>';
     html += '</div>';
 
-    // Client
     html += '<div class="mb-6 text-xs">';
     html += '<p class="uppercase font-bold text-mute mb-2">Client</p>';
     html += '<p class="font-bold text-text">' + escapeHtml(cfg.dataset.clientName) + '</p>';
@@ -288,7 +269,6 @@
     }
     html += '</div>';
 
-    // Évènement
     html += '<div class="mb-6 p-4 rounded-lg" style="background-color:var(--c-cream);">';
     html += '<p class="uppercase font-bold text-mute mb-2 text-xs">Événement</p>';
     html += '<div class="grid grid-cols-2 gap-2 text-sm">';
@@ -299,7 +279,6 @@
     html += '</div>';
     html += '</div>';
 
-    // Lines table
     html += '<table class="w-full text-sm mb-6"><thead><tr style="background-color:var(--c-navy);color:#fff;">';
     html += '<th class="text-left px-3 py-2 font-bold uppercase text-xs">Désignation</th>';
     html += '<th class="text-right px-3 py-2 font-bold uppercase text-xs">Qté</th>';
@@ -331,7 +310,6 @@
 
     html += '</tbody></table>';
 
-    // Subtotal block (right-aligned)
     html += '<div class="mb-6 ml-auto" style="max-width:400px;">';
     html += '<dl class="space-y-1 text-sm">';
     html += '<div class="flex justify-between"><dt class="text-mute">Montant HT</dt><dd class="font-bold text-text">' + fmt(totals.totalHT) + '</dd></div>';
@@ -342,7 +320,6 @@
     html += '</dl>';
     html += '</div>';
 
-    // Platform fee
     html += '<div class="mb-6">';
     html += '<p class="uppercase font-bold text-mute mb-2 text-xs">Frais de mise en relation (5% ajoutés)</p>';
     html += '<dl class="space-y-1 text-sm ml-auto" style="max-width:400px;">';
@@ -352,7 +329,6 @@
     html += '</dl>';
     html += '</div>';
 
-    // Grand total banner
     html += '<div class="p-4 rounded-lg flex items-center justify-between" style="background-color:var(--c-cream);">';
     html += '<div>';
     html += '<p class="font-display font-bold text-lg text-text">Total à payer</p>';
@@ -364,7 +340,6 @@
     html += '<p class="font-display font-bold text-2xl text-text">' + fmt(totals.grandTotal) + '</p>';
     html += '</div>';
 
-    // Legal footer
     html += '<div class="mt-6 text-xs text-mute space-y-1">';
     html += '<p>Devis émis par la plateforme Les Traiteurs Engagés, agissant en qualité de mandataire du Traiteur ' + escapeHtml(cfg.dataset.catererName) + '.</p>';
     html += '<p>La prestation de restauration sera réalisée par le Traiteur ' + escapeHtml(cfg.dataset.catererName) + ', seul responsable de son exécution.</p>';
@@ -390,7 +365,7 @@
     document.body.style.overflow = '';
   }
 
-  // ---- Event wiring ------------------------------------------------------
+
 
   document.addEventListener('click', function (ev) {
     var addBtn = ev.target.closest('[data-action="add-line"]');
@@ -404,12 +379,7 @@
 
     var pdfBtn = ev.target.closest('[data-action="download-pdf"]');
     if (pdfBtn) {
-      // Save the quote as a draft and bounce to the server-rendered
-      // PDF download. The route handler (quote_create / quote_update)
-      // sees `action=draft_and_pdf`, persists the latest edits, then
-      // 302s to /caterer/.../quote/<id>/pdf which streams the PDF as
-      // an attachment. Works for both new (no q_id yet) and existing
-      // quotes — same form, same path.
+      // action=draft_and_pdf: persist edits then 302 to the PDF route.
       submitWithAction('draft_and_pdf');
       return;
     }
@@ -448,7 +418,6 @@
     }
     recalculate();
 
-    // Sidebar buttons
     var btnDraft = document.getElementById('btn-draft');
     if (btnDraft) btnDraft.addEventListener('click', function () { submitWithAction('draft'); });
 

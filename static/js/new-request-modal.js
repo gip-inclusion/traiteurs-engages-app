@@ -1,18 +1,3 @@
-// Toggle for the client-side "Nouvelle demande" dropdown.
-//
-// Triggered by any button with [data-action="open-new-request-menu"]
-// (the CTAs on the dashboard, the requests list header, and the empty
-// states). The dropdown is positioned with `position: fixed` below the
-// clicked trigger, right-aligned to its right edge by default and
-// clamped to the viewport so it never spills off-screen.
-//
-// Closes on:
-//   - click outside the dropdown
-//   - Escape key
-//   - window scroll / resize (cheap repositioning skipped for simplicity)
-//
-// External script because the project's CSP is `script-src 'self'`
-// — inline scripts are blocked.
 (function () {
   'use strict';
 
@@ -24,8 +9,7 @@
 
     function position(trigger) {
       var rect = trigger.getBoundingClientRect();
-      // Right-align dropdown to the trigger's right edge.
-      // Reveal first so offsetWidth is measurable.
+      // Reveal hidden first so offsetWidth is measurable.
       menu.style.visibility = 'hidden';
       menu.classList.remove('hidden');
       var menuWidth = menu.offsetWidth;
@@ -62,7 +46,6 @@
         }
         return;
       }
-      // Click anywhere else (including outside the dropdown) closes it.
       if (isOpen() && !ev.target.closest('#new-request-modal')) {
         close();
       }
@@ -72,8 +55,7 @@
       if (ev.key === 'Escape' && isOpen()) close();
     });
 
-    // Reposition would be nicer, but closing on scroll/resize is
-    // simpler and avoids the dropdown drifting away from its trigger.
+    // Close (rather than reposition) on scroll/resize.
     window.addEventListener('scroll', function () {
       if (isOpen()) close();
     }, true);
