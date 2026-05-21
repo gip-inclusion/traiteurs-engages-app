@@ -3,7 +3,7 @@ from flask import flash, g, redirect, render_template, request, url_for
 from blueprints.middleware import login_required, role_required
 from database import get_db
 from forms.client import CompanySettingsForm, UserProfileForm
-from models import Company, User
+from models import Company
 from services.account import apply_profile_form
 
 
@@ -19,8 +19,7 @@ def register(bp):
                 flash("Veuillez corriger les erreurs du formulaire.", "error")
                 return render_template("client/profile.html", user=user), 400
             db = get_db()
-            u = db.get(User, user.id)
-            err = apply_profile_form(db, u, form)
+            err = apply_profile_form(db, user, form)
             if err:
                 flash(err, "error")
                 return render_template("client/profile.html", user=user), 400
