@@ -33,14 +33,8 @@ from models import (
     UserRole,
 )
 
-# A non-active membership status should not authorize action. Only users
-# approved by a client_admin (or users whose role does not use the
-# membership flow) are loaded as the current user. Audit finding #4.
-# Pending users (signup-against-existing-SIRET) and rejected users are not
-# authenticated as far as the request handlers are concerned. The login
-# endpoint also rejects them upfront so the session cookie is never issued.
-# Defense in depth: even if a stale session sneaks through, /load_current_user
-# wipes g.current_user before any view runs.
+# Audit finding #4: defense in depth so a stale session for a pending or
+# rejected user never reaches a view, even if login somehow let it through.
 _BLOCKED_MEMBERSHIP_STATUSES = {MembershipStatus.pending, MembershipStatus.rejected}
 
 configure_logging()
@@ -48,30 +42,18 @@ configure_logging()
 
 CSP = (
     "default-src 'self'; "
-    # VULN-105: lucide + chart.js are now bundled in static/js/vendor/,
-    # so we drop https://unpkg.com and https://cdn.jsdelivr.net from
-    # script-src. Tightens the supply-chain surface to first-party only.
+    # VULN-105: lucide + chart.js bundled in static/js/vendor/, no CDN.
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
-    # `blob:` est requis pour afficher les previews de fichiers cote client
-    # (URL.createObjectURL utilise par caterer-profile.js). Les blob URLs
-    # sont generees par le navigateur lui-meme a partir de fichiers locaux,
-    # donc elles n'ouvrent aucune surface reseau ni cross-origin.
+    # `blob:` required by caterer-profile.js for URL.createObjectURL previews.
     "img-src 'self' data: blob:; "
-    # api-adresse.data.gouv.fr is the BAN (Base Adresse Nationale)
-    # public endpoint — CORS-enabled, no key required — we call it
-    # from the address autocomplete on /client/requests/new and /edit.
+    # api-adresse.data.gouv.fr = BAN public endpoint used by address autocomplete.
     "connect-src 'self' https://api-adresse.data.gouv.fr; "
     "object-src 'none'; "
     "frame-ancestors 'none'; "
     "base-uri 'self'; "
-    # Audit M-12 (2026-05-13): without `form-action 'self'`, an HTML
-    # injection that lands a `<form action="https://evil/">` in the
-    # rendered page would POST credentials / CSRF tokens off-origin
-    # before any other layer (CSP frame-ancestors, SameSite, etc.)
-    # could complain. The same-origin lock matches what every form
-    # in this codebase actually does.
+    # Audit M-12: prevents a stray HTML injection from posting credentials off-origin.
     "form-action 'self'"
 )
 
@@ -80,19 +62,11 @@ def create_app():
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
 
-    # Whitenoise serves /static/* at the WSGI layer, before Flask routing —
-    # avoids waking the full Flask stack (request middleware, blueprint
-    # dispatch, login_required, notification injection, etc.) for every
-    # CSS/JS/image. On Scalingo this is the only thing keeping static-asset
-    # traffic off the gunicorn worker pool (no Caddy in front of the dyno).
-    # On self-hosted (docker-compose.{staging,prod}.yml), Caddy intercepts
-    # /static/* first via handle_path, so Whitenoise sits dormant there.
-    #
-    # max_age=3600 (not `immutable`) because CSS/JS filenames in this project
-    # are NOT content-hashed; longer caching would strand stale assets after
-    # a deploy. Whitenoise still emits ETag so revalidation is a cheap 304.
-    # Uploads are not in static/ on Scalingo (they live on S3 with their own
-    # immutable Cache-Control set in services/uploads.py:_save_s3).
+    # Whitenoise short-circuits /static/* before Flask routing. On Scalingo it
+    # keeps static traffic off the gunicorn workers (no Caddy in front of the
+    # dyno); self-hosted deploys have Caddy serving /static/* upstream so this
+    # sits dormant. max_age=3600 (not `immutable`) because filenames aren't
+    # content-hashed — longer caching would strand stale assets after a deploy.
     app.wsgi_app = WhiteNoise(
         app.wsgi_app,
         root=os.path.join(os.path.dirname(__file__), "static"),
@@ -109,17 +83,13 @@ def create_app():
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=settings.secure_cookies,
         PERMANENT_SESSION_LIFETIME=timedelta(days=7),
-        WTF_CSRF_TIME_LIMIT=None,  # token lives for the session lifetime
-        # Cap request body size to defuse trivial DoS via huge uploads.
-        # 16 MB covers logos, profile pictures, attachment screenshots
-        # comfortably; bump if the product ever needs to accept invoice PDFs
-        # or video. Triggers a 413 error caught by the handler below. (P2 #2)
+        WTF_CSRF_TIME_LIMIT=None,
+        # P2 #2: cap body size to defuse trivial DoS via huge uploads. 16 MB
+        # covers logos/profile pictures/screenshots; bump if invoice PDFs ever
+        # land here.
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,
-        # Dev-only template auto-reload. On Docker Desktop Windows the bind
-        # mount drops mtime updates, so Jinja's default mtime-based cache
-        # serves stale templates after every edit. Setting this to True
-        # makes Jinja stat the file on every render — slower (~5%) but
-        # makes the dev workflow predictable. Off in prod.
+        # Docker Desktop Windows bind mounts drop mtime updates, so Jinja's
+        # mtime-based cache serves stale templates. Opt-in via env for dev only.
         TEMPLATES_AUTO_RELOAD=os.getenv("TEMPLATES_AUTO_RELOAD") == "1",
     )
 
@@ -140,18 +110,11 @@ def create_app():
 
     @app.template_filter("fr_amount")
     def _fr_amount(value, decimals: int = 0) -> str:
-        """Render a number with French typography — narrow no-break space
-        as thousands separator, comma for the decimal point. `12345.6`
-        becomes `12 346` at decimals=0, `12 345,60` at
-        decimals=2. Falsy input renders as `0` so a template never blows
-        up on a missing aggregate."""
         try:
             numeric = float(value or 0)
         except (TypeError, ValueError):
             numeric = 0.0
         formatted = f"{numeric:,.{decimals}f}"
-        # Python's `,` separator + `.` decimal → swap to FR conventions
-        # via a placeholder so the two operations don't collide.
         return formatted.replace(",", " ").replace(".", ",").replace(" ", " ")
 
     from blueprints.admin import admin_bp
@@ -170,16 +133,12 @@ def create_app():
     app.register_blueprint(legal_bp)
     app.register_blueprint(uploads_bp)
 
-    # Per-blueprint rate limits (on top of the global default).
-    # Write-heavy blueprints get tighter caps; API gets its own ceiling.
     limiter.limit("30 per minute", per_method=True, methods=["POST"])(client_bp)
     limiter.limit("30 per minute", per_method=True, methods=["POST"])(caterer_bp)
     limiter.limit("20 per minute", per_method=True, methods=["POST"])(admin_bp)
 
-    # Dev-only account switcher. Tied to the same env flag that seeds the
-    # demo data so production (where the flag is empty) never registers
-    # the route. See blueprints/devtools.py for the safety rationale.
-    # `os` is imported at module level above.
+    # Devtools blueprint is gated on the demo-seed flag so production (flag
+    # unset) never registers the route. See blueprints/devtools.py for rationale.
     demo_mode = os.getenv("ENABLE_DEMO_SEED") == "1"
     if demo_mode:
         from blueprints.devtools import devtools_bp, DEMO_ACCOUNTS
@@ -197,14 +156,6 @@ def create_app():
 
     @app.context_processor
     def _inject_notifications():
-        # Surface the recent UNREAD notifications + the role-aware URL
-        # resolver to base.html so the topbar bell can show a dropdown
-        # without an extra round-trip per page. Cap at 10 — once a
-        # notification is consulted (marked read), it leaves the
-        # dropdown but stays accessible via the dedicated /notifications
-        # history page. `notifications_unread_total` is the true count
-        # (not capped) so the modal header doesn't read "10 non lues"
-        # when there are actually 25.
         from models import Notification as _Notification
         from services.notifications import (
             get_unread_count,
@@ -227,8 +178,7 @@ def create_app():
             .order_by(_Notification.created_at.desc())
             .limit(10)
         ).all()
-        # Skip the extra COUNT when we're below the cap — the list
-        # length is exact in that case.
+        # Skip the extra COUNT when we're below the cap — the list length is exact.
         unread_total = (
             len(recent) if len(recent) < 10 else get_unread_count(db, g.current_user.id)
         )
@@ -238,11 +188,6 @@ def create_app():
             "notification_target_url": notification_target_url,
         }
 
-    # CLI for ops tasks: `flask admin create / reset-password / list / disable`.
-    # Avoids relying on ADMIN_INITIAL_PASSWORD env var for day-to-day admin
-    # lifecycle (P3.2).
-    # `uploads migrate-to-s3` is the one-shot migration script that lifts
-    # legacy /static/uploads/* references onto the S3 bucket.
     from cli import admin_cli, uploads_cli
 
     app.cli.add_command(admin_cli)
@@ -251,10 +196,8 @@ def create_app():
     @app.before_request
     def load_current_user():
         g.current_user = None
-        # `auth_bp` regroupe surtout des routes non authentifiees (login,
-        # signup, reset) — pas besoin d'aller chercher l'utilisateur en
-        # base. Exception : `auth.change_password`, route authentifiee
-        # qui a besoin de g.current_user.
+        # `auth_bp` regroupe surtout des routes anonymes ; seule
+        # `auth.change_password` a besoin de g.current_user.
         if request.endpoint and (
             request.endpoint in ("static", "health", "legal.security_txt")
             or (
@@ -269,27 +212,16 @@ def create_app():
             user = db.execute(
                 select(User).where(User.id == user_id)
             ).scalar_one_or_none()
-            # Refuse to authenticate users whose membership isn't active:
-            # signup-against-existing-SIRET creates pending users with a live
-            # session, and nothing else gates on membership_status before
-            # role-protected routes are hit.
+            # Refuse stale sessions for pending/rejected members (audit #4).
             if user and user.membership_status in _BLOCKED_MEMBERSHIP_STATUSES:
                 user = None
             if user and not user.is_active:
                 session.clear()
                 user = None
             if user:
-                # Session invalidation on password reset: the snapshot
-                # stored at login must still match the live column.
-                # Mismatch = the user reset their password from another
-                # device/IP, so this session is stale.
-                #
-                # We pull the column with a fresh scalar query rather
-                # than reading user.password_changed_at directly: a
-                # parallel commit (other tab, other process) updates
-                # the row, but a session whose identity map already
-                # holds the User instance may serve a stale attribute.
-                # The dedicated column query bypasses the identity map.
+                # Invalidate sessions whose password_changed_at snapshot is
+                # stale (reset happened elsewhere). Scalar query bypasses
+                # the identity map so a parallel commit is visible here.
                 stamped = session.get("pwd_changed_at")
                 live_at = db.scalar(
                     select(User.password_changed_at).where(User.id == user_id)
@@ -302,26 +234,10 @@ def create_app():
 
     @app.after_request
     def mark_notifications_read_on_entity_view(response):
-        """Clear bell-dropdown notifications whose related entity the
-        user has just landed on — irrespective of how they got there
-        (dashboard tile, list page, direct link, dropdown click).
-
-        Runs AFTER the route handler so a 403/404 on the underlying
-        entity (e.g. wrong company, scoping-helper abort) doesn't get
-        a chance to flip the notification's `is_read`. The handler's
-        verdict, encoded in `response.status_code`, is the right
-        oracle: only sweep on a 2xx render where the user actually
-        saw the entity.
-
-        GET-only: POSTs to the same URL are actions, not "viewing".
-
-        Commits on its own because the typical detail handler is a
-        read and doesn't commit; without an explicit commit here the
-        notification update would be discarded at request teardown.
-        Failures are swallowed so a DB hiccup on marking-read can't
-        500 the user's main request — they'll just see the notif
-        again on the next page load.
-        """
+        # Runs after the route handler so a 403/404 doesn't flip is_read; only
+        # 2xx GETs count as the user actually seeing the entity. Commits on its
+        # own because detail handlers are reads, and swallows DB failures so a
+        # marking-read hiccup can't 500 the main request.
         if request.method != "GET":
             return response
         if not (200 <= response.status_code < 300):
@@ -355,9 +271,8 @@ def create_app():
                     touched |= bool(
                         mark_read_for_entity(db, user_id, "quote_request", rid)
                     )
-                    # Quote-related notifs bounce to the parent request URL
-                    # (see services.notifications.notification_target_url),
-                    # so visiting the request also clears those.
+                    # Quote notifs bounce to the parent request URL (see
+                    # services.notifications.notification_target_url).
                     from models import Quote
 
                     quote_ids = list(
@@ -398,19 +313,15 @@ def create_app():
                             mark_read_for_entities(db, user_id, "message", msg_ids)
                         )
             elif endpoint == "client.dashboard":
-                # `company`-type notifs (membership approval) resolve to
-                # the dashboard. Scope by the user's own company_id so
-                # the sweep stays narrow.
+                # Membership-approval notifs (entity_type="company") land on
+                # the dashboard; scope to the user's own company.
                 if user.company_id:
                     touched |= bool(
                         mark_read_for_entity(db, user_id, "company", user.company_id)
                     )
             elif endpoint == "client.team":
-                # Pending-membership notifs (related_entity_type="user")
-                # all surface on the team page, regardless of which user
-                # is pending. URL has no entity_id, so sweep by type.
-                # Only emitted to client_admins — gate explicitly to keep
-                # the sweep scoped to roles that actually receive them.
+                # Pending-membership notifs surface here for client_admins only;
+                # URL has no entity_id so sweep by type.
                 if user.role == UserRole.client_admin:
                     touched |= bool(mark_read_by_type(db, user_id, "user"))
 
@@ -433,26 +344,15 @@ def create_app():
             "geolocation=(), microphone=(), camera=(), payment=()"
         )
         response.headers["Content-Security-Policy"] = CSP
-        # Audit H-13 (2026-05-13): HSTS used to be gated on
-        # `settings.secure_cookies`. That coupled two independent
-        # protections — a self-host operator who forgot
-        # SECURE_COOKIES=true lost both the Secure cookie flag AND HSTS,
-        # so a single MITM downgrade went unchallenged. Decouple: emit
-        # HSTS whenever the connection is actually TLS (ProxyFix sets
-        # `request.is_secure` from `X-Forwarded-Proto: https`), with
-        # `secure_cookies` as the explicit operator override for
-        # deployments where TLS terminates on a path Flask can't see.
+        # Audit H-13: emit HSTS whenever TLS is actually present, not just
+        # when secure_cookies is set, so a misconfigured self-host doesn't
+        # lose HSTS along with the Secure cookie flag.
         if request.is_secure or settings.secure_cookies:
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
             )
-        # Authenticated responses carry per-user data (notification
-        # count in the bell badge, sidebar links, role-gated nav, user
-        # name in the topbar). Force shared caches — CDN, corporate
-        # proxy — to skip them so one user can't be served another's
-        # rendering. `setdefault` so views that need a specific
-        # Cache-Control (e.g., file downloads with their own policy)
-        # keep theirs.
+        # Authenticated responses carry per-user data; force shared caches to
+        # skip them. setdefault so views with their own Cache-Control win.
         if getattr(g, "current_user", None) is not None:
             response.headers.setdefault("Cache-Control", "private, no-store")
         return response
@@ -463,9 +363,8 @@ def create_app():
 
     @app.errorhandler(500)
     def _server_error(_e):
-        # A DB error leaves the SQLAlchemy session in PendingRollbackError —
-        # any subsequent ORM access (e.g. base.html dereferencing g.current_user)
-        # raises again. Reset the session so the error template renders cleanly.
+        # Reset the session so a PendingRollbackError doesn't crash the
+        # error template when base.html dereferences g.current_user.
         try:
             ScopedSession.rollback()
         except SQLAlchemyError:
@@ -474,20 +373,14 @@ def create_app():
 
     @app.errorhandler(ValueError)
     def _bad_value(e):
-        # Defence in depth (audit 1 VULN-47, audit 2 #11): even though every
-        # endpoint routes user input through WTForms or guarded try/except, a
-        # future regression that lets ValueError escape would otherwise return
-        # 500 with a stack trace in dev mode. Catch it here and return a clean
-        # 400, in JSON for /api routes so the frontend can display it.
+        # Defence in depth (VULN-47, audit #11): catch any escapee from
+        # WTForms/try-except boundaries and return 400 instead of 500.
         if request.path.startswith("/api/"):
             return jsonify({"error": "Donnee invalide."}), 400
         return render_template("errors/400.html"), 400
 
     @app.errorhandler(429)
     def _rate_limited(_e):
-        # Flask-Limiter's default 429 page is bare text on a white background.
-        # Render the styled template so the user gets the same shell as the
-        # rest of the site and a clear "wait a bit" message.
         if request.path.startswith("/api/"):
             return jsonify(
                 {"error": "Trop de tentatives. Patientez quelques minutes."}
@@ -496,10 +389,8 @@ def create_app():
 
     @app.errorhandler(413)
     def _too_large(_e):
-        # Triggered when the request body exceeds MAX_CONTENT_LENGTH.
         if request.path.startswith("/api/"):
             return jsonify({"error": "Requete trop volumineuse (max 16 Mo)."}), 413
-        # Fall back to the generic 500 template until a dedicated 413 page exists.
         return render_template("errors/500.html"), 413
 
     @app.route("/health")
@@ -523,18 +414,13 @@ def create_app():
             }
             endpoint = role_dashboards.get(user.role, "client.dashboard")
             return redirect(url_for(endpoint))
-        # Hero key figures are static marketing numbers (see landing.html),
-        # so the landing route does no DB work for anonymous visitors.
         return render_template("landing.html")
 
     return app
 
 
 if __name__ == "__main__":
-    # Debug only on opt-in via env. The Werkzeug debugger executes arbitrary
-    # code through its console — must never be on in production. Audit VULN-17
-    # / Bandit B201. Production runs through gunicorn (entrypoint.sh) which
-    # ignores this block entirely, so the practical risk is a `python app.py`
-    # in dev with FLASK_DEBUG accidentally set in the environment.
+    # VULN-17 / Bandit B201: debug only via explicit env opt-in; the Werkzeug
+    # debugger exposes a remote code execution console.
     debug_flag = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
     create_app().run(debug=debug_flag, port=8000)

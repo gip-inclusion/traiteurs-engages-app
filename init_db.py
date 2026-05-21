@@ -1,9 +1,5 @@
-"""Bootstrap the first super-admin user.
-
-Schema management is owned by Alembic — run `alembic upgrade head` for that.
-This script is a no-op when ADMIN_INITIAL_PASSWORD is unset.
-"""
-
+# Schema migrations are owned by Alembic; this only bootstraps the first
+# super-admin and is a no-op when ADMIN_INITIAL_PASSWORD is unset.
 import datetime
 
 import bcrypt
@@ -37,9 +33,8 @@ def create_default_admin():
             last_name="Plateforme",
             role=UserRole.super_admin,
             is_active=True,
-            # Stamp `password_changed_at` so the bootstrap admin's first
-            # password rotation actually invalidates active sessions —
-            # see cli.py:create_admin for the same rationale (audit H-5).
+            # Audit H-5: stamp so the first password rotation invalidates
+            # active sessions (see cli.py:create_admin).
             password_changed_at=datetime.datetime.utcnow(),
         )
         session.add(admin)
