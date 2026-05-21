@@ -18,6 +18,7 @@ from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import select
 
 from models import User
+from services.audit import log_admin_action
 
 
 def apply_profile_form(db, user, form) -> str | None:
@@ -65,5 +66,18 @@ def apply_profile_form(db, user, form) -> str | None:
     if collision:
         return "Cette adresse e-mail est déjà utilisée par un autre compte."
 
+    # Trace auto-mutation sensible : changement d'adresse e-mail.
+    # On enregistre l'ancienne et la nouvelle adresse dans `extra` pour
+    # qu'un audit puisse reconstituer l'historique sans relire toutes
+    # les colonnes. L'IP/UA sont capturées automatiquement.
+    old_email = user.email
     user.email = new_email
+    log_admin_action(
+        db,
+        user,
+        "account.email_change",
+        target_type="user",
+        target_id=user.id,
+        extra={"old_email": old_email, "new_email": new_email},
+    )
     return None

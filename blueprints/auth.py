@@ -29,6 +29,7 @@ from models import (
     User,
     UserRole,
 )
+from services.audit import log_admin_action
 from services.notifications import (
     company_admin_user_ids,
     notify_users,
@@ -700,6 +701,16 @@ def change_password():
     # ré-écrit le nouveau snapshot dans la session courante pour qu'elle
     # ne se déconnecte pas elle-même au prochain `load_current_user`.
     user.password_changed_at = datetime.datetime.utcnow()
+    # Trace auto-mutation sensible : self-rotate du mot de passe.
+    # L'auteur et la cible sont le même user (rotation par soi-même) ;
+    # l'IP/UA sont capturées automatiquement par log_admin_action.
+    log_admin_action(
+        db,
+        user,
+        "account.password_change",
+        target_type="user",
+        target_id=user.id,
+    )
     db.commit()
     _stamp_session(user)
     flash("Mot de passe mis à jour.", "success")
