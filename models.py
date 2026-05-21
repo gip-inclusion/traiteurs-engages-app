@@ -329,6 +329,17 @@ class User(Base):
         Uuid, ForeignKey("terms_versions.id")
     )
     terms_accepted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
+    # MFA (TOTP). `mfa_secret` is the Fernet-encrypted base32 secret —
+    # plain text never touches the DB. `mfa_recovery_codes` is a JSON
+    # list of `{hash, used_at}` objects (one per backup code,
+    # bcrypt-hashed, single-use). Enrollment is forced for super_admins
+    # at the request boundary (cf. app.py before_request hook).
+    mfa_secret: Mapped[str | None] = mapped_column(String(500))
+    mfa_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    mfa_recovery_codes: Mapped[list | None] = mapped_column(JSON)
+    mfa_enrolled_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

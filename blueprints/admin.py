@@ -11,6 +11,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    session,
     url_for,
 )
 from sqlalchemy import case, func, select
@@ -35,7 +36,10 @@ from models import (
     QuoteRequestStatus,
     QuoteStatus,
 )
+import bcrypt
+
 from services import messagerie as messagerie_service
+from services import mfa as mfa_service
 from services import workflow
 from services.audit import log_admin_action
 from services.notifications import (
@@ -883,3 +887,194 @@ def profile():
 
 
 _register_notifications(admin_bp, roles=("super_admin",))
+
+
+# ---------------------------------------------------------------------------
+# MFA TOTP — enrollment and disable for super_admin
+#
+# Enrollment is *forced* by the `force_mfa_enrollment` hook in app.py:
+# a super_admin without `mfa_enabled=True` is redirected here on every
+# request (except a small allow-list of safe endpoints). This implements
+# the RGS** requirement RGS-AUTH.2 (multi-factor for privileged access).
+#
+# The enrollment dance:
+#   1. GET /security/mfa/setup     → mint a fresh secret (cache in
+#                                     session), render QR + verify form
+#   2. POST /security/mfa/setup    → verify the code, enable MFA,
+#                                     generate 10 recovery codes
+#   3. GET /security/mfa/recovery  → show codes ONCE (session-stashed,
+#                                     cleared on render)
+#
+# Disable: requires password + current TOTP (no recovery code path, on
+# purpose — a single working second factor must remain available).
+# ---------------------------------------------------------------------------
+
+_MFA_ISSUER = "Les Traiteurs Engages"
+
+
+@admin_bp.route("/security/mfa/setup", methods=["GET", "POST"])
+@login_required
+@role_required("super_admin")
+def mfa_setup():
+    user = g.current_user
+    db = get_db()
+
+    if user.mfa_enabled:
+        # Already enrolled — show the status page and refuse re-enrollment
+        # outright. Gating only the GET path used to let an attacker with a
+        # stolen session POST an empty code, trigger a fresh-secret render
+        # of the QR, scan it, and then POST a valid code to overwrite the
+        # legitimate user's mfa_secret + recovery codes — full lockout
+        # without ever knowing the password. The only way to re-enroll is
+        # to disable first, which requires password + current TOTP.
+        # Defensive: drop any stale enrollment secret to avoid carrying it
+        # across the disable flow.
+        session.pop("mfa_setup_secret", None)
+        return render_template(
+            "admin/mfa_status.html",
+            user=user,
+            unused_codes=mfa_service.unused_recovery_code_count(user),
+        )
+
+    # The plaintext secret lives in the session ONLY between the GET
+    # (when we display the QR) and the POST (when we verify the code).
+    # If the user navigates away mid-enrollment, the secret stays in
+    # the session until they explicitly cancel or re-enroll. That's
+    # acceptable because the session is signed + Secure-cookie'd.
+    secret = session.get("mfa_setup_secret")
+    if not secret:
+        secret = mfa_service.generate_secret()
+        session["mfa_setup_secret"] = secret
+
+    if request.method == "POST":
+        code = (request.form.get("code") or "").strip()
+        if not mfa_service.verify_totp_code(secret, code):
+            flash("Code incorrect — vérifiez l'heure de votre appareil.", "error")
+            return _render_mfa_setup(user, secret)
+
+        plain_codes = mfa_service.generate_recovery_codes()
+        user.mfa_secret = mfa_service.encrypt_secret(secret)
+        user.mfa_recovery_codes = mfa_service.hash_recovery_codes(plain_codes)
+        user.mfa_enabled = True
+        user.mfa_enrolled_at = datetime.datetime.utcnow()
+        log_admin_action(
+            db,
+            actor=user,
+            action="mfa.enable",
+            target_type="user",
+            target_id=user.id,
+        )
+        db.commit()
+        session.pop("mfa_setup_secret", None)
+        # Stash the plaintext codes in the session for ONE rendering on
+        # the next page — they're displayed once and we never see them
+        # again (only bcrypt hashes are persisted).
+        session["mfa_show_recovery_codes"] = plain_codes
+        flash(
+            "Authentification à deux facteurs activée. "
+            "Conservez vos codes de récupération.",
+            "success",
+        )
+        return redirect(url_for("admin.mfa_recovery_codes"))
+
+    return _render_mfa_setup(user, secret)
+
+
+def _render_mfa_setup(user, secret: str):
+    """Render the setup page. QR code is built server-side as a PNG
+    data URL — keeps things first-party (no external QR service) and
+    leverages the existing `img-src 'self' data:` CSP allowance."""
+    uri = mfa_service.provisioning_uri(
+        secret, account_name=user.email, issuer=_MFA_ISSUER
+    )
+    import io as _io  # local import to avoid a top-of-file dependency for non-MFA routes
+
+    import qrcode
+
+    img = qrcode.make(uri)
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    import base64 as _b64
+
+    qr_data_url = "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode(
+        "ascii"
+    )
+    return render_template(
+        "admin/mfa_setup.html",
+        secret=secret,
+        qr_data_url=qr_data_url,
+    )
+
+
+@admin_bp.route("/security/mfa/recovery-codes", methods=["GET"])
+@login_required
+@role_required("super_admin")
+def mfa_recovery_codes():
+    """One-shot display of the recovery codes minted at enrollment.
+    The plaintext codes live in the session only — reloading after a
+    full page render shows the "already collected" version."""
+    plain_codes = session.pop("mfa_show_recovery_codes", None)
+    return render_template(
+        "admin/mfa_recovery_codes.html",
+        codes=plain_codes,
+        unused_count=mfa_service.unused_recovery_code_count(g.current_user),
+    )
+
+
+@admin_bp.route("/security/mfa/disable", methods=["POST"])
+@login_required
+@role_required("super_admin")
+def mfa_disable():
+    """Disable MFA. Requires password + current TOTP code so a stolen
+    session alone cannot weaken the user's posture. Recovery codes are
+    explicitly NOT accepted here — keeping at least one working second
+    factor is the whole point of recovery codes.
+    """
+    user = g.current_user
+    db = get_db()
+    password = request.form.get("password") or ""
+    code = (request.form.get("code") or "").strip()
+    password_ok = bcrypt.checkpw(password.encode(), user.password_hash.encode())
+    code_ok = mfa_service.verify_user_totp(user, code)
+    if not (password_ok and code_ok):
+        flash("Mot de passe ou code incorrect.", "error")
+        return redirect(url_for("admin.mfa_setup"))
+    mfa_service.reset_mfa(user)
+    log_admin_action(
+        db,
+        actor=user,
+        action="mfa.disable",
+        target_type="user",
+        target_id=user.id,
+    )
+    db.commit()
+    flash("Authentification à deux facteurs désactivée.", "info")
+    return redirect(url_for("admin.dashboard"))
+
+
+@admin_bp.route("/security/mfa/regenerate-recovery-codes", methods=["POST"])
+@login_required
+@role_required("super_admin")
+def mfa_regenerate_recovery_codes():
+    """Mint a fresh set of recovery codes, replacing the existing ones.
+    Requires a current TOTP code to prove the second factor is still in
+    the user's hands (vs an attacker on a stolen session)."""
+    user = g.current_user
+    db = get_db()
+    code = (request.form.get("code") or "").strip()
+    if not mfa_service.verify_user_totp(user, code):
+        flash("Code TOTP incorrect.", "error")
+        return redirect(url_for("admin.mfa_setup"))
+    plain_codes = mfa_service.generate_recovery_codes()
+    user.mfa_recovery_codes = mfa_service.hash_recovery_codes(plain_codes)
+    log_admin_action(
+        db,
+        actor=user,
+        action="mfa.recovery_codes_regenerated",
+        target_type="user",
+        target_id=user.id,
+    )
+    db.commit()
+    session["mfa_show_recovery_codes"] = plain_codes
+    flash("Nouveaux codes de récupération générés.", "success")
+    return redirect(url_for("admin.mfa_recovery_codes"))
