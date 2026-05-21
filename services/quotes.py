@@ -7,25 +7,18 @@ from models import Quote, QuoteLine
 
 CENT = Decimal("0.01")
 
-# Legal FR VAT rates. Anything else is either a typo or an attempt to
-# corrupt the ledger. Audit finding #10 (2026-04-24).
+# Audit #10: legal FR VAT rates — anything else is a typo or ledger tampering.
 LEGAL_TVA_RATES: frozenset[Decimal] = frozenset(
     {Decimal("0"), Decimal("2.1"), Decimal("5.5"), Decimal("10"), Decimal("20")}
 )
-# Plausible caps — enough for the largest real caterer quotes, small
-# enough to catch malicious input before it reaches Stripe.
 MAX_QUANTITY = Decimal("10000")
 MAX_UNIT_PRICE_HT = Decimal("100000")
 MAX_LINE_TOTAL_HT = Decimal("10000000")
-# Bound the per-line description so the PDF renderer can't be fed a
-# multi-MB string crafted to slow layout. Real menu items run a few
-# dozen chars; 1000 leaves headroom for verbose descriptions while
-# keeping the renderer's worst case tractable.
+# Cap so the PDF renderer can't be fed a multi-MB description.
 MAX_DESCRIPTION_LEN = 1000
 
 
 def _parse_finite_decimal(raw, field: str) -> Decimal:
-    """Convert raw input to a finite Decimal or raise ValueError."""
     try:
         value = Decimal(str(raw))
     except (InvalidOperation, TypeError) as exc:
@@ -36,12 +29,7 @@ def _parse_finite_decimal(raw, field: str) -> Decimal:
 
 
 def lines_from_dicts(line_dicts: list[dict]) -> list[QuoteLine]:
-    """Parse + validate quote line dicts into QuoteLine rows.
-
-    Raises ValueError on any out-of-range or non-numeric input. Callers
-    in `blueprints/caterer.py` catch this and surface a form error rather
-    than silently writing bad data into the DB or the Stripe invoice.
-    """
+    # Callers catch ValueError and surface a form error.
     result: list[QuoteLine] = []
     for i, d in enumerate(line_dicts):
         quantity = _parse_finite_decimal(d.get("quantity", 0), f"line {i} quantity")
@@ -90,7 +78,7 @@ def line_to_dict(line: QuoteLine) -> dict:
 
 
 def generate_quote_reference(session, caterer):
-    """Generate DEVIS-{invoice_prefix}-YYYY-NNN sequential per caterer per year."""
+    # DEVIS-{prefix}-YYYY-NNN, sequential per caterer per year.
     year = datetime.date.today().year
     count = session.scalar(
         select(func.count(Quote.id))
@@ -101,17 +89,11 @@ def generate_quote_reference(session, caterer):
 
 
 def derive_invoice_reference(quote_reference):
-    """Convert DEVIS-XXX to FAC-XXX."""
     return quote_reference.replace("DEVIS-", "FAC-", 1)
 
 
 def build_pdf_preview(quote, qr, caterer) -> dict:
-    """Build the `pdf_preview` dict consumed by `_pdf_preview.html`.
-
-    Same shape feeds the in-app modal (caterer request detail) and the
-    downloadable PDF (services/quote_pdf.render_quote_pdf), so both
-    surfaces stay visually aligned.
-    """
+    # Shared by the in-app modal and the PDF download so they stay aligned.
     line_dicts = [ln.as_dict() for ln in quote.lines]
     totals = calculate_quote_totals(
         line_dicts,
@@ -131,17 +113,8 @@ DEFAULT_COMMISSION_RATE = Decimal("0.05")
 
 
 def calculate_quote_totals(details, guest_count, commission_rate=None):
-    """Compute all totals from line items as Decimals.
-
-    Callers write the relevant fields onto Quote columns
-    (`total_amount_ht`, `amount_per_person`).
-    Templates that need richer breakdowns (per-section, per-TVA-rate) call
-    this helper at render time — there is no persisted cache.
-
-    `commission_rate` (audit 1 VULN-44): pass `caterer.commission_rate` so
-    per-caterer overrides actually take effect. Falls back to 5% for tests
-    and any caller that does not have a Caterer in scope.
-    """
+    # VULN-44: pass caterer.commission_rate so per-caterer overrides take
+    # effect; 5% fallback covers tests and Caterer-less callers.
     if commission_rate is None:
         commission_rate = DEFAULT_COMMISSION_RATE
     else:
@@ -175,11 +148,8 @@ def calculate_quote_totals(details, guest_count, commission_rate=None):
 
     total_ttc = total_ht + total_tva
 
-    # Platform fee: commission_rate of total_ht (default 5%, per-caterer override
-    # via Caterer.commission_rate). The platform isn't a VAT collector for now,
-    # so the fee carries no TVA — keep the *_tva / *_ttc keys in the return
-    # shape so downstream callers (Stripe service, PDF preview, editor JS)
-    # don't break, but the values are 0 / equal to HT.
+    # Platform isn't a VAT collector yet — _tva keys stay in the return
+    # shape for downstream compatibility but are zero.
     platform_fee_ht = total_ht * commission_rate
     platform_fee_tva = Decimal("0")
     platform_fee_ttc = platform_fee_ht + platform_fee_tva

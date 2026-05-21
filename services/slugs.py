@@ -7,7 +7,6 @@ from models import Caterer
 
 
 def generate_invoice_prefix(session):
-    """Generate a unique invoice prefix for a caterer."""
     for length in (5, 8, 10):
         slug = "".join(random.choices(string.ascii_uppercase, k=length))
         existing = session.execute(

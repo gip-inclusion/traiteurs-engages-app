@@ -2,7 +2,6 @@ import httpx
 
 
 def geocode_address(address, city=None, zip_code=None):
-    """Return (latitude, longitude) from Nominatim, or None on failure."""
     query = address
     if city:
         query += f", {city}"

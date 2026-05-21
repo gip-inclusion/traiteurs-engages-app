@@ -1,12 +1,3 @@
-"""Notification creation + recipient lookup helpers.
-
-Pattern: every workflow event that's worth telling a user about goes
-through `notify(...)` (single recipient) or `notify_users(...)` (a list,
-typically resolved via the helpers below). Notifications are flushed in
-the same DB session as the business change so a rollback on the action
-also drops the notif — no orphan rows on failure.
-"""
-
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -34,19 +25,12 @@ def create_notification(
     return notification
 
 
-# `notify` is the canonical short name used throughout the codebase for
-# raising a notification at an event hook. It's a thin alias of
-# `create_notification` — kept for callsite readability.
 notify = create_notification
 
 
 def notify_users(session: Session, user_ids, **kwargs):
-    """Send the same notification to a list of users.
-
-    `user_ids` may contain duplicates or None — both are filtered out so
-    callers can pass the result of a recipient-resolver helper directly.
-    Returns the list of created Notification rows.
-    """
+    # Tolerates duplicates and None in user_ids so callers can pass the
+    # raw result of a recipient-resolver helper.
     seen = set()
     out = []
     for uid in user_ids:
@@ -57,15 +41,7 @@ def notify_users(session: Session, user_ids, **kwargs):
     return out
 
 
-# ---------------------------------------------------------------------------
-# Recipient resolvers — return user_ids to feed into notify_users().
-# ---------------------------------------------------------------------------
-
-
 def company_admin_user_ids(session: Session, company_id):
-    """Active client_admin users of a given company. Used when an event
-    targets « les administrateurs de la structure » (e.g. new pending
-    member, invitation accepted)."""
     if company_id is None:
         return []
     return list(
@@ -81,9 +57,6 @@ def company_admin_user_ids(session: Session, company_id):
 
 
 def caterer_user_ids(session: Session, caterer_id):
-    """All users tied to a caterer (typically just one for now). Used
-    when an event targets « le traiteur » (e.g. quote accepted, payment
-    received)."""
     if caterer_id is None:
         return []
     return list(
@@ -97,16 +70,12 @@ def caterer_user_ids(session: Session, caterer_id):
 
 
 def caterer_user_ids_for(session: Session, caterer):
-    """Convenience overload when the caller already has the Caterer
-    object in hand — saves a query."""
     if caterer is None:
         return []
     return caterer_user_ids(session, caterer.id)
 
 
 def super_admin_user_ids(session: Session):
-    """All super_admin users. Used to alert the qualification queue
-    when a new demand arrives, a new caterer signs up, etc."""
     return list(
         session.scalars(
             select(User.id).where(
@@ -117,22 +86,13 @@ def super_admin_user_ids(session: Session):
     )
 
 
-# `Caterer` is imported above only for the type-hinted helper signature
-# above (`caterer_user_ids_for`) staying readable; reference it once so
-# linters don't flag the import as unused.
+# Anchor the Caterer import (referenced only in caterer_user_ids_for's
+# docstring previously) for the linter.
 _ = Caterer
 
 
 def notification_target_url(note, role):
-    """Resolve the in-app destination for a notification, or None if
-    there's nothing to navigate to. The destination depends on both the
-    related entity AND the user role (e.g. a `quote_request` notif
-    points at /client/requests/<id> for a client_user but at
-    /admin/qualification/<id> for a super_admin).
-
-    Imports happen inside the function so this module stays usable
-    from contexts without an active Flask app (CLI, tests).
-    """
+    # Lazy url_for import so this module stays usable outside Flask.
     from flask import url_for
 
     et = note.related_entity_type
@@ -159,8 +119,7 @@ def notification_target_url(note, role):
         return None
 
     if et == "quote":
-        # Quote IDs aren't directly addressable client-side — bounce to
-        # the parent request, which surfaces every quote in its sidebar.
+        # No client-side quote URL; bounce to the parent request page.
         from database import get_db
         from models import Quote
 
@@ -174,13 +133,7 @@ def notification_target_url(note, role):
         return None
 
     if et == "user" and role == "client_admin":
-        # Pending member to approve — the team page shows the queue.
         return url_for("client.team")
-
-    # No `et == "user"` route for super_admin: there is no /admin/users
-    # page in V1, and no current code path emits a "user" notification
-    # to a super_admin. Falls through to None → the visit endpoint
-    # bounces to /admin/notifications.
 
     if et == "caterer" and role == "super_admin":
         return url_for("admin.caterer_detail", caterer_id=eid)
@@ -200,8 +153,7 @@ def notification_target_url(note, role):
         if role == "caterer":
             return url_for("caterer.message_thread", thread_id=msg.thread_id)
         if role == "super_admin":
-            # Admin messages page doesn't have a thread route yet — falls
-            # back to the inbox.
+            # No admin thread route yet — fall back to the inbox.
             return url_for("admin.messages")
 
     return None
@@ -224,15 +176,8 @@ def mark_as_read(session: Session, notification_id):
 
 
 def mark_read_for_entity(session: Session, user_id, entity_type, entity_id):
-    """Bulk-mark every unread notification for `user_id` whose
-    related_entity matches `(entity_type, entity_id)` as read.
-
-    Called from the `before_request` hook in app.py whenever a user
-    lands on an entity-detail page — the goal is to clear the bell
-    dropdown of items the user has already consulted via any path
-    (dashboard tile, list page, direct link, …), not just via the
-    dropdown itself. Returns the number of rows updated.
-    """
+    # Called from app.py's after_request so the bell-dropdown clears
+    # entries the user has already opened by any path.
     if not user_id or not entity_type or not entity_id:
         return 0
     result = session.execute(
@@ -249,10 +194,7 @@ def mark_read_for_entity(session: Session, user_id, entity_type, entity_id):
 
 
 def mark_read_by_type(session: Session, user_id, entity_type):
-    """Mark every unread notification for `user_id` of a given
-    `entity_type` as read, regardless of entity_id. Used for the
-    "list page" cases where the URL doesn't carry a specific id —
-    e.g. /client/team aggregates all pending-membership notifs."""
+    # Used by list pages whose URL has no entity_id (e.g. /client/team).
     if not user_id or not entity_type:
         return 0
     result = session.execute(
@@ -268,10 +210,6 @@ def mark_read_by_type(session: Session, user_id, entity_type):
 
 
 def mark_read_for_entities(session: Session, user_id, entity_type, entity_ids):
-    """Bulk variant of `mark_read_for_entity` for a list of ids — one
-    UPDATE instead of N. Used when a single page surfaces multiple
-    related entities (e.g. all quotes attached to a request, all
-    messages in a thread)."""
     if not user_id or not entity_type or not entity_ids:
         return 0
     result = session.execute(

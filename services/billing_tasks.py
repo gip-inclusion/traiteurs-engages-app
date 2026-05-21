@@ -1,15 +1,5 @@
-"""Background tasks for Stripe billing (P3.4).
-
-Importing this module configures the dramatiq broker. Two contexts:
-
-1. Web app (gunicorn): just importing initializes the broker so
-   `send_invoice_for_order.send(...)` enqueues to Redis.
-2. Worker (`dramatiq services.billing_tasks ...`): the entrypoint
-   discovers actors here and starts consuming the queue.
-
-REDIS_URL must be set in both contexts. In tests we stub the broker.
-"""
-
+# P3.4: importing configures the dramatiq broker — both gunicorn (to
+# enqueue) and `dramatiq services.billing_tasks` (to consume) need it.
 from __future__ import annotations
 
 import logging
@@ -26,11 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def _make_broker():
-    """Real Redis broker in normal runs, in-memory stub during tests.
-
-    Tests set DRAMATIQ_TESTING=1 in conftest so they don't need a Redis
-    container; jobs are then dispatched synchronously via stub_broker.join().
-    """
+    # Tests set DRAMATIQ_TESTING=1 (conftest) and run jobs synchronously
+    # via stub_broker.join().
     if os.getenv("DRAMATIQ_TESTING") == "1":
         return StubBroker()
     redis_url = os.getenv("REDIS_URL")
@@ -50,26 +37,16 @@ dramatiq.set_broker(broker)
 
 @dramatiq.actor(
     max_retries=5,
-    # Exponential backoff: 30s, 1min, 2min, 4min, 8min, then dead-letter.
-    # Stripe outages rarely last more than a few minutes; longer gaps leave
-    # the order in `invoicing` state for the retry CLI to handle.
+    # 30s, 1min, 2min, 4min, 8min, then dead-letter. Beyond that the
+    # order stays in `invoicing` for the retry CLI.
     min_backoff=30_000,
     max_backoff=8 * 60_000,
-    # Re-raise on any exception so dramatiq's retry policy kicks in.
     throws=(),
 )
 def send_invoice_for_order(order_id: str) -> None:
-    """Phase 2 of order delivery: actually call Stripe.
-
-    Receives a string UUID (dramatiq serialises args as JSON, so no
-    native UUID type). Open a fresh DB session — we are NOT in a Flask
-    request context, `g` and `database.get_db()` are unavailable.
-
-    The Stripe SDK call carries `idempotency_key=invoice-order-<order_id>-v<attempt>`
-    so a retry after a partial failure does not double-bill.
-    """
-    # Imported lazily so importing this module from the web side does not
-    # transitively boot the SQLAlchemy engine before app.py is ready.
+    # Receives a str UUID (dramatiq serialises args as JSON). Opens its
+    # own DB session — no Flask request context here. Stripe call uses
+    # idempotency_key=invoice-order-<id>-v<attempt> against double-billing.
     from database import get_session
     from models import Order, OrderStatus
     from services.stripe_service import create_invoice_for_order
@@ -81,7 +58,7 @@ def send_invoice_for_order(order_id: str) -> None:
             logger.error("send_invoice_for_order: order %s not found", oid)
             return
         if order.status not in (OrderStatus.invoicing, OrderStatus.delivered):
-            # Already invoiced (race with retry CLI) or moved past; nothing to do.
+            # Already invoiced (race with the retry CLI) or moved past.
             logger.info(
                 "send_invoice_for_order: order %s in status %s, skipping",
                 oid,
@@ -92,9 +69,8 @@ def send_invoice_for_order(order_id: str) -> None:
         try:
             create_invoice_for_order(db, order)
         except stripe.StripeError:
-            # create_invoice_for_order leaves order.status in `invoicing` on
-            # failure. The retry CLI (and dramatiq's own retry) will pick
-            # it up. Re-raise so dramatiq counts it as a failure.
+            # Leaves status=`invoicing` for the retry CLI; re-raise so
+            # dramatiq counts the failure.
             logger.exception(
                 "send_invoice_for_order: Stripe call failed for order %s",
                 oid,

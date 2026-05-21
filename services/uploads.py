@@ -1,21 +1,6 @@
-"""File-upload helper.
-
-Trust nothing the client tells us about the file. Validate:
-1. Declared extension is in our allow-list.
-2. The actual file content (magic bytes) matches a known image/PDF format.
-3. The size is under our per-file cap (global MAX_CONTENT_LENGTH from
-   create_app() is the outer layer; this keeps an unrealistic 12 MB logo
-   from filling the disk even though it is technically under 16 MB).
-
-Storage backend: S3-compatible when S3_BUCKET is set, local disk otherwise.
-
-Returns None on any rejection so the caller can flash a generic error.
-Logs at WARNING for postmortem debugging.
-
-Audit references: VULN-05 (path traversal — uses secure_filename),
-VULN-10 (extension-only validation — closed by magic-byte check).
-"""
-
+# VULN-05 / VULN-10: extension allow-list + magic-byte check + size cap.
+# S3 when S3_BUCKET is set, local disk otherwise. None on rejection so
+# the caller can flash a generic error.
 import io
 import logging
 import os
@@ -33,16 +18,11 @@ UPLOAD_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "static", "uploads"
 )
 
-# Top-level subfolders the public `/uploads/<...>` proxy is allowed to
-# serve. Adding a new entry here is an explicit, reviewable decision to
-# expose that subtree without an authz check — useful when the bucket
-# starts to hold mixed (public, private) content. Anything outside this
-# set 404s at the proxy boundary even if the object exists in the
-# bucket, so a `save_upload(invoice_pdf, subfolder="invoices")` call
-# added in a follow-up doesn't accidentally become public.
+# Public subtree allow-list for the /uploads/<key> proxy: adding here is
+# an explicit choice to skip the authz gate.
 PUBLIC_UPLOAD_SUBFOLDERS = frozenset({"caterers"})
 MAX_FILENAME_LENGTH = 80
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB per file (global cap is 16 MB total request)
+MAX_FILE_SIZE = 10 * 1024 * 1024  # global request cap is 16 MB total
 
 _CONTENT_TYPES = {
     "jpg": "image/jpeg",
@@ -53,24 +33,20 @@ _CONTENT_TYPES = {
     "pdf": "application/pdf",
 }
 
-# Magic byte signatures.
 _MAGIC_SIGNATURES = {
     "png": [(b"\x89PNG\r\n\x1a\n", 0)],
     "jpg": [(b"\xff\xd8\xff", 0)],
     "jpeg": [(b"\xff\xd8\xff", 0)],
     "gif": [(b"GIF87a", 0), (b"GIF89a", 0)],
-    # WEBP files start with "RIFF" then 4 bytes of size then "WEBP"
+    # WEBP: RIFF + 4-byte size + WEBP
     "webp": [(b"RIFF", 0), (b"WEBP", 8)],
     "pdf": [(b"%PDF-", 0)],
 }
 
-# Extensions that are interchangeable real-world (same actual format).
 _EXTENSION_ALIASES = {
     "jpg": {"jpg", "jpeg"},
     "jpeg": {"jpg", "jpeg"},
 }
-
-# --- S3 client (lazy singleton) ------------------------------------------------
 
 _s3_client = None
 
@@ -100,21 +76,9 @@ def _s3_enabled() -> bool:
     return bool(settings.s3_bucket)
 
 
-# --- Validation helpers --------------------------------------------------------
-
-
 def _detect_real_type(head: bytes) -> str | None:
-    """Return the extension key that matches the byte signature, or None.
-
-    Each entry in `_MAGIC_SIGNATURES` is a list of `(signature, offset)`
-    tuples. Multiple tuples at the same offset are treated as
-    alternatives (OR — e.g. GIF87a / GIF89a both at offset 0); tuples
-    at distinct offsets must all match (AND — e.g. WEBP needs `RIFF`
-    at 0 AND `WEBP` at 8). Without this distinction the previous
-    implementation `all(... for sig, off in sigs)` rejected every GIF,
-    since a single byte stream cannot match both GIF87a and GIF89a
-    simultaneously.
-    """
+    # Same-offset signatures are OR'd (GIF87a/GIF89a); distinct offsets are
+    # AND'd (WEBP needs RIFF@0 AND WEBP@8). Naive all-pairs rejected GIFs.
     for ext, sigs in _MAGIC_SIGNATURES.items():
         by_offset: dict[int, list[bytes]] = {}
         for sig, off in sigs:
@@ -128,7 +92,6 @@ def _detect_real_type(head: bytes) -> str | None:
 
 
 def _file_size(stream) -> int:
-    """Compute size by seeking, then rewind."""
     pos = stream.tell()
     stream.seek(0, os.SEEK_END)
     size = stream.tell()
@@ -137,7 +100,6 @@ def _file_size(stream) -> int:
 
 
 def allowed_extension(filename: str) -> bool:
-    """Backwards-compat for callers that still want a quick name-only check."""
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
@@ -149,15 +111,11 @@ _PILLOW_FORMAT = {
     "webp": "WEBP",
 }
 
-_MAX_IMAGE_PIXELS = 25_000_000  # 5000x5000 — prevent decompression bombs
+_MAX_IMAGE_PIXELS = 25_000_000  # 5000×5000 — decompression-bomb guard
 
 
 def _reencode_image(stream, ext: str):
-    """Re-encode image through Pillow to strip any embedded payloads.
-
-    Returns a BytesIO with the clean image, or None if re-encoding fails.
-    PDFs are not re-encoded.
-    """
+    # Re-encode strips embedded payloads (EXIF/SVG comments etc.).
     fmt = _PILLOW_FORMAT.get(ext)
     if fmt is None:
         return None
@@ -183,7 +141,7 @@ def _reencode_image(stream, ext: str):
 
 
 def _reencode_pdf(stream):
-    """Re-save PDF via pikepdf to strip JavaScript, auto-open actions, and embedded files."""
+    # Strips JavaScript, auto-open actions, embedded files.
     try:
         pdf = pikepdf.open(stream)
         if pikepdf.Name.Names in pdf.Root:
@@ -205,11 +163,7 @@ def _reencode_pdf(stream):
         return None
 
 
-# --- Save (public API) ---------------------------------------------------------
-
-
 def _validate(file):
-    """Validate the upload. Returns (declared_ext, safe_name) or None on rejection."""
     if not file or not file.filename:
         return None
 
@@ -220,7 +174,6 @@ def _validate(file):
         logger.warning("upload rejected: extension '%s' not allowed", declared_ext)
         return None
 
-    # Magic-byte check on the first 16 bytes is enough for every supported format.
     head = file.stream.read(16)
     file.stream.seek(0)
     real_ext = _detect_real_type(head)
@@ -260,12 +213,7 @@ def _save_local(file, subfolder: str, safe_name: str) -> str:
 
 
 def _s3_key_from_url(url: str) -> str | None:
-    """Reverse `_save_s3`'s URL: extract the bucket key from `/uploads/<key>`.
-
-    Returns None when the URL does not point at the proxy route (legacy
-    filesystem URLs starting with `/static/uploads/`, absolute http(s)
-    URLs, or anything else).
-    """
+    # None for legacy /static/uploads/* or absolute URLs.
     if not url or not url.startswith("/uploads/"):
         return None
     return f"uploads/{url[len('/uploads/') :]}"
@@ -282,34 +230,20 @@ def _save_s3(file, subfolder: str, safe_name: str, declared_ext: str) -> str:
         ExtraArgs={
             "ContentType": _CONTENT_TYPES.get(declared_ext, "application/octet-stream"),
             "CacheControl": "public, max-age=31536000, immutable",
-            # Defensive: the Scaleway bucket is currently configured
-            # with a private default ACL, but we don't want to rely on
-            # the bucket policy alone — set it explicitly per-object so
-            # a misconfigured bucket (or a future move to a provider
-            # with a permissive default) can't silently flip our uploads
-            # to public.
+            # Per-object ACL so a misconfigured bucket policy doesn't flip
+            # uploads to public.
             "ACL": "private",
         },
     )
-    # Return a relative path served by the Flask `/uploads/<key>` proxy
-    # route. We do NOT return the direct Scaleway URL — the bucket is
-    # private, so a public URL would 403. The proxy lets us keep ACL
-    # `private` and still serve images in <img src="...">.
+    # Path is served by the Flask /uploads/<key> proxy — never a direct
+    # Scaleway URL (the bucket is private, would 403).
     return f"/{key}"
 
 
 def delete_upload(url: str) -> bool:
-    """Best-effort deletion of a previously saved upload.
-
-    Returns True if a delete was issued (or the URL was unmanaged so
-    nothing to do); False on S3/IO error so the caller can decide
-    whether to retry or log. Never raises.
-
-    Old filesystem URLs (`/static/uploads/...`) and external/absolute
-    URLs are left alone — callers should null out the DB column to drop
-    the reference; cleaning up the bytes is the job of the one-shot
-    migration script.
-    """
+    # Best-effort: True when nothing to do or delete issued; False on S3
+    # error so the caller can retry. Legacy /static/uploads/* URLs are
+    # left alone — the migration script handles them.
     key = _s3_key_from_url(url)
     if key is None:
         return True
@@ -347,12 +281,8 @@ def save_upload(file, subfolder: str = "general") -> str | None:
             logger.exception("S3 upload failed for %s", safe_name)
             return None
         except Exception:
-            # `_get_s3()` can also raise non-boto errors at construction
-            # time (missing/invalid credentials surfaced as ValueError,
-            # absent boto3 surfaced as ImportError, etc.). Bucketing all
-            # such cases as "S3 misconfiguration" mirrors the boto-error
-            # handling above: the caller sees None and flashes a
-            # user-facing rejection instead of a 500.
+            # _get_s3() can fail with ValueError / ImportError on bad
+            # credentials or missing boto3 — bucket as misconfiguration.
             logger.exception("S3 client configuration error for %s", safe_name)
             return None
 
