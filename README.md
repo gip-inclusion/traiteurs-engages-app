@@ -59,7 +59,6 @@ Critical reminders for the prod environment on Scalingo:
 | `STRIPE_SECRET_KEY` | Stripe API secret key | (empty) |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key | (empty) |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | (empty) |
-| `STRIPE_CONNECT_CLIENT_ID` | Stripe Connect client ID | (empty) |
 
 ## Admin lifecycle (CLI)
 

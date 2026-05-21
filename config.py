@@ -42,7 +42,6 @@ class Settings(BaseSettings):
     stripe_secret_key: SecretStr | None = None
     stripe_publishable_key: str | None = None
     stripe_webhook_secret: SecretStr | None = None
-    stripe_connect_client_id: str | None = None
 
     admin_email: str = "admin@traiteurs-engages.fr"
     admin_initial_password: SecretStr | None = None
@@ -128,7 +127,6 @@ class Settings(BaseSettings):
         "stripe_secret_key",
         "stripe_publishable_key",
         "stripe_webhook_secret",
-        "stripe_connect_client_id",
         "admin_initial_password",
         "s3_bucket",
         "s3_region",
@@ -189,7 +187,6 @@ STRIPE_WEBHOOK_SECRET = (
     if settings.stripe_webhook_secret
     else ""
 )
-STRIPE_CONNECT_CLIENT_ID = settings.stripe_connect_client_id or ""
 
 BREVO_API_KEY = (
     settings.brevo_api_key.get_secret_value() if settings.brevo_api_key else ""
