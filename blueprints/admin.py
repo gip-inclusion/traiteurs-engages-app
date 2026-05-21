@@ -20,6 +20,7 @@ from blueprints.middleware import login_required, role_required
 from database import get_db
 from extensions import limiter
 from forms.caterer import RejectionForm
+from forms.client import UserProfileForm
 from models import (
     MEAL_TYPE_LABELS,
     Caterer,
@@ -34,9 +35,11 @@ from models import (
     QuoteRequest,
     QuoteRequestStatus,
     QuoteStatus,
+    User,
 )
 from services import messagerie as messagerie_service
 from services import workflow
+from services.account import apply_profile_form
 from services.audit import log_admin_action
 from services.notifications import (
     caterer_user_ids,
@@ -871,15 +874,30 @@ def message_thread(thread_id):
     )
 
 
-@admin_bp.route("/profile")
+@admin_bp.route("/profile", methods=["GET", "POST"])
 @login_required
 @role_required("super_admin")
 def profile():
-    """Page « Mon profil » du super_admin. Pas d'infos métier
-    spécifiques à éditer ici (pas de company, pas de caterer) : la page
-    sert surtout de point d'entrée pour la modification du mot de
-    passe. Cohérent avec `client.profile` / `caterer.profile`."""
-    return render_template("admin/profile.html", user=g.current_user)
+    """Page « Mon profil » du super_admin. Édition de prénom / nom /
+    email (le changement d'email demande une re-authentification par
+    mot de passe — cf. `services.account.apply_profile_form`) + lien
+    vers la modif du mot de passe."""
+    user = g.current_user
+    if request.method == "POST":
+        form = UserProfileForm()
+        if not form.validate_on_submit():
+            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            return render_template("admin/profile.html", user=user), 400
+        db = get_db()
+        u = db.get(User, user.id)
+        err = apply_profile_form(db, u, form)
+        if err:
+            flash(err, "error")
+            return render_template("admin/profile.html", user=user), 400
+        db.commit()
+        flash("Profil mis à jour.", "success")
+        return redirect(url_for("admin.profile"))
+    return render_template("admin/profile.html", user=user)
 
 
 _register_notifications(admin_bp, roles=("super_admin",))

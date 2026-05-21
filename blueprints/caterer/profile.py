@@ -9,7 +9,9 @@ from blueprints.middleware import login_required, role_required
 from database import get_db
 from extensions import limiter
 from forms.caterer import CatererProfileForm
-from models import SERVICE_OFFERING_LABELS
+from forms.client import UserProfileForm
+from models import SERVICE_OFFERING_LABELS, User
+from services.account import apply_profile_form
 from services.json_schemas import ServiceConfig
 from services.uploads import save_upload
 
@@ -108,17 +110,18 @@ def register(bp):
     @role_required("caterer")
     def account_save():
         user = g.current_user
-        first_name = (request.form.get("first_name") or "").strip()
-        last_name = (request.form.get("last_name") or "").strip()
-        if not first_name or not last_name:
-            flash("Le pr&#233;nom et le nom sont obligatoires.", "error")
-            return redirect(url_for("caterer.account"))
+        form = UserProfileForm()
+        if not form.validate_on_submit():
+            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            return render_template("caterer/account.html", user=user), 400
         db = get_db()
-        db.add(user)
-        user.first_name = first_name
-        user.last_name = last_name
+        u = db.get(User, user.id)
+        err = apply_profile_form(db, u, form)
+        if err:
+            flash(err, "error")
+            return render_template("caterer/account.html", user=user), 400
         db.commit()
-        flash("Profil mis &#224; jour.", "success")
+        flash("Profil mis à jour.", "success")
         return redirect(url_for("caterer.account"))
 
     @bp.route("/profile", methods=["GET"])
