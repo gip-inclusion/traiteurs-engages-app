@@ -15,8 +15,19 @@
 
     <!-- Signup card -->
     <div class="bg-white rounded-2xl p-8 shadow-sm border border-default">
-      <h1 class="font-display text-2xl font-semibold text-text mb-1">Cr&#233;er votre compte</h1>
-      <p class="text-sm mb-6 text-mute-soft">Rejoignez Les Traiteurs Engag&#233;s</p>
+      {# Titre dynamique : « Créer votre compte » au chargement,
+         « Inscription entreprise » / « Inscription traiteur » une fois
+         qu'on a choisi un type. signup.js maintient le textContent. #}
+      <h1 class="font-display text-2xl font-semibold text-text mb-1" id="signup-title">Cr&#233;er votre compte</h1>
+      <p class="text-sm mb-6 text-mute-soft" id="signup-subtitle">Rejoignez Les Traiteurs Engag&#233;s</p>
+
+      {# Bouton « Retour » qui réaffiche les cartes de choix. Masqué
+         tant qu'aucun type n'est sélectionné. #}
+      <button type="button" id="back-to-role" data-action="back-to-role"
+        class="hidden mb-4 inline-flex items-center gap-1.5 text-sm text-mute hover:text-coral transition-colors">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+        Choisir un autre type
+      </button>
 
       {% if error %}
       <div class="text-sm px-4 py-3 rounded-xl mb-4 text-coral-red bg-error-light">
@@ -27,22 +38,32 @@
       <!-- Role choice cards.
            Pas de pre-select au chargement (cf. signup.js) — l'utilisateur
            doit cliquer une carte avant que le formulaire s'affiche.
-           Évite que les traiteurs commencent à remplir le formulaire
-           entreprise par défaut, comme c'était le cas auparavant. -->
-      <p class="text-sm font-medium text-text mb-3" id="role-choice-label">Vous &#234;tes&nbsp;?</p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-        <button type="button" id="card-client" data-action="select-role" data-role="client"
-          class="role-card flex flex-col items-start text-left">
-          <i data-lucide="building-2" class="w-6 h-6 mb-2 text-mute"></i>
-          <span class="font-semibold text-sm text-text">Une entreprise</span>
-          <span class="text-xs text-mute mt-1">Je cherche un traiteur pour mes &#233;v&#233;nements</span>
-        </button>
-        <button type="button" id="card-caterer" data-action="select-role" data-role="caterer"
-          class="role-card flex flex-col items-start text-left">
-          <i data-lucide="chef-hat" class="w-6 h-6 mb-2 text-mute"></i>
-          <span class="font-semibold text-sm text-text">Un traiteur</span>
-          <span class="text-xs text-mute mt-1">Je propose des prestations (ESAT, EA, EI, ACI)</span>
-        </button>
+           Une fois choisi, ce bloc est masqué et seul le formulaire reste
+           visible (avec le bouton retour pour changer d'avis). Évite que
+           les traiteurs commencent à remplir le formulaire entreprise
+           par défaut, comme c'était le cas auparavant. -->
+      <div id="role-choice-block">
+        <p class="text-sm font-medium text-text mb-3" id="role-choice-label">Vous &#234;tes&nbsp;?</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <button type="button" id="card-client" data-action="select-role" data-role="client"
+            class="role-card flex flex-col items-start text-left">
+            <div class="flex items-center justify-between w-full mb-2">
+              <i data-lucide="building-2" class="w-6 h-6 text-mute"></i>
+              <i data-lucide="arrow-right" class="w-4 h-4 role-card-arrow"></i>
+            </div>
+            <span class="font-semibold text-sm text-text">Une entreprise</span>
+            <span class="text-xs text-mute mt-1">Je cherche un traiteur pour mes &#233;v&#233;nements</span>
+          </button>
+          <button type="button" id="card-caterer" data-action="select-role" data-role="caterer"
+            class="role-card flex flex-col items-start text-left">
+            <div class="flex items-center justify-between w-full mb-2">
+              <i data-lucide="chef-hat" class="w-6 h-6 text-mute"></i>
+              <i data-lucide="arrow-right" class="w-4 h-4 role-card-arrow"></i>
+            </div>
+            <span class="font-semibold text-sm text-text">Un traiteur</span>
+            <span class="text-xs text-mute mt-1">Je propose des prestations (ESAT, EA, EI, ACI)</span>
+          </button>
+        </div>
       </div>
 
       <!-- Signup form -->

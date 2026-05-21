@@ -1,27 +1,61 @@
 (function () {
+  // Libellés du titre / sous-titre une fois le type choisi. Avant le
+  // choix, le HTML porte « Créer votre compte » / « Rejoignez Les
+  // Traiteurs Engagés » ; on les restaure tels quels en cas de retour.
+  var DEFAULT_TITLE = 'Créer votre compte';
+  var DEFAULT_SUBTITLE = 'Rejoignez Les Traiteurs Engagés';
+  var TITLES = {
+    client: { title: 'Inscription entreprise', subtitle: 'Créez votre compte pour commander des prestations.' },
+    caterer: { title: 'Inscription traiteur', subtitle: 'Créez votre compte pour proposer vos prestations.' },
+  };
+
+  function setStepHeader(role) {
+    var title = document.getElementById('signup-title');
+    var subtitle = document.getElementById('signup-subtitle');
+    if (!title || !subtitle) return;
+    if (role && TITLES[role]) {
+      title.textContent = TITLES[role].title;
+      subtitle.textContent = TITLES[role].subtitle;
+    } else {
+      title.textContent = DEFAULT_TITLE;
+      subtitle.textContent = DEFAULT_SUBTITLE;
+    }
+  }
+
   function selectRole(role) {
     var roleInput = document.getElementById('role-input');
     var signupForm = document.getElementById('signup-form');
     var catererFields = document.getElementById('caterer-fields');
+    var roleChoiceBlock = document.getElementById('role-choice-block');
+    var backBtn = document.getElementById('back-to-role');
 
     if (roleInput) roleInput.value = role === 'client' ? 'client_admin' : 'caterer';
-    // Le formulaire reste masqué tant qu'aucune carte n'a été cliquée
-    // (cf. la classe `hidden` au chargement). Une fois qu'on en choisit
-    // une, on l'affiche pour de bon — pas de bascule vers display:none
-    // lors d'un changement de carte ensuite.
+    // Cache le bloc de choix et révèle le formulaire. Le retour
+    // (back-to-role) inverse les deux opérations.
+    if (roleChoiceBlock) roleChoiceBlock.classList.add('hidden');
     if (signupForm) signupForm.classList.remove('hidden');
+    if (backBtn) backBtn.classList.remove('hidden');
     if (catererFields) catererFields.classList.toggle('hidden', role !== 'caterer');
 
-    // Highlight de la carte active. La classe `role-card-active` porte
-    // le style (border coral + fond léger) — cf. static/css/app.css.
-    var cardClient = document.getElementById('card-client');
-    var cardCaterer = document.getElementById('card-caterer');
-    if (cardClient) cardClient.classList.toggle('role-card-active', role === 'client');
-    if (cardCaterer) cardCaterer.classList.toggle('role-card-active', role === 'caterer');
+    setStepHeader(role);
 
     var catererInputs = document.querySelectorAll('#caterer-fields input, #caterer-fields select');
     catererInputs.forEach(function (el) { el.required = (role === 'caterer'); });
 
+    revalidate();
+  }
+
+  function backToRoleChoice() {
+    var roleInput = document.getElementById('role-input');
+    var signupForm = document.getElementById('signup-form');
+    var roleChoiceBlock = document.getElementById('role-choice-block');
+    var backBtn = document.getElementById('back-to-role');
+
+    if (roleInput) roleInput.value = '';
+    if (signupForm) signupForm.classList.add('hidden');
+    if (roleChoiceBlock) roleChoiceBlock.classList.remove('hidden');
+    if (backBtn) backBtn.classList.add('hidden');
+    setStepHeader(null);
     revalidate();
   }
 
@@ -104,6 +138,11 @@
     var roleEl = ev.target.closest('[data-action="select-role"]');
     if (roleEl) {
       selectRole(roleEl.dataset.role);
+      return;
+    }
+    var backEl = ev.target.closest('[data-action="back-to-role"]');
+    if (backEl) {
+      backToRoleChoice();
       return;
     }
     var pwEl = ev.target.closest('[data-action="toggle-password"]');
