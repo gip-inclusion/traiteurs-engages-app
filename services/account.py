@@ -59,11 +59,17 @@ def apply_profile_form(db, user, form) -> str | None:
 
     # Pré-check d'unicité : sans ça, l'IntegrityError au commit
     # remonterait en 500 plutôt qu'en flash propre.
+    #
+    # Anti-énumération : un attaquant disposant d'un mot de passe valide
+    # sur SON compte (ou ayant volé sa propre session) pourrait sinon
+    # itérer sur des adresses cibles et lire la confirmation d'existence
+    # via la distinction "déjà utilisée" vs "OK". On renvoie un message
+    # neutre qui ne confirme pas l'existence d'un compte tiers.
     collision = db.scalar(
         select(User.id).where(User.email == new_email, User.id != user.id)
     )
     if collision:
-        return "Cette adresse e-mail est déjà utilisée par un autre compte."
+        return "Cette adresse e-mail ne peut pas être utilisée pour ce compte."
 
     user.email = new_email
     return None
