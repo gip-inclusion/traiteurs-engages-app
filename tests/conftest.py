@@ -172,10 +172,19 @@ def login(client):
     """Log `client` in as a known seeded user. CSRF is disabled in tests."""
 
     def _login(email, password="testpass"):
-        return client.post(
+        resp = client.post(
             "/login",
             data={"email": email, "password": password},
             follow_redirects=False,
         )
+        # Garantit que les tests qui suivent ne valident pas par accident
+        # un état non-authentifié (un login en échec re-render la page en
+        # 200, et les routes derrière `@login_required` redirigent en 302
+        # vers /login — l'assertion finale du test passe pour de mauvaises
+        # raisons).
+        assert resp.status_code == 302, (
+            f"login({email!r}) failed: status={resp.status_code} body={resp.data!r}"
+        )
+        return resp
 
     return _login
