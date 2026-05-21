@@ -12,14 +12,12 @@
   {# ---- Identité ---- #}
   <div class="bg-white rounded-lg p-6 mb-6">
     <div class="flex items-center gap-4">
-      <div class="rounded-full flex items-center justify-center text-white font-display font-bold text-xl"
-           style="width:4rem;height:4rem;flex-shrink:0;background-color:var(--c-navy);">
+      <div class="avatar-navy font-display font-bold text-xl">
         {{ initials or '?' }}
       </div>
       <div class="min-w-0">
         <h2 class="font-display font-bold text-2xl text-text">{{ user.first_name }} {{ user.last_name }}</h2>
-        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold mt-1"
-              style="background-color:rgba(214,131,77,0.15);color:#A24B0E;">
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold mt-1 badge-caterer">
           <i data-lucide="store" class="w-3.5 h-3.5"></i>
           Traiteur
         </span>
