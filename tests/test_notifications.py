@@ -1,19 +1,3 @@
-"""Tests for the notification fan-out + the bell modal's XSS defenses.
-
-Coverage:
-  * the notifications-modal template escapes notification bodies
-    (regression for the stored XSS that shipped behind `{{ n.body|safe }}`);
-  * `services.workflow.approve_quote_request` notifies every target
-    caterer + the requester, including on the fallback-to-all-validated
-    path;
-  * `services.workflow.submit_quote` only notifies the requester when
-    the QRC actually transitions to `transmitted_to_client` (rank ≤ 3).
-
-Convention d'imports lazy : `database` est importé *à l'intérieur* des
-fonctions pour que conftest puisse switcher sur `traiteurs_test` avant
-le binding de l'engine. Voir `tests/test_workflow.py` pour le même
-pattern.
-"""
 
 import datetime as _dt
 import uuid
@@ -24,7 +8,6 @@ import pytest
 
 @pytest.fixture
 def session(app):
-    """SQLAlchemy session per test, rolled back at teardown for isolation."""
     from database import session_factory
 
     s = session_factory()
@@ -35,18 +18,9 @@ def session(app):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Helpers — minimal seeding for fan-out tests
-# ---------------------------------------------------------------------------
 
 
 def _seed_pending_qr(s, *, n_validated_caterers=2):
-    """Seed a `pending_review` QuoteRequest under ACME, plus N validated
-    caterers. Returns (qr_id, [caterer_ids]).
-
-    `approve_quote_request` fans out to every validated caterer — the
-    helper just needs a demand and a populated catalog.
-    """
     from sqlalchemy import select
 
     from models import (
@@ -104,16 +78,9 @@ def _seed_pending_qr(s, *, n_validated_caterers=2):
 from models import UserRole  # noqa: E402
 
 
-# ---------------------------------------------------------------------------
-# XSS regression — `{{ n.body|safe }}` was the bug
-# ---------------------------------------------------------------------------
 
 
 def test_notifications_modal_escapes_body_against_xss(client, login):
-    """A notification body containing a `<script>` tag must be HTML-escaped
-    when rendered in the bell modal. Pre-fix the modal used `|safe` which
-    made every notification body a stored-XSS sink — see the review of
-    feat/notifications-fanout."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -166,14 +133,9 @@ def test_notifications_modal_escapes_body_against_xss(client, login):
             s.close()
 
 
-# ---------------------------------------------------------------------------
-# Bell badge — server-rendered visibility + count
-# ---------------------------------------------------------------------------
 
 
 def _bell_badge_html(body: str) -> str:
-    """Extract the `<span class="notification-badge ...">…</span>` span
-    (tag + text) from a rendered page body, or '' if not found."""
     import re
 
     m = re.search(
@@ -186,14 +148,6 @@ def _bell_badge_html(body: str) -> str:
 
 @pytest.fixture
 def seed_alice_unread():
-    """Seed N unread notifications for alice in a single bulk INSERT,
-    then wipe alice's notifications afterwards. 120 row-by-row adds
-    (the clamp test's worst case) was 100× slower than one INSERT…
-    VALUES; the bulk path also frees us from per-row `created_at`
-    autogeneration concerns since `server_default=now()` fires once.
-
-    Usage: pass `n` via indirect parametrization, fixture yields the
-    user id so the caller can ignore the seeding plumbing."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -276,15 +230,9 @@ def test_bell_badge_renders_unread_count(
     )
 
 
-# ---------------------------------------------------------------------------
-# Fan-out — approve_quote_request notifies targets + requester
-# ---------------------------------------------------------------------------
 
 
 def test_approve_notifies_every_validated_caterer(session):
-    """`approve_quote_request` fans out to every validated caterer and
-    must notify each of them — no caterer in the catalog should be
-    silently skipped."""
     from sqlalchemy import select
 
     from models import Caterer, Notification, User
@@ -323,8 +271,6 @@ def test_approve_notifies_every_validated_caterer(session):
 
 
 def test_approve_notifies_requester_with_target_count(session):
-    """The requester must get a `quote_request_approved` notification
-    whose body reports the same count as the QRCs created."""
     from sqlalchemy import func, select
 
     from models import Notification, QuoteRequest, QuoteRequestCaterer
@@ -354,9 +300,6 @@ def test_approve_notifies_requester_with_target_count(session):
 
 
 def test_approve_skips_notifications_when_no_validated_caterer(session):
-    """Empty catalogue → demand stays in pending_review, no notifications
-    fire (no point telling the requester their demand was 'transmitted to
-    0 caterers')."""
     from sqlalchemy import select
 
     from models import Caterer, Notification, QuoteRequest, QuoteRequestStatus
@@ -386,19 +329,9 @@ def test_approve_skips_notifications_when_no_validated_caterer(session):
     assert notif_count == 0, "no caterers reached → no notifications should fire"
 
 
-# ---------------------------------------------------------------------------
-# Fan-out — submit_quote notifies only on transmission
-# ---------------------------------------------------------------------------
 
 
 def _seed_qr_ready_for_submit(session, *, n_caterers, prior_transmitted=0):
-    """Seed a QR + N caterers with QRCs in `selected`, plus draft Quotes
-    ready for submit_quote. `prior_transmitted` counts how many of the
-    QRCs are already flipped to transmitted_to_client (used to push the
-    next submitter to rank N+1).
-
-    Returns (qr_id, [caterer_objs], [quote_ids]).
-    """
     from sqlalchemy import select
 
     from models import (
@@ -471,9 +404,6 @@ def _seed_qr_ready_for_submit(session, *, n_caterers, prior_transmitted=0):
 
 
 def test_submit_quote_notifies_requester_when_transmitted(session):
-    """First-three-responder rule : when the submit transitions the
-    QRC to `transmitted_to_client`, the requester gets a `quote_received`
-    notification."""
     from sqlalchemy import select
 
     from models import Notification, QuoteRequest
@@ -501,9 +431,6 @@ def test_submit_quote_notifies_requester_when_transmitted(session):
 
 
 def test_submit_quote_does_not_notify_on_4th_responder(session):
-    """The 4th responder hits `QuoteRequestClosed`; their submit does
-    NOT fire a `quote_received` notification (the requester already got
-    one from each of the first three)."""
     from sqlalchemy import func, select
 
     from models import Notification, QuoteRequest
@@ -538,18 +465,9 @@ def test_submit_quote_does_not_notify_on_4th_responder(session):
     assert after == before, "closed-out 4th submit must not notify the requester"
 
 
-# ---------------------------------------------------------------------------
-# Auto-mark-read on entity view — the bell dropdown drops items as soon
-# as the user lands on the related detail page, regardless of how they
-# got there (dashboard tile, list page, dropdown click, direct link).
-# ---------------------------------------------------------------------------
 
 
 def _seed_qr_for_alice(s):
-    """Create a minimal QuoteRequest owned by alice@test.local under
-    ACME, returning its id. Status is `sent_to_caterers` so the
-    /client/requests/<id> route renders without falling through to a
-    404 (request_detail allows any QR the user can see)."""
     from sqlalchemy import select
 
     from models import Company, QuoteRequest, QuoteRequestStatus, User
@@ -572,9 +490,6 @@ def _seed_qr_for_alice(s):
 
 
 def test_visiting_request_detail_marks_quote_request_notifs_read(client, login):
-    """Hitting /client/requests/<id> (e.g. via dashboard tile or list
-    page) must mark the alice's quote_request notif for that QR as
-    read — so the bell dropdown stops showing it."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -629,9 +544,6 @@ def test_visiting_request_detail_marks_quote_request_notifs_read(client, login):
 
 
 def test_visiting_request_detail_also_clears_child_quote_notifs(client, login):
-    """Quote-type notifs bounce to the parent quote_request URL (see
-    services.notifications.notification_target_url), so visiting the
-    parent QR must also flip the child quote notifs to read."""
     from decimal import Decimal as _D
 
     from sqlalchemy import select
@@ -715,9 +627,6 @@ def test_visiting_request_detail_also_clears_child_quote_notifs(client, login):
 
 
 def test_post_to_detail_does_not_mark_read(client, login):
-    """The auto-mark-read hook is GET-only — POSTs to the same URL are
-    actions, not 'viewing'. Use the request-edit POST as a vehicle:
-    even if it 4xxs (CSRF, validation), the notif must stay unread."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -774,9 +683,6 @@ def test_post_to_detail_does_not_mark_read(client, login):
 
 
 def test_visiting_dashboard_marks_company_notifs_read(client, login):
-    """`company`-type notifs (membership approval) bounce to the
-    dashboard. Landing on /client/dashboard must clear them so the
-    bell stops surfacing the welcome notification."""
     from sqlalchemy import select
 
     from database import session_factory

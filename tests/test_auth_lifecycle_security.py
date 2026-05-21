@@ -18,15 +18,10 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-# ---------------------------------------------------------------------------
 # H-5 — CLI must bump password_changed_at on every password mutation
-# ---------------------------------------------------------------------------
 
 
 def _make_super_admin(email: str, password: str = "OldPw!Old!Pw!1234"):
-    """Seed a super_admin so reset-password has a target. Uses a real
-    bcrypt hash because validate_password() etc. checks the policy at
-    runtime. Returns (user_id, initial password_changed_at)."""
     import bcrypt
     from database import session_factory
     from models import User, UserRole
@@ -134,14 +129,10 @@ def test_cli_create_admin_stamps_password_changed_at(app):
         s.close()
 
 
-# ---------------------------------------------------------------------------
 # H-2 — the three inactive-account flashes must collapse to one
-# ---------------------------------------------------------------------------
 
 
 def _seed_user_in_state(*, email: str, is_active: bool, membership):
-    """Seed a user in a specific (is_active, membership_status) combo.
-    Returns the password used."""
     import bcrypt
     from sqlalchemy import select
 
@@ -174,13 +165,6 @@ def _seed_user_in_state(*, email: str, is_active: bool, membership):
 
 
 def _wipe_oracle_users():
-    """Drop every `oracle-*@test.local` seeded by `_seed_user_in_state`.
-
-    The seeded users are functional today (unique emails per case) but
-    leak across the pytest session — three rows per test run accumulate
-    in `traiteurs_test`. Aligning on the try/finally cleanup pattern
-    used by `test_session_invalidated_after_password_reset` keeps the
-    DB state local to each test."""
     from database import session_factory
     from models import User
 
@@ -193,15 +177,6 @@ def _wipe_oracle_users():
 
 
 def _extract_flash_block(html: str) -> str:
-    """Return the snippet of HTML that the user sees as the login-page
-    flash. We use this to compare three responses byte-for-byte minus
-    request-bound noise (CSRF token, server timestamps).
-
-    The flash macro renders error toasts with `role="alert"` — that
-    attribute is the stable anchor we extract on. The fallback to the
-    whole body stays as a safety net so the assertion still has
-    *something* to compare on if the markup ever changes; better to
-    over-compare than silently pass on an empty match."""
     import re
 
     m = re.search(r'<div[^>]*role="alert"[^>]*>.*?</div>', html, flags=re.DOTALL)
@@ -254,9 +229,6 @@ def test_login_flash_identical_for_all_inactive_states(client):
 
 
 def test_login_flash_does_not_leak_state_keywords(client):
-    """Belt-and-suspenders: even if the bodies happen to coincide
-    today, ban the specific words ('desactive', 'rattachement',
-    'refusee', 'en attente') so a careless reintroduction is caught."""
     from models import MembershipStatus
 
     try:

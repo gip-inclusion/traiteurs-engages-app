@@ -1,12 +1,3 @@
-"""Tests pour `services.impact.compute_social_impact` + intégration
-du bloc « Impact social » sur le dashboard client.
-
-Pas de mock : on seed des Orders en `paid` avec des Caterers de
-différents `structure_type` et on vérifie que la fonction d'agrégat
-ventile correctement et applique le ratio heures.
-
-Convention d'imports lazy (voir `tests/test_workflow.py`).
-"""
 
 import datetime as _dt
 import uuid
@@ -31,7 +22,6 @@ from services.impact import HOURS_FINANCED_DIVISOR_EUR, compute_social_impact
 
 @pytest.fixture
 def session(app):
-    """Session SQLAlchemy par test, rollback à la fin (isolation)."""
     from database import session_factory
 
     s = session_factory()
@@ -43,9 +33,6 @@ def session(app):
 
 
 def _make_caterer(s, structure_type: CatererStructureType) -> Caterer:
-    """Caterer minimal validé, avec SIRET/préfixe uniques pour ne pas
-    rentrer en collision avec le fixture conftest ni avec les autres
-    tests du même run."""
     suffix = uuid.uuid4().hex[:6]
     c = Caterer(
         name=f"Impact Caterer {suffix}",
@@ -67,12 +54,6 @@ def _seed_paid_order(
     requester_email: str = "alice@test.local",
     status: OrderStatus = OrderStatus.paid,
 ) -> Order:
-    """Construit la chaîne QR → Quote(accepted) → Order(`status`) avec
-    le caterer fourni et le montant HT donné. Retourne l'Order.
-
-    Par défaut l'Order est `paid` (ce que compte le service). Les tests
-    qui veulent vérifier l'exclusion des autres statuts passent
-    `status=OrderStatus.delivered` (ou autre)."""
     from sqlalchemy import select
 
     company = s.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -111,15 +92,9 @@ def _seed_paid_order(
     return o
 
 
-# ---------------------------------------------------------------------------
-# compute_social_impact — unitaire
-# ---------------------------------------------------------------------------
 
 
 def test_compute_social_impact_empty_returns_zeros(session):
-    """Une entreprise sans commande payée doit renvoyer 0 partout —
-    pas de division par zéro, pas de None caché qui casserait le
-    template."""
     from sqlalchemy import select
 
     company = session.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -133,10 +108,6 @@ def test_compute_social_impact_empty_returns_zeros(session):
 
 
 def test_compute_social_impact_only_paid_orders_count(session):
-    """Une commande `delivered` (livrée mais pas encore payée par
-    Stripe) ne doit PAS gonfler le total. Le bloc dashboard parle
-    d'« achats réalisés » au sens financier — tant que l'argent n'est
-    pas sorti, ça ne compte pas."""
     from sqlalchemy import select
 
     company = session.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -167,10 +138,6 @@ def test_compute_social_impact_only_paid_orders_count(session):
 
 
 def test_compute_social_impact_splits_siae_and_stpa(session):
-    """SIAE = EI + ACI, STPA = ESAT + EA. Une commande chez un caterer
-    de chaque type doit atterrir dans le bon bucket et le `total_ht`
-    doit être la somme. Garde-fou contre une mauvaise constante côté
-    `SIAE_STRUCTURE_TYPES` / `STPA_STRUCTURE_TYPES`."""
     from sqlalchemy import select
 
     company = session.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -193,10 +160,6 @@ def test_compute_social_impact_splits_siae_and_stpa(session):
 
 
 def test_compute_social_impact_hours_use_lemarche_ratio(session):
-    """Le ratio d'heures suit la formule publique du marché de
-    l'inclusion : `round(montant / 26)`. Un changement silencieux du
-    diviseur fausserait tous les chiffres affichés — on garde
-    explicitement la constante sous garde de test."""
     from sqlalchemy import select
 
     assert HOURS_FINANCED_DIVISOR_EUR == 26, (
@@ -227,9 +190,6 @@ def test_compute_social_impact_hours_use_lemarche_ratio(session):
 
 
 def test_compute_social_impact_scopes_to_requester_when_set(session):
-    """Un `client_user` ne voit que ses propres commandes. Le paramètre
-    `requester_user_id` doit donc filtrer le total — une commande créée
-    par un autre user de la même entreprise ne doit pas remonter."""
     from sqlalchemy import select
 
     company = session.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -272,15 +232,9 @@ def test_compute_social_impact_scopes_to_requester_when_set(session):
     assert alice.company_id == bob.company_id == company.id
 
 
-# ---------------------------------------------------------------------------
-# Dashboard — rendu HTML
-# ---------------------------------------------------------------------------
 
 
 def test_client_dashboard_renders_impact_block(client, login):
-    """Smoke d'intégration : un client_admin loggué peut charger la
-    dashboard et y trouve le bloc impact + la mention exigée par le
-    cahier des charges."""
     login("alice@test.local")
     resp = client.get("/client/dashboard")
     assert resp.status_code == 200

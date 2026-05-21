@@ -1,17 +1,3 @@
-"""Caterer-review business rules.
-
-Coverage :
-  * gating : only the original requester of a *paid* order can review,
-    and only once;
-  * aggregates : avg + count round to one decimal, ignore caterers with
-    no rows;
-  * notify_review_invite : creates exactly one notification, refuses
-    duplicates, refuses non-paid orders.
-
-Convention : same as test_workflow.py — lazy `database` import inside
-each function, fixture rolls back at end. We re-use _seed_confirmed_order
-so the fixtures stay aligned.
-"""
 
 import datetime as _dt
 import uuid
@@ -50,10 +36,6 @@ def session(app):
 
 
 def _seed_paid_order(s) -> tuple[uuid.UUID, Caterer, User]:
-    """Create a Caterer + Company + User + QR + Quote(accepted) +
-    Order(paid) tied together. Returns (order_id, caterer, requester).
-    The requester is the unique seed user `alice@test.local`.
-    """
     from sqlalchemy import select
 
     acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
@@ -104,7 +86,6 @@ def _seed_paid_order(s) -> tuple[uuid.UUID, Caterer, User]:
     return order.id, caterer, alice
 
 
-# --- Gating ---------------------------------------------------------------
 
 
 def test_submit_review_happy_path(session):
@@ -159,9 +140,6 @@ def test_submit_review_non_integer_rating_raises(session):
 
 
 def test_submit_review_fractional_rating_rejected(session):
-    """`int(3.7)` silently returns 3, which would smuggle a fractional
-    rating in via a JSON caller. The coercer routes through `str()`
-    first so '3.7' fails as ValueError → InvalidRating."""
     order_id, _, alice = _seed_paid_order(session)
     for raw in (3.7, "3.7", "4.5"):
         with pytest.raises(reviews_service.InvalidRating):
@@ -175,8 +153,6 @@ def test_submit_review_fractional_rating_rejected(session):
 
 
 def test_submit_review_blocks_non_requester(session):
-    """A user who didn't create the QR can't review even if they're a
-    member of the same company."""
     from sqlalchemy import select
 
     order_id, _, alice = _seed_paid_order(session)
@@ -235,7 +211,6 @@ def test_submit_review_blocks_second_review(session):
         )
 
 
-# --- Aggregates -----------------------------------------------------------
 
 
 def test_aggregate_for_caterer_with_no_reviews_returns_zero(session):
@@ -246,7 +221,6 @@ def test_aggregate_for_caterer_with_no_reviews_returns_zero(session):
 
 
 def test_aggregate_averages_and_rounds_to_one_decimal(session):
-    """Three reviews with different ratings → avg rounded to 1 decimal."""
     order_id, caterer, alice = _seed_paid_order(session)
 
     # First review on the existing paid order.
@@ -280,7 +254,6 @@ def test_aggregate_averages_and_rounds_to_one_decimal(session):
     assert float(agg.avg) == 4.0
 
 
-# --- Notifications --------------------------------------------------------
 
 
 def test_notify_review_invite_creates_one_notification(session):

@@ -1,4 +1,3 @@
-"""Tests for the file upload validation and save paths."""
 
 import io
 
@@ -12,7 +11,6 @@ from services.uploads import (
     save_upload,
 )
 
-# --- Minimal valid file headers ------------------------------------------------
 
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 JPEG_HEADER = b"\xff\xd8\xff\xe0" + b"\x00" * 12
@@ -22,14 +20,12 @@ WEBP_HEADER = b"RIFF" + b"\x00\x00\x00\x00" + b"WEBP" + b"\x00" * 4
 
 
 def _real_image(fmt: str) -> bytes:
-    """Produce a real Pillow-decodable image so save_upload's re-encode succeeds."""
     buf = io.BytesIO()
     Image.new("RGB", (4, 4), color=(255, 0, 0)).save(buf, format=fmt)
     return buf.getvalue()
 
 
 class FakeFile:
-    """Minimal stand-in for werkzeug.datastructures.FileStorage."""
 
     def __init__(self, filename, data):
         self.filename = filename
@@ -41,7 +37,6 @@ class FakeFile:
             f.write(self.stream.read())
 
 
-# --- _detect_real_type ---------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -62,7 +57,6 @@ def test_detect_real_type_unknown():
     assert _detect_real_type(b"\x00" * 16) is None
 
 
-# --- _validate -----------------------------------------------------------------
 
 
 def test_validate_accepts_valid_png():
@@ -87,7 +81,6 @@ def test_validate_rejects_disallowed_extension():
 
 
 def test_validate_rejects_extension_mismatch():
-    """Declared .png but content is JPEG."""
     f = FakeFile("photo.png", JPEG_HEADER + b"\x00" * 100)
     assert _validate(f) is None
 
@@ -117,7 +110,6 @@ def test_validate_rejects_unknown_magic_bytes():
     assert _validate(f) is None
 
 
-# --- save_upload (local path) --------------------------------------------------
 
 
 @pytest.fixture
@@ -152,7 +144,6 @@ def test_save_upload_subfolder_created(upload_dir):
 
 
 def test_save_upload_rejects_polyglot_with_bad_body(upload_dir):
-    """JPEG magic bytes + garbage body must be rejected, not saved raw."""
     f = FakeFile("evil.jpg", JPEG_HEADER + b"\x00" * 100)
     assert save_upload(f, subfolder="test") is None
     assert not (upload_dir / "test").exists()

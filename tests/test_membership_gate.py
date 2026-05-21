@@ -17,9 +17,6 @@ Background:
 
 
 def _seed_pending_user():
-    """Create a `client_user` with membership_status=pending attached to
-    the existing ACME Test company, matching the signup-to-existing-SIRET
-    flow. Returns (email, password)."""
     import bcrypt
     from sqlalchemy import select
 
@@ -52,8 +49,6 @@ def _seed_pending_user():
 
 
 def test_pending_user_login_refused(client):
-    """/login must not issue a session for pending users — a 200 with
-    the login page (not a 302 to the dashboard) is the success criterion."""
     email, password = _seed_pending_user()
 
     resp = client.post(
@@ -65,8 +60,6 @@ def test_pending_user_login_refused(client):
 
 
 def test_pending_user_cannot_access_client_dashboard(client):
-    """Even if a stale session cookie smuggles in a pending user's id,
-    load_current_user wipes g.current_user and protected routes redirect."""
     email, password = _seed_pending_user()
 
     # The login attempt above should not have persisted a session, but we
@@ -90,7 +83,6 @@ def test_pending_user_cannot_access_client_orders(client):
 
 
 def test_active_user_still_accesses_dashboard(client, login):
-    """Regression guard: non-pending users stay functional after the gate."""
     login("alice@test.local")
     resp = client.get("/client/dashboard", follow_redirects=False)
     assert resp.status_code == 200, (

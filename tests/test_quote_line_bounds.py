@@ -89,7 +89,6 @@ def test_non_numeric_value_is_rejected():
 
 
 def test_valid_line_still_parses():
-    """Regression guard — don't break the happy path."""
     from services.quotes import lines_from_dicts
 
     lines = lines_from_dicts(

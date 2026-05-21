@@ -20,14 +20,10 @@ import os
 import pytest
 
 
-# ---------------------------------------------------------------------------
 # H-3 — rate-limiter must fail closed when REDIS_URL is unset in prod
-# ---------------------------------------------------------------------------
 
 
 def test_limiter_refuses_memory_storage_without_marker(monkeypatch):
-    """The classic prod misconfig: no REDIS_URL, multi-worker gunicorn,
-    rate limits silently per-process. Must hard-fail at boot."""
     # Import `extensions` before clearing env so the module body (which
     # calls `_limiter_storage_uri()` at import time on the `Limiter(...)`
     # line) runs against the conftest-blessed env. Otherwise a cold
@@ -55,9 +51,6 @@ def test_limiter_refuses_memory_storage_without_marker(monkeypatch):
     ],
 )
 def test_limiter_memory_allowed_with_explicit_marker(monkeypatch, marker, value):
-    """Either FLASK_DEBUG=1 (the existing dev marker) or
-    LIMITER_ALLOW_MEMORY=1 (the explicit opt-in) unlocks the in-memory
-    store. Case-insensitive on the truthy value."""
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.delenv("FLASK_DEBUG", raising=False)
     monkeypatch.delenv("LIMITER_ALLOW_MEMORY", raising=False)
@@ -69,8 +62,6 @@ def test_limiter_memory_allowed_with_explicit_marker(monkeypatch, marker, value)
 
 
 def test_limiter_uses_redis_db_one_when_url_is_set(monkeypatch):
-    """When REDIS_URL is set, the limiter carves out DB index 1 so
-    Dramatiq queues (DB 0) and rate-limiter keys never collide."""
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
 
     import extensions
@@ -78,16 +69,9 @@ def test_limiter_uses_redis_db_one_when_url_is_set(monkeypatch):
     assert extensions._limiter_storage_uri() == "redis://localhost:6379/1"
 
 
-# ---------------------------------------------------------------------------
-# H-11 — gunicorn config exports the headers ProxyFix needs
-# ---------------------------------------------------------------------------
 
 
 def _load_gunicorn_conf():
-    """Load `gunicorn.conf.py` from the project root as a fresh module.
-    The dot in the filename makes a plain `import` impossible, hence the
-    `importlib` dance. Each call re-evaluates the module body so env
-    overrides applied via monkeypatch take effect."""
     import importlib.util
     import pathlib
     import sys
@@ -116,26 +100,17 @@ def test_gunicorn_conf_sets_forwarded_allow_ips_to_star_by_default(monkeypatch):
 
 
 def test_gunicorn_conf_honors_forwarded_allow_ips_override(monkeypatch):
-    """Self-hosters behind a stricter proxy must be able to lock down
-    the trust set via env. Defensive: a misconfigured 'star-but-not-quite'
-    default would silently re-introduce H-11."""
     monkeypatch.setenv("FORWARDED_ALLOW_IPS", "10.0.0.0/24,192.168.1.1")
     conf = _load_gunicorn_conf()
     assert conf.forwarded_allow_ips == "10.0.0.0/24,192.168.1.1"
 
 
 def test_gunicorn_conf_caps_request_line_and_field_size():
-    """Belt: gunicorn must reject absurdly long request lines / headers
-    before they cost any Python work. Defaults are well above any
-    legitimate URL the app emits."""
     conf = _load_gunicorn_conf()
     assert conf.limit_request_line >= 4096
     assert conf.limit_request_field_size >= 8192
 
 
-# ---------------------------------------------------------------------------
-# M-12 — CSP form-action lock
-# ---------------------------------------------------------------------------
 
 
 def test_csp_includes_form_action_self(client):
@@ -147,9 +122,6 @@ def test_csp_includes_form_action_self(client):
     assert "form-action 'self'" in csp, f"CSP must lock form action to self; got: {csp}"
 
 
-# ---------------------------------------------------------------------------
-# H-13 — secure_cookies default + HSTS decoupling
-# ---------------------------------------------------------------------------
 
 
 def test_secure_cookies_defaults_to_true_when_env_is_absent(monkeypatch):
@@ -170,11 +142,6 @@ def test_secure_cookies_defaults_to_true_when_env_is_absent(monkeypatch):
 
 
 def test_secure_cookies_empty_env_still_coerces_to_false(monkeypatch):
-    """Belt for the docker-compose case: SECURE_COOKIES is interpolated
-    as `${SECURE_COOKIES:-}` so it lands as '' when unset upstream. The
-    `_bool_empty_to_false` validator must keep coercing that to False,
-    otherwise we accidentally turn on Secure cookies on local HTTP and
-    every dev login silently fails."""
     monkeypatch.setenv("SECURE_COOKIES", "")
     import config as config_module
 
@@ -199,10 +166,6 @@ def test_hsts_emitted_for_secure_requests(app):
 
 
 def test_hsts_skipped_for_plain_http_when_secure_cookies_false(app):
-    """Inverse: a plain HTTP request with `secure_cookies=False` (the
-    local-dev situation) must NOT carry HSTS — otherwise a future
-    https-only deploy would cause `localhost` to refuse to load over
-    HTTP. This is the only path HSTS can leak the test env."""
     # conftest sets SECURE_COOKIES=false explicitly for tests; this
     # asserts that combo behaves as documented.
     assert os.environ.get("SECURE_COOKIES", "").lower() == "false"

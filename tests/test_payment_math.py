@@ -16,12 +16,6 @@ from decimal import Decimal
 
 
 def test_split_invoice_amounts_matches_stripe_transfer():
-    """The pure helper must produce amounts that sum correctly for Stripe.
-
-    total_ttc is the lines' TTC. Platform fee is added ON TOP as a fresh
-    line. Stripe invoice_total = total_ttc + fee_ttc. Transfer to caterer
-    = invoice_total − application_fee = total_ttc.
-    """
     from services.stripe_service import split_invoice_amounts
 
     total_ttc = Decimal("120.00")  # e.g. 100 HT + 20 TVA

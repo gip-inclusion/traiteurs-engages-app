@@ -1,25 +1,8 @@
-"""Tests for /admin/requests — the super_admin requests registry.
-
-Verifies the three guard rails the review flagged as missing:
-  1. Role gate — only super_admin reaches a 200; other roles bounce.
-  2. Allow-list on `?status=` — unknown / tampered values silently
-     fall back to "all" without leaking a SQL error.
-  3. Pagination — large datasets stay paged at 25 rows / page; an
-     out-of-range `?page=` clamps to the last page rather than 404.
-
-Test isolation: the `traiteurs_test` DB is rebuilt once per pytest
-session, so other tests may have left QuoteRequest rows. We track the
-ids we seed and delete only those — a table-wide truncate would crash
-on FK refs from quotes / QRCs other tests own. Count assertions are
-relative to a baseline grabbed before seeding.
-"""
 
 import uuid
 
 
 def _seed_request(status):
-    """Insert one QuoteRequest with the given status, owned by ACME Test.
-    Returns the new id so the caller can assert on it."""
     import datetime as _dt
 
     from sqlalchemy import select
@@ -52,7 +35,6 @@ def _seed_request(status):
 
 
 def _count_by_status(status) -> int:
-    """Number of QuoteRequest rows currently sitting in `status`."""
     from sqlalchemy import func, select
 
     from database import session_factory
@@ -71,9 +53,6 @@ def _count_by_status(status) -> int:
 
 
 def _delete_quote_requests(ids):
-    """Drop ONLY the QuoteRequests this test seeded. Other tests may
-    hold quotes / QRCs that FK-reference QuoteRequest, so the brutal
-    `DELETE FROM quote_requests` we used to do crashed on cleanup."""
     if not ids:
         return
     from database import session_factory
@@ -87,9 +66,6 @@ def _delete_quote_requests(ids):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Role gate
-# ---------------------------------------------------------------------------
 
 
 def test_super_admin_can_reach_the_requests_list(client, login):
@@ -121,15 +97,9 @@ def test_anonymous_is_bounced_to_login(client):
     )
 
 
-# ---------------------------------------------------------------------------
-# Allow-list on ?status=
-# ---------------------------------------------------------------------------
 
 
 def test_unknown_status_falls_back_to_all(client, login):
-    """A tampered `?status=` value must not 500 — it silently degrades
-    to the "all" tab so an attacker probing for SQL errors gets nothing
-    interesting back."""
     from models import QuoteRequestStatus
 
     created: set[uuid.UUID] = set()
@@ -166,17 +136,9 @@ def test_approved_tab_is_addressable(client, login):
         _delete_quote_requests(created)
 
 
-# ---------------------------------------------------------------------------
-# Pagination
-# ---------------------------------------------------------------------------
 
 
 def test_pagination_caps_each_page_at_25_rows(client, login):
-    """The route must hard-cap to 25 rows/page so a large dataset
-    doesn't OOM the worker. Seed enough rows to land on at least two
-    pages and confirm the header announces the right counts — the
-    baseline accounts for any pre-existing `completed` rows other
-    tests may have left behind."""
     from models import QuoteRequestStatus
 
     baseline = _count_by_status(QuoteRequestStatus.completed)
@@ -208,8 +170,6 @@ def test_pagination_caps_each_page_at_25_rows(client, login):
 
 
 def test_page_out_of_range_clamps_to_last(client, login):
-    """A user typing ?page=99 on a small dataset should land on the
-    last real page, not get an empty list or a 404."""
     from models import QuoteRequestStatus
 
     created: set[uuid.UUID] = set()
@@ -226,14 +186,9 @@ def test_page_out_of_range_clamps_to_last(client, login):
         _delete_quote_requests(created)
 
 
-# ---------------------------------------------------------------------------
-# Defense in depth: detail link still resolves for unknown UUID → 404
-# ---------------------------------------------------------------------------
 
 
 def test_detail_link_404s_on_unknown_uuid(client, login):
-    """Adjacent guarantee: a typed-in UUID that doesn't exist must 404,
-    not 500 — the detail route is reached from this list."""
     login("admin@test.local")
     r = client.get(f"/admin/qualification/{uuid.uuid4()}")
     assert r.status_code == 404, r.data

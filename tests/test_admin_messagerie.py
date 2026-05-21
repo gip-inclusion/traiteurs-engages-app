@@ -1,18 +1,3 @@
-"""Tests for the super_admin messagerie — participant model.
-
-Before this change the super_admin was a platform-wide read-only
-observer: `threads_for_admin` listed every thread, `read_only=True`
-hid the composer, and `qualification_message` sent a Notification
-instead of opening a real conversation.
-
-It now participates like any other role — its own conversations, a
-working composer, and the ability to open a conversation with any
-active user. Each test below would fail against the old observer code.
-
-Lazy imports inside the test bodies follow the project convention
-(see tests/test_notifications.py): `database` must not bind its engine
-before conftest switches DATABASE_URL to `traiteurs_test`.
-"""
 
 import uuid
 
@@ -28,7 +13,6 @@ def _user_id(s, email):
 
 
 def _seed_message(s, *, sender_id, recipient_id, body="ping", thread_id=None):
-    """Insert one Message and return its thread_id."""
     from models import Message
 
     tid = thread_id or uuid.uuid4()
@@ -45,7 +29,6 @@ def _seed_message(s, *, sender_id, recipient_id, body="ping", thread_id=None):
 
 
 def _wipe_messages():
-    """Drop every Message row so threads don't leak between tests."""
     from database import session_factory
     from models import Message
 
@@ -57,14 +40,9 @@ def _wipe_messages():
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Composer — the admin messagerie is no longer read-only
-# ---------------------------------------------------------------------------
 
 
 def test_admin_thread_view_renders_a_working_composer(client, login):
-    """Opening a thread the admin takes part in must render the send
-    form, not the old read-only 'envoi désactivé' notice."""
     from database import session_factory
 
     s = session_factory()
@@ -93,15 +71,9 @@ def test_admin_thread_view_renders_a_working_composer(client, login):
         _wipe_messages()
 
 
-# ---------------------------------------------------------------------------
-# Participation gate — the admin only sees its own conversations
-# ---------------------------------------------------------------------------
 
 
 def test_admin_cannot_open_a_thread_it_does_not_participate_in(client, login):
-    """A thread strictly between a client and a caterer is invisible to
-    the admin — it participates now, it no longer observes the whole
-    platform. Old behaviour: super_admin got a 200 on any thread."""
     from database import session_factory
 
     s = session_factory()
@@ -126,9 +98,6 @@ def test_admin_cannot_open_a_thread_it_does_not_participate_in(client, login):
 
 
 def test_admin_inbox_lists_only_its_own_threads(client, login):
-    """The inbox lists the admin's own threads only. A client↔caterer
-    thread must not surface — old `threads_for_admin` listed every
-    thread on the platform."""
     from database import session_factory
 
     s = session_factory()
@@ -160,14 +129,9 @@ def test_admin_inbox_lists_only_its_own_threads(client, login):
         _wipe_messages()
 
 
-# ---------------------------------------------------------------------------
-# Sending — admin can open a conversation with any active user
-# ---------------------------------------------------------------------------
 
 
 def test_admin_can_message_any_active_user(client, login):
-    """The admin can start a conversation with any active account,
-    regardless of a shared order / quote-request context."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -205,9 +169,6 @@ def test_admin_can_message_any_active_user(client, login):
 
 
 def test_admin_message_to_unknown_recipient_is_rejected(client, login):
-    """An admin send to a recipient_id that resolves to no user must
-    404 — the old code skipped the gate entirely for admins and would
-    have persisted a message onto a ghost row."""
     from sqlalchemy import func, select
 
     from database import session_factory
@@ -230,7 +191,6 @@ def test_admin_message_to_unknown_recipient_is_rejected(client, login):
 
 
 def test_admin_message_to_inactive_recipient_is_rejected(client, login):
-    """A deactivated account is not a valid conversation target."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -326,13 +286,9 @@ def test_participant_can_reply_to_an_admin_initiated_conversation(
         _wipe_messages()
 
 
-# ---------------------------------------------------------------------------
-# Entry point — the quote-request detail opens a real conversation
-# ---------------------------------------------------------------------------
 
 
 def _seed_qr_for_alice(s):
-    """Minimal pending_review QuoteRequest owned by alice@test.local."""
     import datetime as _dt
 
     from sqlalchemy import select
@@ -357,8 +313,6 @@ def _seed_qr_for_alice(s):
 
 
 def test_qr_detail_uses_the_conversation_modal(client, login):
-    """The quote-request detail must wire the real send-message modal
-    (a Message thread), not the old notification-only dialog."""
     from database import session_factory
     from models import QuoteRequest
 
@@ -390,7 +344,6 @@ def test_qr_detail_uses_the_conversation_modal(client, login):
 
 
 def test_qualification_message_route_is_removed(client, login):
-    """The old notification-only endpoint no longer exists."""
     login("admin@test.local")
     r = client.post(
         f"/admin/qualification/{uuid.uuid4()}/message",
@@ -401,19 +354,11 @@ def test_qualification_message_route_is_removed(client, login):
     )
 
 
-# ---------------------------------------------------------------------------
-# IDOR — JSON API `/api/messages/<thread_id>` must gate the admin too
-# ---------------------------------------------------------------------------
 
 
 def test_admin_cannot_read_a_thread_it_does_not_participate_in_via_json_api(
     client, login
 ):
-    """The HTML view is already gated by `active_thread_context`. The
-    JSON endpoint serves the message body straight to the browser, so
-    its filter must be the same — a super_admin who isn't sender nor
-    recipient of any message in the thread gets an empty list, never
-    the participants' content."""
     from database import session_factory
 
     s = session_factory()
@@ -443,9 +388,6 @@ def test_admin_cannot_read_a_thread_it_does_not_participate_in_via_json_api(
         _wipe_messages()
 
 
-# ---------------------------------------------------------------------------
-# Support-inbox allowlist — only whitelisted super_admin are open contacts
-# ---------------------------------------------------------------------------
 
 
 def test_client_cannot_address_a_non_support_super_admin(client, login):

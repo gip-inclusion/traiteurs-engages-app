@@ -15,8 +15,6 @@ import datetime as _dt
 
 
 def _seed_request_with_quote(status_literal: str, valid_until=None):
-    """Create a QuoteRequest for alice's company + a Quote of the given
-    status. Returns (quote_request_id, quote_id) as UUIDs."""
     from decimal import Decimal
     from sqlalchemy import select
 
@@ -117,7 +115,6 @@ def test_accepting_expired_quote_does_not_create_order(client, login):
 
 
 def test_accepting_sent_quote_creates_order(client, login):
-    """Regression guard: the happy path still works."""
     tomorrow = _dt.date.today() + _dt.timedelta(days=7)
     qr_id, quote_id = _seed_request_with_quote("sent", valid_until=tomorrow)
     login("alice@test.local")
@@ -130,9 +127,6 @@ def test_accepting_sent_quote_creates_order(client, login):
 
 
 def test_client_user_can_accept_quote(client, login):
-    """Both client_admin and client_user can accept a quote on behalf
-    of their company. Bob is a client_user in the same company as alice
-    (ACME Test) — he must NOT get a 403 here."""
     tomorrow = _dt.date.today() + _dt.timedelta(days=7)
     qr_id, quote_id = _seed_request_with_quote("sent", valid_until=tomorrow)
     login("bob@test.local")
@@ -145,8 +139,6 @@ def test_client_user_can_accept_quote(client, login):
 
 
 def test_client_user_can_refuse_quote(client, login):
-    """Symmetric with accept: client_user from the same company can
-    refuse a quote without a 403."""
     tomorrow = _dt.date.today() + _dt.timedelta(days=7)
     qr_id, quote_id = _seed_request_with_quote("sent", valid_until=tomorrow)
     login("bob@test.local")

@@ -1,17 +1,3 @@
-"""Quote edit must be locked once a quote leaves `draft`.
-
-Background:
-    POST /caterer/requests/<qr>/quote/<q>/edit only scopes by caterer_id
-    and request. It does NOT enforce
-        Quote.status == draft
-    So a caterer can rewrite a quote's lines and totals AFTER the client
-    has accepted it. Because Stripe invoice creation reads `quote.lines`
-    live at delivery time (services/stripe_service.py:create_invoice_for_order),
-    the client gets billed for amounts they never agreed to.
-
-    Mitigation: refuse the edit unless status == draft. Same semantics as
-    `submit_quote`, which only promotes draft -> sent.
-"""
 
 import datetime as _dt
 import json
@@ -101,8 +87,6 @@ def _quote_total(quote_id) -> Decimal:
 
 
 def _malicious_payload():
-    """A line set whose total (€1) is dramatically lower than the seeded €1000.
-    If the guard is missing, this would let the caterer shave the bill."""
     return {
         "details": json.dumps(
             [
@@ -156,7 +140,6 @@ def test_editing_refused_quote_is_rejected(client, login):
 
 
 def test_editing_draft_quote_still_works(client, login):
-    """Regression guard: the happy path is unchanged."""
     qr_id, quote_id = _seed_request_with_quote("draft")
     login("cook@test.local")
     resp = client.post(

@@ -1,8 +1,3 @@
-"""Smoke tests — for each role, login then GET the role dashboard.
-
-This is the safety net for refactoring. If a future PR breaks the auth flow
-or a dashboard route, these tests catch it before it reaches staging.
-"""
 
 import pytest
 
@@ -24,7 +19,6 @@ def test_login_with_seeded_user_returns_302(client):
         "/login", data={"email": "alice@test.local", "password": "testpass"}
     )
     if resp.status_code != 302:
-        # surface the flash message in the failure
         raise AssertionError(
             f"Expected 302, got {resp.status_code}; body excerpt: {resp.get_data(as_text=True)[:600]}"
         )
@@ -38,7 +32,6 @@ def test_login_wrong_password_rejected(client):
             "password": "WRONG",
         },
     )
-    # Re-renders the login form (200) with a flash, no session set
     assert resp.status_code == 200
     assert b"user_id" not in resp.headers.get("Set-Cookie", "").encode()
 
@@ -79,7 +72,6 @@ def test_login_redirects_to_role_dashboard(client, login, email, dashboard):
     ],
 )
 def test_authenticated_pages_render(client, login, email, page):
-    """After logging in, every primary page returns 2xx without exploding."""
     login(email)
     resp = client.get(page)
     assert resp.status_code in (200, 302), (
@@ -116,18 +108,13 @@ def test_404_renders_french_template(client):
 
 def test_logout_clears_session(client, login):
     login("alice@test.local")
-    # Confirm logged in
     assert client.get("/client/dashboard").status_code == 200
-    # VULN-18: logout is POST-only now (CSRF + no remote logout via <img>).
+    # VULN-18: logout is POST-only (CSRF + no remote logout via <img>).
     client.post("/logout")
-    # Now back to redirect
     assert client.get("/client/dashboard", follow_redirects=False).status_code == 302
 
 
 def test_logout_get_is_rejected(client, login):
-    """GET on /logout must return 405 (Method Not Allowed) to defeat the
-    classic CSRF-via-image attack vector."""
     login("alice@test.local")
     assert client.get("/logout").status_code == 405
-    # Session must still be valid after the rejected GET.
     assert client.get("/client/dashboard").status_code == 200

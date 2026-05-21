@@ -1,25 +1,3 @@
-"""Tests pour le changement d'adresse e-mail depuis « Mon profil ».
-
-Le helper partagé `services.account.apply_profile_form` est appelé par
-trois routes :
-
-    * `client.profile`       (`/client/profile`, POST)   — client_admin + client_user
-    * `caterer.account_save` (`/caterer/account`, POST)  — caterer
-    * `admin.profile`        (`/admin/profile`, POST)    — super_admin
-
-Le contrat à valider est identique pour les trois :
-
-    * un POST avec le même e-mail (ou vide) → succès, prénom/nom mis à
-      jour, mot de passe non requis ;
-    * un POST qui change l'e-mail SANS mot de passe → 400, e-mail intact ;
-    * un POST avec un mot de passe incorrect → 400, e-mail intact ;
-    * un POST avec un e-mail déjà pris → 400, e-mail intact ;
-    * un POST valide (mot de passe correct + e-mail libre) → 302,
-      e-mail effectivement modifié.
-
-Le mot de passe seedé est `testpass`. Chaque test mutant restaure l'état
-dans un `finally` pour ne pas casser les autres.
-"""
 
 import pytest
 from sqlalchemy import select
@@ -46,7 +24,6 @@ def _get_user(email):
 
 
 def _reset_user(original_email, current_email, first_name, last_name):
-    """Restore the user's email + names after a mutating test."""
     from database import session_factory
     from models import User
 
@@ -63,9 +40,6 @@ def _reset_user(original_email, current_email, first_name, last_name):
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Happy path — name update only (no email change, no password required)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
@@ -93,9 +67,6 @@ def test_name_only_update_works_for_every_role(client, login, role):
         _reset_user(email, email, original_first, original_last)
 
 
-# ---------------------------------------------------------------------------
-# Happy path — email change with valid current password
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
@@ -125,9 +96,6 @@ def test_email_change_with_valid_password_works(client, login, role):
         _reset_user(email, new_email, original_first, original_last)
 
 
-# ---------------------------------------------------------------------------
-# Rejections — wrong password, missing password, collision
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
@@ -179,8 +147,6 @@ def test_email_change_wrong_password_is_rejected(client, login, role):
 
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
 def test_email_change_collision_is_rejected(client, login, role):
-    """If the target email is already used by another account, the save
-    must abort cleanly with a 400, not raise a 500 on IntegrityError."""
     email, post_url, _ = _ROUTES[role]
     # Pick a different seeded email to collide with — any of the other
     # three seeded accounts works.

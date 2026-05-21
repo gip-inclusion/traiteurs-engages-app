@@ -21,8 +21,6 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_switch_account_rejects_unknown_email(client):
-    """Email not in the hardcoded DEMO_ACCOUNTS list -> 403, even though
-    a valid CSRF token is present (CSRFs are off in test mode)."""
     resp = client.post(
         "/dev/switch-account",
         data={"email": "intruder@evil.example.com"},
@@ -31,7 +29,5 @@ def test_switch_account_rejects_unknown_email(client):
 
 
 def test_switch_account_requires_post(client):
-    """GET on the route must return 405. A bookmarked GET would otherwise
-    let third-party pages trigger account switches via <img src>."""
     resp = client.get("/dev/switch-account")
     assert resp.status_code == 405
