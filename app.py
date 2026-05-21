@@ -54,7 +54,9 @@ CSP = (
     "frame-ancestors 'none'; "
     "base-uri 'self'; "
     # Audit M-12: prevents a stray HTML injection from posting credentials off-origin.
-    "form-action 'self'"
+    # connect.stripe.com whitelisted because form-action is re-checked after each
+    # redirect; without it the 302 from /caterer/stripe/onboard is blocked.
+    "form-action 'self' https://connect.stripe.com"
 )
 
 
