@@ -33,14 +33,16 @@ def apply_profile_form(db, user, form) -> str | None:
       * email différent → exige `current_password` correct + pas de
         collision avec un autre compte.
     """
-    db.add(user)
     if form.first_name.data is not None:
         user.first_name = (form.first_name.data or "").strip() or user.first_name
     if form.last_name.data is not None:
         user.last_name = (form.last_name.data or "").strip() or user.last_name
 
     new_email = (form.email.data or "").strip().lower()
-    if not new_email or new_email == user.email:
+    # Comparaison case-insensitive : un compte historique stocké en casse
+    # mixte ne doit pas trébucher si l'utilisateur retape son email tel
+    # quel (sinon : re-auth inutile + audit log parasite).
+    if not new_email or new_email == (user.email or "").lower():
         return None
 
     # Validation de la syntaxe e-mail uniquement quand l'utilisateur
