@@ -5,25 +5,15 @@
 
 {% block title %}Trouvez votre traiteur inclusif{% endblock %}
 
-{# Le catalogue est public depuis le bloc de recherche de la landing
-   (cf. blueprints/client/requests.py — la route a perdu son
-   @login_required). On rend le même body dans `content` (utilisateur
-   connecté → wrappé par la sidebar + p-6 max-w-7xl mx-auto de base.html)
-   ET dans `public_content` (visiteur déconnecté → main full-width).
-   Le `{% set %}` capture la sortie une fois et la réinjecte. #}
+
 {% set _search_body %}
-{# Fallback advance time used when a caterer hasn't filled in
-   min_advance_days yet on its profile. #}
+
 {% set DEFAULT_ADVANCE_DAYS = 3 %}
 
 <div class="bg-cream min-h-screen"
      {% if not user %}style="padding:1.5rem;max-width:80rem;margin:0 auto;"{% endif %}>
 
-  {# Back button visible uniquement pour les visiteurs déconnectés —
-     les utilisateurs connectés ont déjà la sidebar pour naviguer. Lien
-     explicite vers la landing (au lieu de history.back) parce que
-     l'arrivée typique sur ce catalogue se fait depuis le bloc de
-     recherche de la home. #}
+
   {% if not user %}
   <div class="mb-4">{{ back_button(label="Retour à l'accueil", href=url_for('landing')) }}</div>
   {% endif %}
@@ -32,7 +22,7 @@
 
   <form method="GET" action="{{ url_for('client.search') }}">
 
-    {# ---- Top header card : location + capacity + search submit ---- #}
+
     <div class="bg-white rounded-lg p-6 mb-6">
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
         <div>
@@ -56,20 +46,13 @@
       </div>
     </div>
 
-    {# Flex layout — the project's compiled Tailwind only ships
-       grid-cols-1/2/3, so we can't use lg:grid-cols-4 / col-span-3.
-       Fixed-width sidebar + flex-1 results is the closest equivalent. #}
+
     <div class="flex flex-col lg:flex-row gap-6">
 
-      {# ============================================================
-         LEFT — Comparer 3 devis CTA + filters (fixed 18rem)
-         ============================================================ #}
+
       <aside class="lg:w-72 flex-shrink-0 space-y-6">
 
-        {# CTA card : comparer 3 devis. Réservée aux utilisateurs connectés
-           parce qu'elle pointe vers /client/requests/new (gated). Pour
-           les visiteurs publics, on remplace par un encart "Créer un
-           compte pour lancer une demande" qui pointe vers /signup. #}
+
         {% if user %}
         <div class="bg-white rounded-lg p-6">
           <div class="flex items-center gap-3 mb-3">
@@ -106,11 +89,11 @@
         </div>
         {% endif %}
 
-        {# Filter card #}
+
         <div class="bg-white rounded-lg p-6 space-y-6">
           <h3 class="font-display font-bold text-base text-text">Filtres</h3>
 
-          {# ----- Type de prestation ----- #}
+
           <div>
             <p class="text-xs uppercase font-bold tracking-wider mb-3 text-mute">Type de prestation</p>
             <div class="space-y-2">
@@ -124,7 +107,7 @@
             </div>
           </div>
 
-          {# ----- Type de structure ----- #}
+
           <div>
             <p class="text-xs uppercase font-bold tracking-wider mb-3 text-mute">Type de structure</p>
             <div class="space-y-2">
@@ -142,7 +125,7 @@
             </div>
           </div>
 
-          {# ----- Budget / personne ----- #}
+
           <div>
             <p class="text-xs uppercase font-bold tracking-wider mb-3 text-mute">Budget / personne</p>
             <div class="space-y-2">
@@ -162,7 +145,7 @@
             </div>
           </div>
 
-          {# ----- Régimes alimentaires ----- #}
+
           <div>
             <p class="text-xs uppercase font-bold tracking-wider mb-3 text-mute">Régimes alimentaires</p>
             <div class="space-y-2">
@@ -190,9 +173,7 @@
 
       </aside>
 
-      {# ============================================================
-         RIGHT — search results (takes the rest of the row)
-         ============================================================ #}
+
       <div class="flex-1 min-w-0 space-y-4">
 
         <p class="text-sm text-mute">
@@ -205,7 +186,7 @@
         <a href="{{ url_for('client.caterer_detail', caterer_id=c.id) }}"
            class="catalog-card bg-white rounded-lg overflow-hidden flex flex-col sm:flex-row">
 
-          {# ----- Image with structure badge overlay ----- #}
+
           <div class="sm:w-72 flex-shrink-0 relative" style="min-height:200px;background-color:var(--c-cream);">
             {% if c.photos and c.photos|length > 0 %}
             <img src="{{ c.photos[0] }}" alt="{{ c.name }}" class="absolute inset-0 w-full h-full object-cover">
@@ -219,9 +200,9 @@
             </div>
           </div>
 
-          {# ----- Right side : info ----- #}
+
           <div class="flex-1 p-6 flex flex-col gap-3">
-            {# Logo + name + city #}
+
             <div class="flex items-start gap-3">
               <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style="background-color:var(--c-cream);">
                 {% if c.logo_url %}
@@ -245,12 +226,12 @@
               </div>
             </div>
 
-            {# Description #}
+
             {% if c.description %}
             <p class="text-sm text-text-soft">{{ c.description|truncate(140, True, '…') }}</p>
             {% endif %}
 
-            {# Dietary flags #}
+
             {% set diet_chips = [
               (c.dietary_vegetarian, 'Végétarien'),
               (c.dietary_gluten_free, 'Sans gluten'),
@@ -271,7 +252,7 @@
             </div>
             {% endif %}
 
-            {# Footer : advance time + CTA #}
+
             <div class="flex items-center justify-between mt-auto pt-3">
               <p class="text-xs text-mute inline-flex items-center gap-1">
                 <i data-lucide="clock" class="w-3.5 h-3.5"></i>
@@ -289,7 +270,7 @@
         </a>
         {% endfor %}
 
-        {# Pagination #}
+
         {% if total_pages > 1 %}
         <div class="flex items-center justify-center gap-2 mt-8">
           {% if page > 1 %}
@@ -309,7 +290,7 @@
         {% endif %}
 
         {% else %}
-        {# Empty state #}
+
         <div class="bg-white rounded-lg p-12 text-center">
           <div class="w-14 h-14 rounded-lg flex items-center justify-center mx-auto mb-4 bg-navy-soft">
             <i data-lucide="search-x" class="w-6 h-6 text-navy"></i>

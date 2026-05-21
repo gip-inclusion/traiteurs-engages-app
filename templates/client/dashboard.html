@@ -4,7 +4,7 @@
 {% block title %}Tableau de bord - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
-{# Same French short months as the requests list, so card formatting matches. #}
+
 {% set fr_months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'] %}
 <main class="bg-cream min-h-screen">
 
@@ -58,10 +58,7 @@
       </div>
     </div>
 
-    {# Impact social — agrégé sur les commandes effectivement payées.
-       Source des chiffres : services/impact.py. La phrase de bas de bloc
-       reproduit la mention publiée par la plateforme du marché de
-       l'inclusion d'où la formule des heures financées est tirée. #}
+
     {% if social_impact %}
     <div class="bg-white rounded-lg p-6 mb-6">
       <div class="flex items-center gap-3 mb-4">
@@ -92,11 +89,11 @@
     </div>
     {% endif %}
 
-    {# Layout 70/30 : liste des demandes a gauche, commandes + budget a droite. #}
+
     <div class="split-detail">
       <div class="split-main">
 
-        {# Liste des demandes #}
+
         <div class="bg-white rounded-lg p-6">
           <div class="flex items-center justify-between mb-4">
             <h2 class="font-display font-bold text-xl text-text">Mes demandes</h2>
@@ -105,21 +102,19 @@
           {% if recent_requests %}
           <div>
             {% for qr in recent_requests %}
-            {# Single-caterer demand → chef-hat icon, compare-mode → grid-2x2.
-               Same row format as templates/client/requests/list.html so the
-               two pages stay visually consistent. #}
+
             {% set row_icon = 'chef-hat' if not qr.is_compare_mode else 'grid-2x2' %}
             <a href="{{ url_for('client.request_detail', request_id=qr.id) }}"
                class="flex items-center gap-4 py-4 -mx-2 px-2 rounded-lg transition-colors hover:bg-cream border-t border-soft first:border-t-0">
 
-              {# Icon tile #}
+
               <div class="w-12 h-12 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
                 <i data-lucide="{{ row_icon }}" class="w-5 h-5 text-text-soft"></i>
               </div>
 
-              {# Two-line text block #}
+
               <div class="flex-1 min-w-0">
-                {# Line 1 : meal type (bold) + creation timestamp (mute) #}
+
                 <div class="flex items-center gap-3 flex-wrap">
                   <p class="text-sm font-bold text-text">
                     {{ meal_type_labels.get(qr.meal_type, qr.meal_type.value if qr.meal_type else 'Demande') }}
@@ -129,7 +124,7 @@
                   </p>
                 </div>
 
-                {# Line 2 : meal type · event date · guests · budget · location · quote count #}
+
                 <div class="flex items-center gap-3 mt-1 flex-wrap text-xs text-mute">
                   <span>
                     {{ meal_type_labels.get(qr.meal_type, qr.meal_type.value if qr.meal_type else '') }}
@@ -161,8 +156,7 @@
                   </span>
                   {% endif %}
 
-                  {# Quote count chip — only meaningful while the demand is
-                     still in flight (awaiting / received). #}
+
                   {% if qr.display_status in ('awaiting_quotes', 'quotes_received') %}
                     {% if qr.is_compare_mode %}
                       <span class="inline-flex items-center gap-1 font-bold {% if qr.received_quotes == 0 %}text-pending{% else %}text-sky{% endif %}">
@@ -181,8 +175,7 @@
                 </div>
               </div>
 
-              {# Status badge + chevron — uses the derived display_status,
-                 same as the full list. #}
+
               <div class="flex items-center gap-2 flex-shrink-0">
                 {{ status_badge(qr.display_status) }}
                 <i data-lucide="chevron-right" class="w-4 h-4 text-disabled"></i>
@@ -205,11 +198,11 @@
           {% endif %}
         </div>
 
-      </div>{# /.split-main #}
+      </div>
 
       <aside class="split-aside">
 
-        {# Dernieres commandes #}
+
         {% if recent_orders %}
         <div class="bg-white rounded-lg p-6 mb-6">
           <div class="flex items-center justify-between mb-4">
@@ -236,7 +229,7 @@
         </div>
         {% endif %}
 
-        {# Suivi budgetaire #}
+
         {% if budget_data %}
         <div class="bg-white rounded-lg p-6">
           <h2 class="font-display font-bold text-xl mb-4 text-text">Suivi budgetaire</h2>
@@ -260,8 +253,8 @@
         </div>
         {% endif %}
 
-      </aside>{# /.split-aside #}
-    </div>{# /.split-detail #}
+      </aside>
+    </div>
 
     {% include "client/_new_request_modal.html" %}
 

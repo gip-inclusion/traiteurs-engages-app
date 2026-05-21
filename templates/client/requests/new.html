@@ -35,9 +35,7 @@
     <form id="wizard-form" method="POST" action="{{ url_for('client.requests_new') }}"
           data-back-redirect="{{ url_for('client.requests_list') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {# Idempotency token : the POST handler refuses to create a second
-         QuoteRequest if it's already seen this token (e.g. user pressed
-         "back" after submit and re-clicked Envoyer). #}
+
       <input type="hidden" name="form_token" value="{{ form_token }}">
 
       <!-- STEP 1: Type de service -->
@@ -52,12 +50,7 @@
           </div>
         </div>
 
-        {# Single source of truth : `meal_type_options` is built from
-           MEAL_TYPE_LABELS. For a targeted demand the route filters the
-           list down to what the caterer publishes under "Catalogue &
-           tarifs", so the client only picks something the caterer
-           explicitly proposes. Radio value IS the MealType slug — no
-           more hidden field or service_offering→meal_type mapping. #}
+
         {% if target_caterer %}
         <p class="text-xs text-mute mb-4">
           Ces options correspondent aux prestations publiées par
@@ -110,8 +103,7 @@
           </div>
         </div>
 
-        {# Start / end times. Optional but most clients fill them — they
-           drive the caterer's delivery window planning. #}
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <div>
             <label for="event_start_time" class="block text-sm font-bold mb-2 text-text">Heure de début</label>
@@ -125,11 +117,7 @@
           </div>
         </div>
 
-        {# Address with autocomplete. The autocomplete-address.js script
-           hits the BAN (Base Adresse Nationale) free API and renders a
-           dropdown — selecting a result fills street / zip / city / lat /
-           long automatically. The geocode button has been removed; the
-           autocomplete result already carries lat/long. #}
+
         <div class="mt-4 relative" data-address-autocomplete>
           <label for="event_address" class="block text-sm font-bold mb-2 text-text">Adresse <span class="text-danger">*</span></label>
           <input type="text" id="event_address" name="event_address" required
@@ -155,9 +143,7 @@
           </div>
         </div>
 
-        {# Lat/lng filled by the BAN autocomplete (or left empty if the
-           user typed an unmatched address — fan-out goes to every
-           validated caterer regardless of geocoding). #}
+
         <input type="hidden" id="event_latitude" name="event_latitude">
         <input type="hidden" id="event_longitude" name="event_longitude">
       </div>
@@ -174,11 +160,7 @@
           </div>
         </div>
 
-        {# Budget : au moins un des deux champs doit être rempli (les
-           deux sont auto-syncés quand guest_count est saisi à l'étape
-           2). data-required-group="budget" → la validation custom
-           dans wizard.js considère le groupe valide dès qu'un champ
-           est rempli, et stylise les deux en rouge si aucun ne l'est. #}
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label for="budget_global" class="block text-sm font-bold mb-2 text-text">Budget global</label>
@@ -216,13 +198,7 @@
               <span class="text-xs font-bold">+/- 10%</span>
             </label>
           </div>
-          {# Fourchette dynamique calculée à partir du budget renseigné +
-             du % de flexibilité. Cachée par défaut (mode "exact") ;
-             affichée par wizard.js dès qu'on choisit 5% ou 10% ET
-             qu'au moins un budget est rempli. Format :
-               Budget global : 1425 € - 1575 €
-               Budget par personne : 27 € - 33 €
-             (une ligne par dimension renseignée). #}
+
           <div id="budget-range-display" class="mt-3 text-xs space-y-1 text-text-soft hidden">
             <div id="budget-range-text"></div>
           </div>
@@ -242,10 +218,7 @@
         </div>
 
         <div class="space-y-4">
-          {# Mapping entre l'id du champ et la clé de capacités du
-             traiteur (dietary_vegetarian → key='vegetarian'). On
-             désactive la checkbox quand le traiteur ne supporte pas
-             le régime, avec tooltip explicatif. #}
+
           {% set dietary_items = [
             ('dietary_vegetarian', 'vegetarian_count', 'Vegetarien', 'sprout', 'vegetarian'),
             ('dietary_vegan', 'vegan_count', 'Vegan', 'vegan', 'vegan'),
@@ -318,12 +291,7 @@
           {% endfor %}
         </div>
 
-        {# Le bloc "Alcool ?" (radio Oui/Non sur drinks_alcohol) a été
-           retiré du wizard : redondant avec les checkboxes Bières /
-           Vins / Champagne ci-dessus qui couvrent déjà l'intention.
-           Le champ `drinks_alcohol` reste toléré côté backend pour
-           compatibilité ascendante (anciennes demandes en BDD), mais
-           n'est plus exposé dans l'UI. #}
+
 
         <div>
           <label for="drinks_details" class="block text-sm font-bold mb-2 text-text">Precisions sur les boissons <span class="text-mute">(optionnel)</span></label>
@@ -344,12 +312,7 @@
           </div>
         </div>
 
-        {# Catégories : Personnel / Matériel / Installation et mise en
-           place. Les blocs précisions/horaire vivent au sein de la
-           catégorie de leur checkbox source, pour que l'utilisateur
-           reste dans le même contexte visuel. Les sous-titres
-           utilisent .font-body pour être en Marianne (la règle
-           globale h1..h6 imposerait sinon Fraunces, cf. app.css). #}
+
         <div class="space-y-6">
 
           <div>
@@ -361,8 +324,7 @@
                 <span class="font-bold text-sm text-text">Service en salle</span>
               </label>
             </div>
-            {# Précisions Service en salle — révélé par wizard.js quand
-               wants_waitstaff est coché. #}
+
             <div id="waitstaff-details-wrapper" class="mt-4 hidden">
               <label for="service_waitstaff_details" class="block text-sm font-bold mb-2 text-text">Details du service en salle</label>
               <textarea id="service_waitstaff_details" name="service_waitstaff_details" rows="3" placeholder="Ex: 3 serveurs pour un service a l'assiette, de 12h a 15h..."
@@ -402,8 +364,7 @@
               </label>
               {% endfor %}
             </div>
-            {# Horaire (requis quand wants_setup coché — wizard.js bascule
-               l'attribut required à la volée) + précisions optionnelles. #}
+
             <div id="setup-details-wrapper" class="mt-4 hidden">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -514,12 +475,7 @@
             class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors resize-none border-default"></textarea>
         </div>
 
-        {# Hidden mode flags resolved by the entry point:
-             - default wizard ("Recevoir 3 devis")  → compare mode, no target
-             - "Demander un devis" from caterer profile → single-caterer flow,
-               target_caterer_id set, is_compare_mode left empty so the
-               backend forces the single-caterer path.
-        #}
+
         {% if target_caterer %}
         <input type="hidden" name="target_caterer_id" value="{{ target_caterer.id }}">
         <input type="hidden" name="is_compare_mode" value="0">
@@ -557,11 +513,7 @@
 {% endblock %}
 
 {% block scripts %}
-{# `v=` : cache-buster manuel. Les fichiers JS ne sont pas hashés et sont
-   servis avec `Cache-Control: max-age=3600` — sans ce paramètre, un
-   navigateur qui a déjà `wizard.js` en cache ne le recharge pas pendant
-   une heure, même après un déploiement. Incrémenter `v` à chaque
-   modification de `wizard.js`. #}
+
 <script src="{{ url_for('static', filename='js/wizard.js', v=2) }}"></script>
 <script src="{{ url_for('static', filename='js/address-autocomplete.js') }}" defer></script>
 {% endblock %}

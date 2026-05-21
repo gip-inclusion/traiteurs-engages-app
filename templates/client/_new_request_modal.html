@@ -1,18 +1,3 @@
-{# Dropdown shown when the client clicks any "Nouvelle demande" CTA.
-
-   Two paths out:
-     - "Trouver un traiteur"  → catalogue (/client/search)
-     - "Recevoir 3 devis"     → wizard (/client/requests/new)
-
-   Positioning + open/close handled by static/js/new-request-modal.js
-   (CSP-safe; inline scripts are blocked by the project's
-   `script-src 'self'`). The dropdown is positioned via JS using
-   `getBoundingClientRect()` of the trigger button, so the same hidden
-   element can serve every "Nouvelle demande" button on the page.
-
-   Include once near the bottom of the page (inside {% block content %})
-   and use [data-action="open-new-request-menu"] on any trigger button.
-#}
 <div id="new-request-modal"
      class="hidden fixed z-50 bg-white rounded-lg shadow-lg"
      style="min-width:320px;border:1px solid rgba(26,58,82,0.08);">

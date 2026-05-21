@@ -1,12 +1,3 @@
-{# Dropdown panel listing the 10 most recent notifications. Triggered by
-   the bell button in the sidebar header (data-action="toggle-hidden"
-   data-target="notifications-modal"). Rendered at the top level of base
-   so it escapes the sidebar's stacking context, then anchored via
-   `position: fixed` — past the sidebar's right edge on desktop, and as
-   a near-full-width sheet on mobile (see .notifications-dropdown in
-   app.css). The full history lives at the per-blueprint /notifications
-   page. #}
-
 {% set role = g.current_user.role|string %}
 {% set role_endpoint_prefix = (
   'admin' if role == 'super_admin'
@@ -37,10 +28,7 @@
   'caterer_pending_validation': 'shield-check',
 } %}
 
-{# `notifications_recent` is capped at 10 by the `_inject_notifications`
-   context processor; `notifications_unread_total` carries the true
-   count so the header isn't wrong when the user has more than 10
-   unread. #}
+
 {% set unread_count = notifications_unread_total %}
 
 <div id="notifications-modal"

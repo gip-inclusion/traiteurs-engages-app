@@ -5,7 +5,7 @@
 {% block title %}Demandes recues - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
-{# French short month names — used for event date formatting like "1 sept. 2026" #}
+
 {% set fr_months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'] %}
 
 <div class="mb-8">
@@ -35,14 +35,14 @@
     <a href="{{ url_for('caterer.request_detail', qr_id=qr.id) }}"
        class="flex items-center gap-4 py-4 -mx-2 px-2 rounded-lg transition-colors hover:bg-cream border-t border-soft first:border-t-0">
 
-      {# Building icon tile #}
+
       <div class="w-12 h-12 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
         <i data-lucide="building-2" class="w-5 h-5 text-text-soft"></i>
       </div>
 
-      {# Two-line text block #}
+
       <div class="flex-1 min-w-0">
-        {# Line 1 : meal type (bold) + company (mute) + creation date (mute) #}
+
         <div class="flex items-center gap-3 flex-wrap">
           <p class="text-sm font-bold text-text">
             {{ meal_type_labels.get(qr.meal_type, qr.meal_type.value if qr.meal_type else 'Demande') }}
@@ -53,7 +53,7 @@
           </p>
         </div>
 
-        {# Line 2 : meal type · event date · guests · budget · city #}
+
         <div class="flex items-center gap-3 mt-1 flex-wrap text-xs text-mute">
           <span>
             {{ meal_type_labels.get(qr.meal_type, qr.meal_type.value if qr.meal_type else '') }}
@@ -87,9 +87,7 @@
         </div>
       </div>
 
-      {# Status badge + chevron. display_status is derived in the blueprint
-         from the caterer's own Quote (Nouvelle / Devis envoyé / Devis refusé /
-         Commande créée) — see requests_list() in blueprints/caterer.py. #}
+
       <div class="flex items-center gap-2 flex-shrink-0">
         {{ status_badge(qrc.display_status) }}
         <i data-lucide="chevron-right" class="w-4 h-4 text-disabled"></i>

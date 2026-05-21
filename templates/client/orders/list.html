@@ -5,14 +5,14 @@
 {% block title %}Mes commandes - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
-{# French short month names — used to format the delivery date as "1 sept. 2026" #}
+
 {% set fr_months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'] %}
 
 <main class="bg-cream min-h-screen">
 
     <h1 class="font-display font-bold text-4xl mb-6 text-text">Mes commandes</h1>
 
-    {# ---- Filter tabs ---- #}
+
     <div class="bg-white rounded-lg p-6 mb-6">
       <div class="flex flex-wrap gap-2">
         {% for key, label in status_tabs.items() %}
@@ -35,14 +35,14 @@
         <a href="{{ url_for('client.order_detail', order_id=order.id) }}"
            class="flex items-center gap-4 py-4 -mx-2 px-2 rounded-lg transition-colors hover:bg-cream border-t border-soft first:border-t-0">
 
-          {# Bag icon tile #}
+
           <div class="w-12 h-12 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
             <i data-lucide="shopping-bag" class="w-5 h-5 text-text-soft"></i>
           </div>
 
-          {# Two-line text block #}
+
           <div class="flex-1 min-w-0">
-            {# Line 1 : meal type (bold) + caterer name (mute) #}
+
             <div class="flex items-center gap-3 flex-wrap">
               <p class="text-sm font-bold text-text">
                 {{ meal_type_labels.get(qr.meal_type, qr.meal_type.value if qr.meal_type else 'Commande') }}
@@ -50,7 +50,7 @@
               <p class="text-sm text-mute truncate">{{ order.quote.caterer.name }}</p>
             </div>
 
-            {# Line 2 : delivery date · guests · city · amount #}
+
             <div class="flex items-center gap-3 mt-1 flex-wrap text-xs text-mute">
               {% if order.delivery_date %}
               <span class="inline-flex items-center gap-1">
@@ -77,7 +77,7 @@
             </div>
           </div>
 
-          {# Status badge + chevron #}
+
           <div class="flex items-center gap-2 flex-shrink-0">
             {{ status_badge(order.display_status) }}
             <i data-lucide="chevron-right" class="w-4 h-4 text-disabled"></i>

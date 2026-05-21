@@ -23,7 +23,7 @@
       </div>
     </div>
 
-    {# Layout 70/30 : details + status a gauche, facture / paiement en sidebar a droite. #}
+
     <div class="split-detail">
       <div class="split-main">
 
@@ -57,10 +57,7 @@
       </div>
     </div>
 
-    {# "Traiteur" card removed — info is already on the client-side sticky
-       sidebar (logo, name, message CTA), so the left column would
-       duplicate it. Kept the "Devis accepté" card and gave it the full
-       width now that it's the sole occupant. #}
+
     <div class="bg-white rounded-lg p-6 mb-6">
       <div class="flex items-center justify-between gap-2 mb-4">
         <div class="flex items-center gap-2">
@@ -127,13 +124,11 @@
       {% endif %}
     </div>
 
-      </div>{# /.split-main #}
+      </div>
 
       <aside class="split-aside">
 
-    {# Notification "facture envoyée par mail" — visible uniquement quand
-       la commande est passée en `invoiced` (la facture Stripe a été émise
-       et envoyée au mail du contact admin de l'entreprise). #}
+
     {% if order.status == OrderStatus.invoiced %}
     <div class="bg-white rounded-lg p-6 mb-6 border-l-4 border-navy">
       <div class="flex items-start gap-3">
@@ -150,12 +145,7 @@
     </div>
     {% endif %}
 
-    {# Caterer card — logo + name (clickable) + send-message button.
-       Le label "Traiteur" est remplacé par le type de structure
-       complet (ESAT / Entreprise Adaptée / Entreprise d'Insertion /
-       Atelier et Chantier d'Insertion) dans le même style typo
-       (uppercase 10px mute). Plus de pastille verte top-right :
-       l'info est portée par le label. #}
+
     <div class="bg-white rounded-lg p-6 mb-6">
       <a href="{{ url_for('client.caterer_detail', caterer_id=order.quote.caterer.id) }}"
          class="flex items-center gap-3 -mx-2 px-2 -my-1 py-1 rounded-lg hover:bg-cream transition-colors">
@@ -210,10 +200,7 @@
     </div>
     {% endif %}
 
-    {# Bloc "En attente de facturation" : on ne l'affiche plus pour les
-       commandes "à venir" (confirmed). Pour les commandes livrées /
-       en cours de facturation, on garde le message qui annonce l'envoi
-       imminent de la facture par email. #}
+
     {% if order.status in (OrderStatus.delivered, OrderStatus.invoicing) and not order.stripe_hosted_invoice_url %}
     <div class="bg-white rounded-lg p-6 mb-6">
       <div class="flex items-center gap-3">
@@ -230,7 +217,7 @@
     </div>
     {% endif %}
 
-    {# ---- Avis du traiteur (statut paid uniquement) ---- #}
+
     {% if existing_review %}
     <div class="bg-white rounded-lg p-6 mb-6">
       <div class="flex items-center gap-2 mb-3">
@@ -266,18 +253,9 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
           <label class="block text-xs font-bold uppercase tracking-wider text-mute mb-2">Note</label>
-          {# Native radios + clickable labels. Works even without JS:
-             clicking a label selects the radio, the form submits the
-             chosen value. JS only adds the filled-star visual feedback
-             on hover / selection. The radio inputs are visually hidden
-             via inline style (the project's static Tailwind doesn't
-             ship `sr-only`). #}
+
           {% set OUTLINE_STAR %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#D1D5DB" stroke-width="1.5" style="width:1.75rem;height:1.75rem;display:block;"><path d="M9.05 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.16c.969 0 1.371 1.24.588 1.81l-3.366 2.446a1 1 0 00-.364 1.118l1.287 3.957c.299.921-.755 1.688-1.54 1.118l-3.366-2.446a1 1 0 00-1.176 0l-3.366 2.446c-.784.57-1.838-.197-1.54-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.16a1 1 0 00.95-.69l1.287-3.957z"/></svg>{% endset %}
-          {# Inputs and labels are siblings (not nested) and associated
-             via for=id. The radios are taken out of the layout via
-             position:absolute + offscreen, AND get pointer-events:none
-             so nothing they're sitting under can swallow the label
-             click. The label itself is the visible, clickable surface. #}
+
           <div data-rating-input style="display:inline-flex;gap:0.25rem;position:relative;">
             {% for i in [1, 2, 3, 4, 5] %}
             <input type="radio" id="rating-radio-{{ i }}" name="rating" value="{{ i }}" required
@@ -298,10 +276,7 @@
                     placeholder="Partagez votre experience pour aider d'autres clients."
                     class="w-full rounded-lg px-3 py-2.5 text-sm text-black input-soft"></textarea>
         </div>
-        {# Submit always enabled — `required` on the radios triggers the
-           browser's native validation tooltip if the user clicks Publier
-           without picking a note. Server-side `submit_review` is the
-           authoritative gate against tampering. #}
+
         <button type="submit"
                 class="rounded-full text-sm font-bold px-5 py-2.5 inline-flex items-center gap-2 bg-navy text-white">
           <i data-lucide="send" class="w-4 h-4"></i>
@@ -311,8 +286,8 @@
     </div>
     {% endif %}
 
-      </aside>{# /.split-aside #}
-    </div>{# /.split-detail #}
+      </aside>
+    </div>
 
 </main>
 

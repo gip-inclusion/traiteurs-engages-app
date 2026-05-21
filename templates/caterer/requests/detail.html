@@ -6,16 +6,16 @@
 {% block title %}Demande - {{ qr.company.name }} - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
-{# French short month names — used for event date formatting like "9 mai 2026" #}
+
 {% set fr_months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'] %}
 {% set meal_label = meal_type_labels.get(qr.meal_type, qr.meal_type.value if qr.meal_type else 'Demande') %}
 
-{# ---- Top bar : back link ---- #}
+
 <div class="mb-6">
   {{ back_button(label="Retour") }}
 </div>
 
-{# ---- Header : title + meta + status badge ---- #}
+
 <div class="flex items-start justify-between gap-4 mb-8">
   <div>
     <h1 class="font-display font-bold text-4xl text-black">
@@ -31,11 +31,11 @@
   <div class="flex-shrink-0">{{ status_badge(qrc.display_status) }}</div>
 </div>
 
-{# Layout 70/30 : prestation details on the left, summary + actions on the right. #}
+
 <div class="split-detail">
   <div class="split-main space-y-6">
 
-    {# ---- Banner : closed by the 3-first-responders rule ---- #}
+
     {% if qrc.display_status == 'closed' %}
     <div class="bg-white rounded-lg p-6 border-l-4" style="border-color:var(--c-mute);">
       <div class="flex items-start gap-3">
@@ -54,14 +54,13 @@
     </div>
     {% endif %}
 
-    {# ---- Card : event summary ---- #}
+
     <div class="bg-white rounded-lg p-6 space-y-2">
       <h2 class="font-display font-bold text-2xl text-text">L'événement</h2>
-      {# Inline style for the grid gap because the project ships a static
-         Tailwind build that doesn't include gap-y-* / gap-x-* utilities. #}
+
       <div class="grid grid-cols-1 sm:grid-cols-2" style="row-gap:0.5rem;column-gap:2rem;">
 
-        {# Date #}
+
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
             <i data-lucide="calendar" class="w-5 h-5 text-text-soft"></i>
@@ -75,7 +74,7 @@
           </span>
         </div>
 
-        {# Horaires #}
+
         {% if qr.event_start_time or qr.event_end_time %}
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
@@ -89,7 +88,7 @@
         </div>
         {% endif %}
 
-        {# Location #}
+
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
             <i data-lucide="map-pin" class="w-5 h-5 text-text-soft"></i>
@@ -102,7 +101,7 @@
           </span>
         </div>
 
-        {# Guest count #}
+
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
             <i data-lucide="users" class="w-5 h-5 text-text-soft"></i>
@@ -110,7 +109,7 @@
           <span class="text-sm font-bold text-text">{{ qr.guest_count or '?' }} personnes</span>
         </div>
 
-        {# Meal type #}
+
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-cream flex-shrink-0">
             <i data-lucide="utensils" class="w-5 h-5 text-text-soft"></i>
@@ -119,7 +118,7 @@
         </div>
       </div>
 
-      {# Optional event-type description block #}
+
       {% if qr.service_type %}
       <div class="p-4 rounded-lg" style="background-color:var(--c-cream);">
         <p class="text-sm text-text"><span class="font-bold">Type d'événement</span> &middot; {{ qr.service_type }}</p>
@@ -127,7 +126,7 @@
       {% endif %}
     </div>
 
-    {# ---- Card : prestation (drinks + additional services) ---- #}
+
     {% set has_drinks = qr.drinks or qr.drinks_details %}
     {% set has_services = qr.wants_waitstaff or qr.wants_equipment or qr.wants_decoration or qr.wants_setup or qr.wants_cleanup %}
     {% if has_drinks or has_services %}
@@ -196,7 +195,7 @@
     </div>
     {% endif %}
 
-    {# ---- Card : preferences and constraints (dietary tags) ---- #}
+
     {% set dietary = [
       (qr.dietary_vegetarian, 'Végétarien', qr.vegetarian_count),
       (qr.dietary_vegan, 'Vegan', qr.vegan_count),
@@ -220,7 +219,7 @@
     </div>
     {% endif %}
 
-    {# ---- Card : message from client (conditional) ---- #}
+
     {% if qr.message_to_caterer %}
     <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-2xl mb-3 text-text">Message du client</h2>
@@ -228,11 +227,11 @@
     </div>
     {% endif %}
 
-  </div>{# /.split-main #}
+  </div>
 
   <aside class="split-aside space-y-6">
 
-    {# ---- Card : recap (budget + quote summary or actions) ---- #}
+
     <div class="bg-white rounded-lg p-6 space-y-2">
       <h2 class="font-display font-bold text-2xl text-text">Récapitulatif</h2>
 
@@ -263,17 +262,15 @@
         </div>
       </div>
 
-      {# ----- Status-driven block ----- #}
+
       {% if qrc.display_status == 'closed' %}
-        {# Closed : no action available — the banner above already
-           explains the situation, so we keep this card focused on the
-           recap data only. #}
+
         <p class="text-xs text-mute">
           Les actions sont desactivees pour cette demande.
         </p>
 
       {% elif qrc.display_status == 'new' %}
-        {# Nouvelle : action buttons (accept = create quote, reject = decline) #}
+
         <div class="space-y-2">
           {% if existing_quote and existing_quote.status == QuoteStatus.draft %}
           <a href="{{ url_for('caterer.quote_edit', qr_id=qr.id, q_id=existing_quote.id) }}"
@@ -298,7 +295,7 @@
         </div>
 
       {% elif existing_quote and qrc.display_status in ('sent', 'quotes_refused', 'quote_accepted') %}
-        {# Quote-aware sub-card : "Votre devis" recap #}
+
         <div class="p-4 rounded-lg" style="background-color:var(--c-cream);">
           <p class="text-sm font-bold text-text mb-3">Votre devis</p>
           <dl class="space-y-2 text-sm">
@@ -350,7 +347,7 @@
       {% endif %}
     </div>
 
-    {# ---- Card : client (logo, name, contact, message button) ---- #}
+
     {% set client_user = qr.user %}
     {{ contact_card(
       entity_type='client',
@@ -372,7 +369,7 @@
          thread_endpoint='caterer.message_thread') }}
     {% endif %}
 
-    {# ---- Card : history with this client ---- #}
+
     <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-2xl mb-4 text-text">Historique avec ce client</h2>
       {% if previous_orders %}
@@ -399,14 +396,10 @@
       {% endif %}
     </div>
 
-  </aside>{# /.split-aside #}
-</div>{# /.split-detail #}
+  </aside>
+</div>
 
-{# ============================================================
-   PDF PREVIEW MODAL — read-only render of the persisted Quote.
-   Opened by the "Voir le devis" button on the right-hand recap card.
-   Only rendered when there's actually a quote to show.
-   ============================================================ #}
+
 {% if pdf_preview %}
 <div id="pdf-preview-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
      style="background-color:rgba(0,0,0,0.5);">
@@ -417,8 +410,7 @@
         <p class="text-sm mt-1 text-mute">Réf. {{ existing_quote.reference }}</p>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
-        {# Server-rendered PDF download — same _pdf_preview.html
-           partial as the modal so the file matches what's on screen. #}
+
         <a href="{{ url_for('caterer.quote_pdf', qr_id=qr.id, q_id=existing_quote.id) }}"
            class="inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 btn-ghost-navy no-underline">
           <i data-lucide="download" class="w-3.5 h-3.5"></i>
@@ -446,8 +438,7 @@
 {% endblock %}
 
 {% block scripts %}
-{# CSP is script-src 'self' so the modal toggle can't live inline; the
-   external file is served from /static/ and is therefore allowed. #}
+
 {% if pdf_preview %}
 <script src="{{ url_for('static', filename='js/pdf-preview-modal.js') }}" defer></script>
 {% endif %}

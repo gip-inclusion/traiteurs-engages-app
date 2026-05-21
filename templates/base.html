@@ -10,12 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/tailwind.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-  {# Lucide icons — bundled locally (audit VULN-105) to remove the CDN
-     supply-chain risk and tighten the CSP to script-src 'self'. #}
+  {# VULN-105: bundled locally so script-src can stay 'self'. #}
   <script src="{{ url_for('static', filename='js/vendor/lucide.min.js') }}" defer></script>
-  {# Global "Retour" button handler — picks up data-action="history-back"
-     anywhere on the page. CSP-compliant since the back_button macro
-     can't use an inline onclick. #}
+
   <script src="{{ url_for('static', filename='js/history-back.js') }}" defer></script>
   {% block head %}{% endblock %}
 </head>
@@ -40,13 +37,7 @@
       <button type="button" data-action="toggle-hidden" data-target="notifications-modal"
               class="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors relative" title="Notifications">
         <i data-lucide="bell" class="w-5 h-5 text-mute"></i>
-        {# Bell unread counter. Visibility + count are server-rendered
-           from the `_inject_notifications` context processor so the
-           badge is correct on first paint — the JS poll later in
-           app.js only refreshes the value live (and was the previous
-           single source of truth, which is why a single fetch hiccup
-           would leave the dot silently hidden). The .notification-badge
-           class carries all the dimensions / colours — see app.css. #}
+
         {% set _bell_count = notifications_unread_total or 0 %}
         {% set _bell_s = '' if _bell_count == 1 else 's' %}
         <span class="notification-badge {% if _bell_count <= 0 %}hidden{% endif %}"
@@ -149,10 +140,7 @@
           <i data-lucide="user" class="w-5 h-5 flex-shrink-0"></i>
           <span>Mon profil</span>
         </a>
-        {# Stripe Connect onboarding — chemin vers la page d'inscription
-           Stripe ; le traiteur doit y passer pour recevoir ses paiements.
-           Le lien a été retiré pendant la V1 (commit 2c386b9), il est
-           remis ici pour réactiver le flux paiement. #}
+
         <a href="{{ url_for('caterer.stripe_status') }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors" data-page="stripe">
           <i data-lucide="banknote" class="w-5 h-5 flex-shrink-0"></i>
           <span>Paiements</span>
@@ -243,16 +231,13 @@
     {% include "components/dev_account_switcher.html" %}
   {% endif %}
 
-  {# Notifications dropdown — triggered by the bell button at the top of
-     the sidebar. Uses fixed positioning so it lands just past the
-     sidebar's right edge regardless of where it sits in the DOM. #}
+
   {% if g.current_user %}
     {% include "components/notifications_modal.html" %}
   {% endif %}
 
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
-  {# Modal "Envoyer un message" — binds where the
-     `send_message_modal` Jinja macro is rendered, no-op elsewhere. #}
+
   <script src="{{ url_for('static', filename='js/send-message-modal.js') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>

@@ -1,16 +1,3 @@
-{# Self-contained HTML document used as input to WeasyPrint when the
-   caterer downloads a quote as PDF. Pulls in the same `_pdf_preview.html`
-   partial as the in-app modal so the caterer downloads exactly what
-   they (and the client) saw on screen.
-
-   Stylesheets are passed to WeasyPrint at write_pdf() time as
-   `stylesheets=[...]` (see services/quote_pdf.py) — we don't <link>
-   them here because that would force WeasyPrint to make HTTP calls
-   back to gunicorn, risking a deadlock on a single-worker dyno.
-
-   Expected context (same as _pdf_preview.html):
-     quote, qr, caterer, pdf_preview, meal_type_labels.
-#}
 <!DOCTYPE html>
 <html lang="fr">
 <head>

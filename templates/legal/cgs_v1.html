@@ -2,10 +2,7 @@
 
 {% block title %}{{ version.title }} - Les Traiteurs Engagés{% endblock %}
 
-{# Same body whether the visitor is signed in (block content, rendered
-   inside the dashboard sidebar layout) or not (block public_content,
-   rendered without the sidebar). Defining both via `self.body()` keeps
-   the markup in one place. #}
+
 {% block public_content %}<div class="p-6 max-w-7xl mx-auto">{{ self.body() }}</div>{% endblock %}
 
 {% block content %}{{ self.body() }}{% endblock %}

@@ -4,8 +4,7 @@
 {% block title %}Tableau de bord Traiteur - Les Traiteurs Engages{% endblock %}
 
 {% block content %}
-{# French short month names — used for event date formatting like "1 sept. 2026",
-   shared with /caterer/requests so both pages render dates identically. #}
+
 {% set fr_months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'] %}
 
   <!-- Greeting -->
@@ -71,11 +70,11 @@
     </div>
   </div>
 
-  {# Layout 70/30 : demandes a traiter a gauche, commandes a venir a droite. #}
+
   <div class="split-detail">
     <div class="split-main">
 
-      {# Demandes a traiter — toujours rendu meme si vide #}
+
       <div class="bg-white rounded-lg p-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-display font-bold text-xl text-text">Demandes a traiter</h2>
@@ -86,10 +85,7 @@
         </div>
         {% if new_requests %}
         <div>
-          {# Same markup as /caterer/requests/list.html — building-2 tile,
-             two-line text block (meal type / company / created_at, then
-             meal type · event date · guests · budget · city), display
-             status badge + chevron. #}
+
           {% for qrc in new_requests %}
           {% set qr = qrc.quote_request %}
           <a href="{{ url_for('caterer.request_detail', qr_id=qr.id) }}"
@@ -160,11 +156,11 @@
         {% endif %}
       </div>
 
-    </div>{# /.split-main #}
+    </div>
 
     <aside class="split-aside">
 
-      {# Commandes a venir — toujours rendu meme si vide #}
+
       <div class="bg-white rounded-lg p-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-display font-bold text-xl text-text">Commandes a venir</h2>
@@ -203,7 +199,7 @@
         {% endif %}
       </div>
 
-    </aside>{# /.split-aside #}
-  </div>{# /.split-detail #}
+    </aside>
+  </div>
 
 {% endblock %}

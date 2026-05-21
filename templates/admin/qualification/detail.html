@@ -154,9 +154,7 @@
         </span>
         {% endif %}
       </div>
-      {# Guard each detail line on its `wants_*` flag so a stale value
-         left over after the checkbox was unticked never surfaces as an
-         orphan paragraph below the pills. #}
+
       {% if qr.wants_waitstaff and qr.service_waitstaff_details %}
       <p class="text-xs mt-3 text-mute">
         <span class="font-bold">Service en salle :</span> {{ qr.service_waitstaff_details }}
@@ -171,9 +169,7 @@
   </div>
 
   <div class="space-y-6">
-    {# Caterers who effectively sent a quote on this request — drafts are
-       excluded since the client never sees them. Empty until the first
-       caterer pushes their devis through. #}
+
     {% set sent_quotes = qr.quotes | rejectattr('status', 'equalto', QuoteStatus.draft) | list %}
     {% if sent_quotes %}
     <div class="bg-white rounded-lg p-6">

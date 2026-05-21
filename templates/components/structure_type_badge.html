@@ -1,9 +1,3 @@
-{# Mapping unique du code structure (ESAT/EA/EI/ACI) → libellé complet.
-   Partagé par `structure_type_badge` (la pastille colorée) et
-   `structure_type_label` (juste la chaîne, utilisée en remplacement
-   du label "Traiteur" dans les caterer cards de /client/requests/<id>
-   et /client/orders/<id>). #}
-
 {% macro structure_type_label(type) -%}
 {%- set type_str = type.value if type is not string else type -%}
 {%- set labels = {

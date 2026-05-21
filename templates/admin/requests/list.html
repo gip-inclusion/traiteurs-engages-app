@@ -15,9 +15,7 @@
   </a>
 </div>
 
-{# Status tabs — pure link navigation, no JS. The `.tab-pill` class
-   carries the visual vocabulary (cf. static/css/app.css) so this
-   markup stays focused on which tab is active. #}
+
 <div class="bg-white rounded-lg p-1 mb-6 inline-flex flex-wrap gap-1">
   {% for tab_slug, tab_label in status_tabs.items() %}
   <a href="{{ url_for('admin.requests_list', status=tab_slug) }}"

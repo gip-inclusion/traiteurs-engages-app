@@ -1,22 +1,3 @@
-{# Reusable star-rating display.
-
-   Args :
-     - avg        : float | None — average rating, None means "no reviews"
-     - count      : int          — number of reviews
-     - size       : str (optional) — CSS class for star size (default 'w-4 h-4')
-     - show_label : bool (optional) — when False, render only the stars
-                    (no "4.3 · 12 avis" suffix). Used for per-review rows
-                    where the count text would be misleading.
-
-   Visual :
-     ★★★★☆  4.3 · 12 avis      (when count > 0 and show_label)
-     ☆☆☆☆☆  Aucun avis           (when count == 0 and show_label)
-     ★★★★☆                       (when show_label is False)
-
-   The stars are inline SVG so the project's static Tailwind doesn't
-   have to ship a dynamic class set; one filled glyph + one outline
-   glyph is enough.
-#}
 {% macro rating_stars(avg, count, size='w-4 h-4', show_label=True) %}
   {% set filled = (avg|round(0, 'common')|int) if avg is not none else 0 %}
   <span class="inline-flex items-center gap-1.5 text-xs">
