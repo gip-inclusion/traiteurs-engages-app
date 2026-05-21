@@ -41,24 +41,18 @@ from services.terms import current_terms_version, is_terms_accepted
 logger = logging.getLogger(__name__)
 
 
-# Same TTL the team handler uses when generating the token. Kept here so
-# /signup/invite/<token> can reject stale links without importing from
-# the team blueprint (which would create a circular dependency).
+# Duplicated from the team handler so /signup/invite/<token> can reject
+# stale links without importing from blueprints/client (circular import).
 INVITE_TOKEN_TTL_DAYS = 7
 
 auth_bp = Blueprint("auth", __name__)
 
-# Rate limits applied to the GETs too so an attacker can't bypass by only POSTing.
-# Login: 10 / min for legitimate humans. Signup: 5 / hour by default to deter
-# spam — override with SIGNUP_LIMIT=<rate> in docker-compose.local.yml / .env
-# when iterating locally so test loops don't wedge for an hour.
 LOGIN_LIMIT = "10 per minute"
+# Override via env for local iteration so test loops don't wedge for an hour.
 SIGNUP_LIMIT = os.environ.get("SIGNUP_LIMIT", "5 per hour")
 
-# Password policy (audit 1 VULN-14). NIST SP 800-63B: length is the dominant
-# factor; complexity rules are weak by themselves but block the laziest attempts.
-# We require length >= 12 + at least 3 character classes + not in a top-passwords
-# blocklist. For a stronger check, plug in zxcvbn or Have-I-Been-Pwned later.
+# VULN-14: length >= 12 + ≥3 character classes + not in the top-passwords
+# blocklist below. Plug in zxcvbn / HIBP later for a stronger check.
 PASSWORD_MIN_LENGTH = 12
 PASSWORD_BLOCKLIST = {
     "password",
@@ -93,17 +87,12 @@ PASSWORD_BLOCKLIST = {
     "test1234",
 }
 
-# Pre-computed dummy hash so /login always pays bcrypt's cost, whether the
-# email exists or not. Without this, the `or` short-circuit at l. 84 below
-# made bcrypt run only when the user existed, leaking ~250 ms on hits
-# vs ~10 ms on misses — trivial email enumeration (audit VULN-102).
-# Generated once at import; the actual password we hash is irrelevant
-# because we only care about constant work.
+# VULN-102: always pay bcrypt's cost so /login response time is constant
+# whether the email exists or not (~250 ms vs ~10 ms otherwise).
 _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"timing-safe-dummy", bcrypt.gensalt()).decode()
 
 
 def validate_password(password: str) -> str | None:
-    """Return None if the password passes policy, else a user-facing error."""
     if len(password) < PASSWORD_MIN_LENGTH:
         return (
             f"Le mot de passe doit comporter au moins {PASSWORD_MIN_LENGTH} caracteres."
@@ -135,11 +124,8 @@ ROLE_DASHBOARDS = {
 
 
 def _stamp_session(user):
-    """Record the user_id and a snapshot of password_changed_at on the
-    session. `app.load_current_user` re-reads both on every request and
-    invalidates the session if the live column has moved past the
-    snapshot — that's how a password reset force-logs-out other devices.
-    """
+    # Snapshot password_changed_at so load_current_user can invalidate
+    # this session when the column moves forward (force-logout on reset).
     session["user_id"] = str(user.id)
     session["pwd_changed_at"] = (
         user.password_changed_at.isoformat() if user.password_changed_at else None
@@ -157,37 +143,24 @@ def login():
             return render_template("auth/login.html")
         db = get_db()
         user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-        # VULN-102: always pay the bcrypt cost — comparing against a dummy
-        # hash when the user does not exist keeps the response time
-        # constant (~250 ms in both branches) and prevents email
-        # enumeration via a timing side-channel.
+        # VULN-102: dummy hash when user doesn't exist keeps timing constant.
         hash_to_check = user.password_hash if user else _DUMMY_PASSWORD_HASH
         password_ok = bcrypt.checkpw(password.encode(), hash_to_check.encode())
         if not user or not password_ok:
             flash("Email ou mot de passe incorrect.", "error")
             return render_template("auth/login.html")
-        # Audit H-2 (2026-05-13): three distinct flashes for three
-        # inactive states (`is_active=False`, `pending`, `rejected`) gave
-        # an attacker with a leaked password a side-channel to map out
-        # HR status and confirm SIRET-membership matches. Collapse all
-        # three into one opaque message; the real reason still lands in
-        # the structured log for support to consult on demand.
-        # Pending = client_user signed up against an existing SIRET,
-        # awaiting the company admin's approval. Rejected = explicitly
-        # refused. Either way: never issue a session — they would
-        # otherwise read private company data.
+        # Audit H-2: one opaque message for every inactive state so an
+        # attacker with a leaked password can't map HR status / confirm
+        # SIRET-membership matches. The real reason still lands in logs.
         inactive_membership = user.membership_status in (
             MembershipStatus.pending,
             MembershipStatus.rejected,
         )
         if not user.is_active or inactive_membership:
-            # `membership_status` round-trips as either a plain str
-            # (SQLAlchemy reading the String column — the enum inherits
-            # from str) or a MembershipStatus instance (in-memory before
-            # commit, freshly assigned). `getattr(..., "value", v)`
-            # collapses both cases to the bare token ("pending"), where
-            # `str()` would render "MembershipStatus.pending" for the
-            # enum branch and leak the implementation detail into logs.
+            # membership_status round-trips as str OR MembershipStatus
+            # depending on whether it came from DB or memory; getattr
+            # collapses both to the bare token without leaking
+            # "MembershipStatus.pending" into logs.
             logger.info(
                 "login refused for non-active account",
                 extra={
@@ -205,8 +178,8 @@ def login():
                 "error",
             )
             return render_template("auth/login.html")
-        # Rotate session on successful auth: drop any pre-login state
-        # (CSRF token, anonymous flash) before issuing the authenticated cookie.
+        # Rotate the session on successful auth: drop pre-login state
+        # before issuing the authenticated cookie.
         session.clear()
         _stamp_session(user)
         session.permanent = True
@@ -225,9 +198,6 @@ def signup():
         first_name = request.form.get("first_name", "").strip()
         last_name = request.form.get("last_name", "").strip()
         siret = request.form.get("siret", "").strip()
-        # The signup form ships a single checkbox `accept_terms` whose
-        # presence is enforced server-side (HTML5 `required` is only a
-        # UX hint — a curl POST would bypass it).
         accept_terms = is_terms_accepted(request.form)
 
         if not all([role, email, password, first_name, last_name, siret]):
@@ -254,13 +224,12 @@ def signup():
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         db = get_db()
-        # Resolve the CGS version once so every code path below records
-        # the same id + timestamp, even if midnight ticks between calls.
+        # Resolve once so every code path records the same id + timestamp.
         active_terms = current_terms_version(db)
         accepted_at = datetime.datetime.utcnow()
 
-        # VULN-28: always execute both lookups so timing is identical
-        # regardless of whether email or SIRET already exists.
+        # VULN-28: always run both lookups so timing doesn't disclose
+        # whether email vs SIRET already exists.
         existing_user = db.execute(
             select(User).where(User.email == email)
         ).scalar_one_or_none()
@@ -291,9 +260,6 @@ def signup():
                 )
                 db.add(user)
                 db.flush()
-                # Tell the company's admins that someone is waiting on
-                # their approval — drives the « Demandes en attente »
-                # block on /client/team.
                 notify_users(
                     db,
                     company_admin_user_ids(db, existing_company.id),
@@ -304,14 +270,9 @@ def signup():
                     related_entity_id=user.id,
                 )
                 db.commit()
-                # VULN-28: avoid confirming SIRET presence. Wording stays
-                # informative for the legitimate case (employee joining an
-                # existing company) without naming the company or the SIRET.
-                # No session is issued: the user must wait for the company
-                # admin's approval before /login lets them in. This prevents
-                # a SIRET-based info-disclosure vector where anyone signing
-                # up could read the company's quote requests / orders /
-                # messages while waiting for approval.
+                # VULN-28: never confirm SIRET presence, never issue a session.
+                # A pending user with a session could otherwise read the
+                # company's private demands/orders/messages while waiting.
                 flash(
                     "Votre demande de rattachement a ete enregistree. "
                     "L'administrateur de votre structure a ete informe. "
@@ -321,8 +282,8 @@ def signup():
                 )
                 return redirect(url_for("auth.login"))
 
-            # Company.name is non-nullable but no longer collected at signup —
-            # the SIRET stands in until the admin renames it via /client/settings.
+            # Company.name is non-nullable; SIRET stands in until the admin
+            # renames it via /client/settings.
             company = Company(name=siret, siret=siret)
             db.add(company)
             db.flush()
@@ -365,10 +326,6 @@ def signup():
             email_triggers.welcome_signup(
                 user, role_kind="client", cta_path="/client/settings"
             )
-            # First-time signup with a fresh SIRET: the new client_admin lands
-            # on /client/settings so they can fill in the company name +
-            # billing address. Company.name is currently the SIRET as a
-            # placeholder.
             flash(
                 "Bienvenue ! Pour finaliser la création de votre espace, "
                 "complétez les paramètres de votre structure.",
@@ -415,9 +372,6 @@ def signup():
             )
             db.add(user)
             db.flush()
-            # Alert the super_admin queue: every new caterer needs to
-            # be reviewed + validated before they show up in the
-            # client-facing catalog.
             notify_users(
                 db,
                 super_admin_user_ids(db),
@@ -445,14 +399,7 @@ def signup():
 
 
 def _resolve_invite(token: str) -> CompanyEmployee | None:
-    """Look up an active invite by token. Returns None if the token doesn't
-    match, has been redeemed, or has expired. Used by both the GET (form
-    display) and POST (acceptance) handlers below.
-
-    The column stores a SHA-256 digest of the raw token, so the lookup
-    hashes the incoming URL value before the WHERE clause. A DB leak
-    therefore exposes only digests — useless without the raw token.
-    """
+    # Column stores SHA-256(token) so a DB leak exposes only digests.
     if not token:
         return None
     db = get_db()
@@ -462,10 +409,8 @@ def _resolve_invite(token: str) -> CompanyEmployee | None:
     )
     if employee is None:
         return None
-    # Already redeemed or otherwise tied to a user account.
     if employee.user_id is not None:
         return None
-    # Expired.
     if employee.invited_at is not None:
         age = datetime.datetime.utcnow() - employee.invited_at
         if age.days >= INVITE_TOKEN_TTL_DAYS:
@@ -476,15 +421,9 @@ def _resolve_invite(token: str) -> CompanyEmployee | None:
 @auth_bp.route("/signup/invite/<token>", methods=["GET", "POST"])
 @limiter.limit(SIGNUP_LIMIT, methods=["POST"])
 def signup_invite(token: str):
-    """Redeem an invitation token: create a `client_user` already
-    attached + active for the inviting company, link the existing
-    CompanyEmployee row, consume the token, and log the new user in.
-
-    Bypasses the SIRET pending-approval flow because the token itself
-    proves an existing admin already trusts the recipient. The token is
-    single-use (cleared on success) and expires after
-    INVITE_TOKEN_TTL_DAYS days.
-    """
+    # Bypasses the SIRET pending-approval flow because the token itself
+    # proves an admin already trusts the recipient. Single-use, expires
+    # after INVITE_TOKEN_TTL_DAYS.
     employee = _resolve_invite(token)
     if employee is None:
         return render_template("auth/signup_invite_invalid.html"), 404
@@ -515,10 +454,9 @@ def signup_invite(token: str):
 
         db = get_db()
         active_terms = current_terms_version(db)
-        # Email + name come straight from the CompanyEmployee row the
-        # admin pre-filled — a tampered POST that smuggles different
-        # values is ignored. Race-safe: re-check user_id under the
-        # session before commit.
+        # Email + name come from the CompanyEmployee row the admin pre-filled,
+        # never from the POST body, so a tampered submission can't smuggle
+        # different values.
         existing_user = db.scalar(select(User).where(User.email == employee.email))
         if existing_user:
             flash(
@@ -541,19 +479,13 @@ def signup_invite(token: str):
         )
         db.add(new_user)
 
-        # Consume the token + link the employee row to the freshly
-        # created user. After this, the same token will fail
-        # _resolve_invite() (user_id set + token NULL).
         try:
             db.flush()
             employee.user_id = new_user.id
             employee.invite_token = None
             db.commit()
         except IntegrityError:
-            # Concurrent redemption beat us to the User.email unique
-            # constraint, or a parallel signup grabbed the address. Token
-            # is single-use so this is near-impossible in practice, but
-            # surface a clean message instead of a 500.
+            # Race against a parallel signup grabbing the same email.
             db.rollback()
             flash(
                 "Un compte existe deja avec cette adresse e-mail. Connectez-vous.",
@@ -577,21 +509,11 @@ def signup_invite(token: str):
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
-    # VULN-18: POST + CSRF token instead of GET so a third-party page cannot
-    # silently log the user out via <img src=".../logout"> or a fetch.
-    # CSRFProtect (extensions.csrf) validates the form's csrf_token field.
+    # VULN-18: POST + CSRF so a <img src=".../logout"> can't log the user out.
     session.clear()
     return redirect(url_for("auth.login"))
 
 
-# --- Password reset -------------------------------------------------------
-#
-# Two screens : forgot-password (asks for an email, queues the email +
-# token) and reset-password (the link target). Both rate-limited; the
-# forgot path runs constant-time-ish to avoid leaking account existence.
-
-# 5/hour matches the signup default — gives legitimate users multiple
-# tries while making brute-force enumeration unattractive.
 FORGOT_LIMIT = "5 per hour"
 RESET_LIMIT = "5 per hour"
 
@@ -608,7 +530,6 @@ def forgot_password():
     db = get_db()
     kick_off_reset(db, email=email)
     db.commit()
-    # Same response either way — see kick_off_reset's docstring.
     return render_template("auth/forgot_password_sent.html", email=email)
 
 
@@ -646,11 +567,6 @@ def reset_password(token):
     return redirect(url_for("auth.login"))
 
 
-# Authenticated change-password : un utilisateur connecté (peu importe
-# son rôle) doit pouvoir tourner son mot de passe depuis l'app sans
-# repasser par le flux email/reset. Verrouillé par `@login_required`
-# uniquement — pas de filtre de rôle, c'est volontaire (client, traiteur
-# et super_admin partagent la route).
 CHANGE_PASSWORD_LIMIT = "10 per minute"
 
 
@@ -667,12 +583,6 @@ def change_password():
     new_password = request.form.get("new_password") or ""
     confirm = request.form.get("new_password_confirm") or ""
 
-    # `bcrypt.checkpw` compare le hash en temps constant. Le court-
-    # circuit `current == ""` court-circuite tout le compare et reste
-    # distinguable par timing d'un mauvais mot de passe, mais l'attaque
-    # est sans intérêt ici : l'attaquant a déjà la session, le mot de
-    # passe lui sert seulement à passer la re-auth. Pas de log applicatif
-    # sur l'échec — on évite un canal de stockage gratuit.
     if not bcrypt.checkpw(current.encode(), user.password_hash.encode()):
         flash("Mot de passe actuel incorrect.", "error")
         return render_template("auth/change_password.html"), 400
@@ -686,9 +596,6 @@ def change_password():
         flash(err, "error")
         return render_template("auth/change_password.html"), 400
 
-    # Refuser le « changer pour la même chose » : techniquement on
-    # pourrait laisser passer (le bump `password_changed_at` invalide
-    # quand même les autres sessions), mais l'UX est trompeuse.
     if bcrypt.checkpw(new_password.encode(), user.password_hash.encode()):
         flash("Le nouveau mot de passe doit être différent de l'actuel.", "error")
         return render_template("auth/change_password.html"), 400
@@ -698,14 +605,9 @@ def change_password():
     user.password_hash = bcrypt.hashpw(
         new_password.encode("utf-8"), bcrypt.gensalt()
     ).decode()
-    # Audit H-5 (PR #69) : le bump de `password_changed_at` invalide
-    # toutes les AUTRES sessions de cet utilisateur. `_stamp_session`
-    # ré-écrit le nouveau snapshot dans la session courante pour qu'elle
-    # ne se déconnecte pas elle-même au prochain `load_current_user`.
+    # Audit H-5: bump invalidates the user's OTHER sessions; _stamp_session
+    # below rewrites the current session's snapshot so it doesn't self-evict.
     user.password_changed_at = datetime.datetime.utcnow()
-    # Trace auto-mutation sensible : self-rotate du mot de passe.
-    # L'auteur et la cible sont le même user (rotation par soi-même) ;
-    # l'IP/UA sont capturées automatiquement par log_admin_action.
     log_admin_action(
         db,
         user,

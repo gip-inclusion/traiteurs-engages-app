@@ -33,16 +33,9 @@ def role_required(*roles):
 
 
 def validated_caterer_required(f):
-    """Block caterers whose account has not been validated by a super_admin.
-
-    No-op for other roles, so this decorator is safe to apply to shared
-    blueprints (e.g. `_messages.py`, `api.py`) that serve both client and
-    caterer. On the `api` blueprint a blocked caterer gets a JSON 403
-    instead of an HTML redirect — XHR callers can't follow a 302 to
-    /caterer/pending meaningfully (fetch parses the HTML body as JSON
-    and throws, surfacing as a generic network error to the user).
-    """
-
+    # No-op for non-caterers so it can decorate shared blueprints. On /api
+    # we return JSON 403 instead of a 302 to /caterer/pending — XHR callers
+    # can't usefully follow the redirect.
     @wraps(f)
     def decorated(*args, **kwargs):
         user = g.get("current_user")

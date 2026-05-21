@@ -1,9 +1,3 @@
-"""Shared notifications routes for client/caterer/admin blueprints.
-
-Endpoint names are derived from the blueprint name (e.g. `client.notifications`),
-so call sites only differ by which roles are authorized.
-"""
-
 from flask import flash, g, redirect, render_template, url_for
 from sqlalchemy import select, update
 

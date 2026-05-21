@@ -37,7 +37,6 @@ DIETARY_FLAGS = [
 ]
 
 
-# Fields copied verbatim from QuoteRequestForm to QuoteRequest.
 _QR_DIRECT_FIELDS = (
     "event_date",
     "event_start_time",
@@ -57,10 +56,8 @@ _QR_DIRECT_FIELDS = (
     "halal_count",
     "gluten_free_count",
     "lactose_free_count",
-    # `drinks_alcohol` is derived from the `drinks` list in
-    # `apply_drinks` — keep it out of the verbatim-copy list so a
-    # tampered POST can't lie about alcohol without ticking the
-    # actual drink.
+    # drinks_alcohol is derived from the drinks list in apply_drinks below;
+    # leaving it out prevents a tampered POST from lying about alcohol.
     "wants_waitstaff",
     "wants_equipment",
     "wants_decoration",
@@ -72,7 +69,6 @@ _QR_DIRECT_FIELDS = (
     "is_compare_mode",
 )
 
-# Fields where empty strings should become None.
 _QR_OPTIONAL_FIELDS = (
     "service_type",
     "meal_type",
@@ -87,13 +83,8 @@ _QR_OPTIONAL_FIELDS = (
 
 
 def apply_quote_request_form(qr, form):
-    """Copy validated form fields onto a QuoteRequest instance.
-
-    Does NOT cover the wizard step-5 drink checkboxes — those live
-    outside WTForms (no FieldList for dynamic checkbox groups) and are
-    persisted by `apply_drinks(qr, request.form)`. Every handler that
-    creates or edits a QuoteRequest must call both.
-    """
+    # Drinks live outside WTForms (no FieldList for dynamic checkbox groups);
+    # every handler must also call apply_drinks(qr, request.form).
     for field in _QR_DIRECT_FIELDS:
         setattr(qr, field, getattr(form, field).data)
     for field in _QR_OPTIONAL_FIELDS:
@@ -101,26 +92,10 @@ def apply_quote_request_form(qr, form):
 
 
 def apply_drinks(qr, request_form):
-    """Persist the wizard step-5 drink selection onto `qr`.
-
-    `request_form` is `flask.request.form`. The wizard exposes one
-    checkbox per slug in `DRINK_LABELS`; checkboxes WTForms doesn't see
-    (no FieldList for dynamic checkbox groups), so we read them off the
-    raw form. Unknown keys are ignored — a tampered POST that smuggles
-    `drinks_unicorn=1` simply doesn't land in the list.
-
-    Must be called next to `apply_quote_request_form` from every
-    handler that creates or edits a QuoteRequest, since it operates on
-    the raw `request.form` (not the WTForms instance) and so the
-    standard applier can't pick it up.
-
-    `drinks_alcohol` is recomputed from the selection so the legacy
-    boolean stays trustworthy without trusting the client to set it.
-    """
-    # An unticked checkbox emits no key, so a present key normally
-    # means "ticked". Accept only the truthy values the browser would
-    # actually send so a forged POST with `drinks_eau_plate=0` doesn't
-    # smuggle a checkbox in.
+    # Unknown slug keys are ignored so a forged POST can't write garbage.
+    # Accept only browser-emitted truthy values so `drinks_x=0` doesn't smuggle
+    # a checkbox in. drinks_alcohol is derived to keep the legacy boolean
+    # trustworthy without trusting the client.
     selected = [
         slug
         for slug in DRINK_LABELS
@@ -131,7 +106,6 @@ def apply_drinks(qr, request_form):
 
 
 def own_service_id(db, user, raw):
-    """Return the parsed UUID iff it names a CompanyService owned by `user`."""
     if not raw:
         return None
     try:

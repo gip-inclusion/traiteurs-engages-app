@@ -18,19 +18,13 @@ from services.uploads import save_upload
 logger = logging.getLogger(__name__)
 
 
-# Numeric fields stored per service offering. Keys map to input names like
-# `spec[<slug>][capacity_min]` in the profile form.
 _OFFERING_INT_FIELDS = ("capacity_min", "capacity_max", "min_advance_days")
 _OFFERING_DECIMAL_FIELDS = ("price_per_person_min", "total_min")
 
 
 def _parse_offering_specs(form) -> dict:
-    """Read `spec[<slug>][<field>]` inputs into a clean dict.
-
-    Unknown slugs are dropped, non-numeric values are silently coerced to
-    None so a half-filled row doesn't crash the save. The returned shape
-    is `{slug: {field: number_or_None}}` with empty rows omitted.
-    """
+    # Drop unknown slugs and silently skip non-numeric values so a half-
+    # filled row doesn't crash the save.
     out: dict = {}
     for slug in SERVICE_OFFERING_LABELS:
         row: dict = {}
@@ -58,14 +52,8 @@ def _parse_offering_specs(form) -> dict:
 
 
 def _aggregate_legacy_fields(caterer, specs: dict) -> None:
-    """Mirror per-offering specs onto the legacy global columns.
-
-    Search and the public catalogue filters still read
-    caterer.capacity_min/max, price_per_person_min and min_advance_days,
-    so we recompute them from the per-offering specs (min of mins, max
-    of maxes) — keeping both surfaces consistent without a bigger
-    refactor.
-    """
+    # Search/catalogue still read the legacy global columns; recompute them
+    # from the per-offering specs (min of mins, max of maxes).
     if not specs:
         return
     cap_mins = [
@@ -99,10 +87,6 @@ def register(bp):
     @login_required
     @role_required("caterer")
     def account():
-        """Page « Mon profil » du traiteur : infos personnelles (nom,
-        email) + lien vers la modif du mot de passe. Distincte de
-        `caterer.profile` (la « Fiche traiteur ») qui porte la fiche
-        m&#233;tier (logo, adresse, prestations…)."""
         return render_template("caterer/account.html", user=g.current_user)
 
     @bp.route("/account", methods=["POST"])
@@ -208,9 +192,7 @@ def register(bp):
         elif request.form.get("logo_delete") == "1":
             caterer.logo_url = None
 
-        # Catalog metadata. service_offerings comes through as a list of
-        # checkbox values; validate against the canonical slug map so a
-        # tampered request can't write an unknown slug to the JSON column.
+        # Validate slugs so a tampered POST can't write unknown values.
         offered = [
             v
             for v in request.form.getlist("service_offerings")
@@ -218,8 +200,7 @@ def register(bp):
         ]
         caterer.service_offerings = offered or None
 
-        # Per-offering specs replace the standalone capacity/price/délai
-        # inputs. Only keep specs for offerings the caterer actually offers.
+        # Only keep specs for offerings the caterer actually offers.
         all_specs = _parse_offering_specs(request.form)
         kept_specs = {
             slug: row for slug, row in all_specs.items() if slug in (offered or [])

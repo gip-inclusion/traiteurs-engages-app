@@ -90,10 +90,8 @@ def register(bp):
             or 0
         )
 
-        # Mirror the /caterer/requests list: hydrate every QRC with the
-        # same `display_status` derivation + eager-load the caterer's
-        # own Quote so the row badge can show "Nouvelle" / "Devis envoyé"
-        # / "Commande créée" exactly like the list page.
+        # Mirror /caterer/requests so the dashboard rows show the same
+        # display_status badge as the list page.
         from blueprints.caterer.requests import _derive_qrc_display_status
 
         new_requests = (

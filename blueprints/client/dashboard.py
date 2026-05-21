@@ -26,12 +26,9 @@ def register(bp):
     def dashboard():
         user = g.current_user
         db = get_db()
-        # `own_only` is None for client_admin (sees the whole company),
-        # `QR.user_id == user.id` for client_user (sees only their own).
         own_only = own_requests_filter(user)
         is_admin = user.role == UserRole.client_admin
 
-        # KPI : demandes actives
         active_stmt = select(func.count(QuoteRequest.id)).where(
             QuoteRequest.company_id == user.company_id,
             QuoteRequest.status.in_(
@@ -46,8 +43,6 @@ def register(bp):
             active_stmt = active_stmt.where(own_only)
         active_requests_count = db.execute(active_stmt).scalar_one()
 
-        # Last 5 commandes (scoped via the underlying QR's user_id for
-        # non-admins).
         orders_stmt = (
             select(Order)
             .join(Quote, Order.quote_id == Quote.id)
@@ -61,11 +56,8 @@ def register(bp):
             orders_stmt = orders_stmt.where(own_only)
         recent_orders = db.execute(orders_stmt).unique().scalars().all()
 
-        # Last 5 demandes — same row format as /client/requests so the
-        # dashboard and the list render identical cards. Hydrate
-        # display_status + received/expected counts via the helpers in
-        # requests.py; selectinload(QuoteRequest.quotes) avoids the N+1
-        # the helpers would otherwise trigger.
+        # Mirrors /client/requests so dashboard rows match the list cards;
+        # selectinload(quotes) avoids the helpers' N+1.
         from blueprints.client.requests import (
             _derive_request_display_status,
             _request_quote_counts,
@@ -85,10 +77,7 @@ def register(bp):
             qr.display_status = _derive_request_display_status(qr)
             qr.received_quotes, qr.expected_quotes = _request_quote_counts(qr)
 
-        # Per-service budget breakdown is a company-wide aggregate that
-        # only makes sense for an admin's coordination view. For
-        # client_user we hide the panel entirely (template guards on
-        # `if budget_data`).
+        # Admin-only company-wide breakdown; client_user hides the panel.
         budget_data = []
         if is_admin:
             services = (
@@ -119,8 +108,6 @@ def register(bp):
                     }
                 )
 
-        # « Budget consommé » KPI : admin sees the company-wide total,
-        # a client_user sees only their own contributions.
         budget_total_stmt = (
             select(func.coalesce(func.sum(Quote.total_amount_ht), 0))
             .join(QuoteRequest, Quote.quote_request_id == QuoteRequest.id)
@@ -133,13 +120,7 @@ def register(bp):
             budget_total_stmt = budget_total_stmt.where(own_only)
         budget_spent_total = db.execute(budget_total_stmt).scalar_one()
 
-        # « Impact social » : montant HT réellement dépensé (orders en
-        # `paid` uniquement) ventilé SIAE / STPA, plus une estimation
-        # d'heures d'insertion financées. Même scoping que le KPI
-        # budget : admin = entreprise complète, client_user = ses
-        # propres demandes uniquement. Montants convertis en float pour
-        # rester homogène avec `budget_spent_total` côté template — le
-        # filtre Jinja `%f` n'aime pas les Decimal.
+        # Cast to float to match budget_spent_total (Jinja %f rejects Decimal).
         impact = compute_social_impact(
             db,
             company_id=user.company_id,
