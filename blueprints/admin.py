@@ -35,7 +35,6 @@ from models import (
     QuoteRequest,
     QuoteRequestStatus,
     QuoteStatus,
-    User,
 )
 from services import messagerie as messagerie_service
 from services import workflow
@@ -889,8 +888,7 @@ def profile():
             flash("Veuillez corriger les erreurs du formulaire.", "error")
             return render_template("admin/profile.html", user=user), 400
         db = get_db()
-        u = db.get(User, user.id)
-        err = apply_profile_form(db, u, form)
+        err = apply_profile_form(db, user, form)
         if err:
             flash(err, "error")
             return render_template("admin/profile.html", user=user), 400

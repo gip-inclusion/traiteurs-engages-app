@@ -10,7 +10,7 @@ from database import get_db
 from extensions import limiter
 from forms.caterer import CatererProfileForm
 from forms.client import UserProfileForm
-from models import SERVICE_OFFERING_LABELS, User
+from models import SERVICE_OFFERING_LABELS
 from services.account import apply_profile_form
 from services.json_schemas import ServiceConfig
 from services.uploads import save_upload
@@ -115,8 +115,7 @@ def register(bp):
             flash("Veuillez corriger les erreurs du formulaire.", "error")
             return render_template("caterer/account.html", user=user), 400
         db = get_db()
-        u = db.get(User, user.id)
-        err = apply_profile_form(db, u, form)
+        err = apply_profile_form(db, user, form)
         if err:
             flash(err, "error")
             return render_template("caterer/account.html", user=user), 400
