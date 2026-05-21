@@ -251,8 +251,16 @@ def create_app():
     @app.before_request
     def load_current_user():
         g.current_user = None
+        # `auth_bp` regroupe surtout des routes non authentifiees (login,
+        # signup, reset) — pas besoin d'aller chercher l'utilisateur en
+        # base. Exception : `auth.change_password`, route authentifiee
+        # qui a besoin de g.current_user.
         if request.endpoint and (
-            request.endpoint in ("static", "health") or (request.blueprint == "auth")
+            request.endpoint in ("static", "health")
+            or (
+                request.blueprint == "auth"
+                and request.endpoint != "auth.change_password"
+            )
         ):
             return
         user_id = session.get("user_id")

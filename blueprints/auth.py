@@ -4,10 +4,20 @@ import logging
 import os
 
 import bcrypt
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from blueprints.middleware import login_required
 from database import get_db
 from extensions import limiter
 from models import (
@@ -633,3 +643,64 @@ def reset_password(token):
     db.commit()
     flash("Votre mot de passe a été mis à jour. Vous pouvez vous connecter.", "success")
     return redirect(url_for("auth.login"))
+
+
+# Authenticated change-password : un utilisateur connecté (peu importe
+# son rôle) doit pouvoir tourner son mot de passe depuis l'app sans
+# repasser par le flux email/reset. Verrouillé par `@login_required`
+# uniquement — pas de filtre de rôle, c'est volontaire (client, traiteur
+# et super_admin partagent la route).
+CHANGE_PASSWORD_LIMIT = "10 per minute"
+
+
+@auth_bp.route("/account/change-password", methods=["GET", "POST"])
+@limiter.limit(CHANGE_PASSWORD_LIMIT, methods=["POST"])
+@login_required
+def change_password():
+    user = g.current_user
+
+    if request.method == "GET":
+        return render_template("auth/change_password.html")
+
+    current = request.form.get("current_password") or ""
+    new_password = request.form.get("new_password") or ""
+    confirm = request.form.get("new_password_confirm") or ""
+
+    # `bcrypt.checkpw` runs in constant time, donc un mauvais mot de
+    # passe ne « fuit » pas par les timings. Pas de log applicatif sur
+    # l'échec : on évite de fournir un canal de timing/de stockage à un
+    # éventuel attaquant qui aurait déjà la session.
+    if not bcrypt.checkpw(current.encode(), user.password_hash.encode()):
+        flash("Mot de passe actuel incorrect.", "error")
+        return render_template("auth/change_password.html"), 400
+
+    if new_password != confirm:
+        flash("Les deux mots de passe ne correspondent pas.", "error")
+        return render_template("auth/change_password.html"), 400
+
+    err = validate_password(new_password)
+    if err:
+        flash(err, "error")
+        return render_template("auth/change_password.html"), 400
+
+    # Refuser le « changer pour la même chose » : techniquement on
+    # pourrait laisser passer (le bump `password_changed_at` invalide
+    # quand même les autres sessions), mais l'UX est trompeuse.
+    if bcrypt.checkpw(new_password.encode(), user.password_hash.encode()):
+        flash("Le nouveau mot de passe doit être différent de l'actuel.", "error")
+        return render_template("auth/change_password.html"), 400
+
+    db = get_db()
+    db.add(user)
+    user.password_hash = bcrypt.hashpw(
+        new_password.encode("utf-8"), bcrypt.gensalt()
+    ).decode()
+    # Audit H-5 (PR #69) : le bump de `password_changed_at` invalide
+    # toutes les AUTRES sessions de cet utilisateur. `_stamp_session`
+    # ré-écrit le nouveau snapshot dans la session courante pour qu'elle
+    # ne se déconnecte pas elle-même au prochain `load_current_user`.
+    user.password_changed_at = datetime.datetime.utcnow()
+    db.commit()
+    _stamp_session(user)
+    flash("Mot de passe mis à jour.", "success")
+    return redirect(url_for("auth.change_password"))

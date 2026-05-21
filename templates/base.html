@@ -193,6 +193,10 @@
           <i data-lucide="message-circle" class="w-5 h-5 flex-shrink-0"></i>
           <span>Messagerie</span>
         </a>
+        <a href="{{ url_for('admin.profile') }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors" data-page="profile">
+          <i data-lucide="user" class="w-5 h-5 flex-shrink-0"></i>
+          <span>Mon profil</span>
+        </a>
         {% endif %}
       </div>
     </nav>
