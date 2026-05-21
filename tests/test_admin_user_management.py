@@ -1,23 +1,17 @@
 """Tests pour `/admin/users` — gestion des comptes côté super_admin.
 
-Trois flux à couvrir :
+UI = page liste unique, avec :
+* recherche libre `?q=` (email/prénom/nom)
+* sélecteur de rôle inline (POST `/users/<id>/role-change`)
+* bouton corbeille (POST `/users/<id>/delete`)
 
-* **Liste & détail** : routes accessibles seulement au super_admin,
-  filtres `?q=` / `?role=` fonctionnent, page 200 sur un user
-  arbitraire.
+Pas de page de détail dédiée — les actions destructrices se déclenchent
+directement depuis la table.
 
-* **Suppression** : autorisée sur un compte vierge (pas de QR /
-  messages / employé / avis), refusée sur soi-même, sur le dernier
-  super_admin, et sur un compte avec historique métier.
-
-* **Conversion `client_*` → `caterer`** : crée la fiche traiteur,
-  détache la Company (supprime si orpheline), bascule `role` +
-  `caterer_id`. Refusée sur un super_admin / sur soi-même / si
-  historique métier.
-
-Stratégie d'isolation : on crée des users dédiés à chaque test (suffix
-UUID dans l'email) pour ne pas casser les autres tests qui dépendent
-des 4 users seedés par `conftest._seed_users`.
+Stratégie d'isolation : chaque test crée ses users via
+`_create_throwaway_user` (email suffixé d'un UUID) et nettoie en
+`finally`. Les 4 users seedés par `conftest._seed_users` restent
+intacts.
 """
 
 from __future__ import annotations
@@ -31,7 +25,6 @@ from sqlalchemy import func, select
 
 
 def _create_throwaway_user(role, *, company_id=None, caterer_id=None):
-    """Crée un user dédié à un test, retourne son id + email."""
     from database import session_factory
     from models import User, UserRole
 
@@ -50,6 +43,75 @@ def _create_throwaway_user(role, *, company_id=None, caterer_id=None):
         s.add(u)
         s.commit()
         return u.id, email
+    finally:
+        s.close()
+
+
+def _create_throwaway_caterer_user():
+    """Crée une Caterer + un User caterer rattaché. Retourne
+    (user_id, caterer_id) pour le cleanup."""
+    from database import session_factory
+    from models import Caterer, CatererStructureType, User, UserRole
+
+    s = session_factory()
+    try:
+        suffix = uuid.uuid4().hex[:6]
+        c = Caterer(
+            name=f"Throw-Cat-{suffix}",
+            siret=f"88{uuid.uuid4().int % 10**12:012d}"[:14],
+            structure_type=CatererStructureType.ESAT,
+            invoice_prefix=f"T{suffix[:5]}",
+            is_validated=False,
+        )
+        s.add(c)
+        s.flush()
+        u = User(
+            email=f"throw-cat-{suffix}@example.com",
+            password_hash=bcrypt.hashpw(b"x", bcrypt.gensalt()).decode(),
+            first_name="Cat",
+            last_name="Away",
+            role=UserRole.caterer,
+            caterer_id=c.id,
+        )
+        s.add(u)
+        s.commit()
+        return u.id, c.id
+    finally:
+        s.close()
+
+
+def _cleanup_user(user_id):
+    from database import session_factory
+    from models import User
+
+    s = session_factory()
+    try:
+        s.execute(User.__table__.delete().where(User.id == user_id))
+        s.commit()
+    finally:
+        s.close()
+
+
+def _cleanup_caterer(caterer_id):
+    from database import session_factory
+    from models import Caterer
+
+    s = session_factory()
+    try:
+        s.execute(Caterer.__table__.delete().where(Caterer.id == caterer_id))
+        s.commit()
+    finally:
+        s.close()
+
+
+def _cleanup_company(company_id):
+    from database import session_factory
+    from models import Company
+
+    s = session_factory()
+    try:
+        s.execute(Company.__table__.delete().where(Company.id == company_id))
+        s.commit()
     finally:
         s.close()
 
@@ -76,6 +138,14 @@ def _get_user(user_id):
         s.close()
 
 
+def _random_siret() -> str:
+    return f"99{uuid.uuid4().int % 10**12:012d}"[:14]
+
+
+def _random_prefix() -> str:
+    return f"T{uuid.uuid4().hex[:5]}".upper()
+
+
 # ---------------------------------------------------------------------------
 # Role gate
 # ---------------------------------------------------------------------------
@@ -94,9 +164,7 @@ def test_super_admin_can_list_users(client, login):
 def test_non_super_admin_cannot_list_users(client, login, user_email):
     login(user_email)
     r = client.get("/admin/users", follow_redirects=False)
-    assert r.status_code in (302, 403), (
-        f"{user_email} must not reach /admin/users; got {r.status_code}"
-    )
+    assert r.status_code in (302, 403)
 
 
 def test_anonymous_is_bounced(client):
@@ -105,7 +173,7 @@ def test_anonymous_is_bounced(client):
 
 
 # ---------------------------------------------------------------------------
-# Liste — recherche et filtre rôle
+# Liste — recherche
 # ---------------------------------------------------------------------------
 
 
@@ -114,52 +182,23 @@ def test_list_search_by_email_substring(client, login):
     r = client.get("/admin/users?q=alice")
     assert r.status_code == 200
     assert b"alice@test.local" in r.data
-    # bob ne doit pas matcher "alice"
     assert b"bob@test.local" not in r.data
 
 
-def test_list_filter_by_role_caterer(client, login):
+def test_list_renders_select_for_mutable_users_and_badge_for_super_admin(client, login):
+    """La liste doit afficher un `<select name="role">` pour les
+    utilisateurs modifiables et un simple badge pour le super_admin
+    (rôle immuable)."""
     login("admin@test.local")
-    r = client.get("/admin/users?role=caterer")
+    r = client.get("/admin/users")
     assert r.status_code == 200
-    assert b"cook@test.local" in r.data
-    assert b"alice@test.local" not in r.data
-
-
-def test_list_unknown_role_falls_back_to_all(client, login):
-    """Un `?role=` tampered ne doit pas 500 — fallback silencieux sur
-    "all"."""
-    login("admin@test.local")
-    r = client.get("/admin/users?role=hacker")
-    assert r.status_code == 200
-    assert b"alice@test.local" in r.data
-
-
-# ---------------------------------------------------------------------------
-# Détail
-# ---------------------------------------------------------------------------
-
-
-def test_detail_renders_for_an_existing_user(client, login):
-    from database import session_factory
-    from models import User
-
-    s = session_factory()
-    try:
-        alice = s.scalar(select(User).where(User.email == "alice@test.local"))
-        alice_id = alice.id
-    finally:
-        s.close()
-    login("admin@test.local")
-    r = client.get(f"/admin/users/{alice_id}")
-    assert r.status_code == 200
-    assert b"alice@test.local" in r.data
-
-
-def test_detail_404_for_unknown_user(client, login):
-    login("admin@test.local")
-    r = client.get(f"/admin/users/{uuid.uuid4()}")
-    assert r.status_code == 404
+    # alice (client_admin) doit avoir un sélecteur
+    assert b'data-action="role-select"' in r.data
+    # admin (super_admin) doit avoir un badge texte, pas de sélecteur
+    # qui le ciblerait — pour aller vite on vérifie juste qu'au moins
+    # une option super_admin n'apparaît PAS dans le markup de la liste
+    # (cohérent avec l'absence d'option côté template).
+    assert b'value="super_admin"' not in r.data
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +207,6 @@ def test_detail_404_for_unknown_user(client, login):
 
 
 def test_delete_vierge_user_succeeds(client, login):
-    """Un user sans historique métier doit pouvoir être supprimé."""
     from models import UserRole
 
     user_id, _ = _create_throwaway_user(UserRole.client_user)
@@ -178,21 +216,11 @@ def test_delete_vierge_user_succeeds(client, login):
         assert r.status_code == 302, r.data
         assert not _user_exists(user_id)
     finally:
-        # Idempotent cleanup if the test failed before delete
         if _user_exists(user_id):
-            from database import session_factory
-            from models import User
-
-            s = session_factory()
-            try:
-                s.execute(User.__table__.delete().where(User.id == user_id))
-                s.commit()
-            finally:
-                s.close()
+            _cleanup_user(user_id)
 
 
 def test_delete_refuses_self(client, login):
-    """Le super_admin ne peut pas se supprimer lui-même."""
     from database import session_factory
     from models import User
 
@@ -204,46 +232,30 @@ def test_delete_refuses_self(client, login):
         s.close()
     login("admin@test.local")
     r = client.post(f"/admin/users/{admin_id}/delete")
-    # Doit renvoyer un redirect vers la page détail avec un flash erreur
     assert r.status_code == 302
-    assert _user_exists(admin_id), "admin must still exist after self-delete attempt"
+    assert _user_exists(admin_id)
 
 
 def test_delete_a_super_admin_when_another_remains(client, login):
-    """Un super_admin peut être supprimé tant qu'il en reste un autre.
-    La branche "dernier super_admin" elle-même est couverte unitairement
-    par `test_can_delete_last_super_admin_is_blocked` ci-dessous."""
     from models import UserRole
 
     other_admin_id, _ = _create_throwaway_user(UserRole.super_admin)
     try:
         login("admin@test.local")
         r = client.post(f"/admin/users/{other_admin_id}/delete")
-        assert r.status_code == 302, r.data
-        assert not _user_exists(other_admin_id), (
-            "un super_admin doit pouvoir etre supprime s'il en reste un autre"
-        )
+        assert r.status_code == 302
+        assert not _user_exists(other_admin_id)
     finally:
         if _user_exists(other_admin_id):
-            from database import session_factory
-            from models import User
-
-            s = session_factory()
-            try:
-                s.execute(User.__table__.delete().where(User.id == other_admin_id))
-                s.commit()
-            finally:
-                s.close()
+            _cleanup_user(other_admin_id)
 
 
 def test_delete_refuses_user_with_business_history(client, login):
-    """Un user avec une QuoteRequest doit voir sa suppression refusée."""
     from database import session_factory
     from models import (
         Company,
         MealType,
         QuoteRequest,
-        User,
         UserRole,
     )
 
@@ -275,9 +287,7 @@ def test_delete_refuses_user_with_business_history(client, login):
         login("admin@test.local")
         r = client.post(f"/admin/users/{user_id}/delete")
         assert r.status_code == 302
-        assert _user_exists(user_id), (
-            "un user avec QR ne doit pas pouvoir etre supprime"
-        )
+        assert _user_exists(user_id)
     finally:
         s = session_factory()
         try:
@@ -285,21 +295,20 @@ def test_delete_refuses_user_with_business_history(client, login):
                 s.execute(
                     QuoteRequest.__table__.delete().where(QuoteRequest.id == qr_id)
                 )
-            s.execute(User.__table__.delete().where(User.id == user_id))
             s.commit()
         finally:
             s.close()
+        if _user_exists(user_id):
+            _cleanup_user(user_id)
 
 
 def test_delete_audit_logged(client, login):
-    """L'action `user.delete` doit créer un AuditLog row côté admin."""
     from database import session_factory
     from models import AuditLog, UserRole
 
-    user_id, email = _create_throwaway_user(UserRole.client_user)
+    user_id, _ = _create_throwaway_user(UserRole.client_user)
     try:
         login("admin@test.local")
-        before = 0
         s = session_factory()
         try:
             before = (
@@ -330,27 +339,16 @@ def test_delete_audit_logged(client, login):
             s.close()
         assert after == before + 1
     finally:
-        from models import User
-
-        s = session_factory()
-        try:
-            s.execute(User.__table__.delete().where(User.id == user_id))
-            s.commit()
-        finally:
-            s.close()
+        if _user_exists(user_id):
+            _cleanup_user(user_id)
 
 
 # ---------------------------------------------------------------------------
-# Tests unitaires du service (couvre les branches difficiles à exercer
-# via la route HTTP — notamment "dernier super_admin")
+# Tests unitaires du service (couvre les branches difficiles via HTTP)
 # ---------------------------------------------------------------------------
 
 
 def test_can_delete_last_super_admin_is_blocked():
-    """Si supprimer `user` retirerait le dernier super_admin de la base,
-    `can_delete_user` doit renvoyer un message bloquant — la route ne
-    permet pas d'exercer ce cas avec la fixture seedée puisqu'on ne
-    peut pas être à la fois l'auteur et la cible (self-block prioritaire)."""
     from database import session_factory
     from models import User
     from services.user_admin import can_delete_user
@@ -358,9 +356,6 @@ def test_can_delete_last_super_admin_is_blocked():
     s = session_factory()
     try:
         seeded_admin = s.scalar(select(User).where(User.email == "admin@test.local"))
-        # Cible = seeded admin. Acteur = un user distinct quelconque
-        # (le check `last_super_admin` se déclenche avant tout autre
-        # garde-fou qui dépendrait de l'acteur).
         actor = s.scalar(select(User).where(User.email == "alice@test.local"))
         msg = can_delete_user(s, seeded_admin, actor=actor)
         assert msg is not None
@@ -370,109 +365,112 @@ def test_can_delete_last_super_admin_is_blocked():
 
 
 # ---------------------------------------------------------------------------
-# Conversion client → traiteur
+# Changement de rôle — bascules sans infos supplémentaires
 # ---------------------------------------------------------------------------
 
 
-def test_convert_client_to_caterer_succeeds(client, login):
-    """Un client_user vierge doit être convertible en caterer : son
-    rôle bascule, `caterer_id` pointe sur une nouvelle fiche, la
-    Company est détachée."""
+def test_role_change_client_admin_to_client_user_inline(client, login):
+    """Bascule entre 2 rôles de la même nature (client_*) : un simple
+    POST avec `role` suffit, pas besoin d'infos extra."""
     from database import session_factory
-    from models import Caterer, User, UserRole
+    from models import Company, UserRole
+
+    s = session_factory()
+    try:
+        acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
+        company_id = acme.id
+    finally:
+        s.close()
+
+    user_id, _ = _create_throwaway_user(UserRole.client_admin, company_id=company_id)
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={"role": "client_user"},
+        )
+        assert r.status_code == 302, r.data
+        u = _get_user(user_id)
+        assert u.role == UserRole.client_user
+        assert u.company_id == company_id  # rattachement conservé
+    finally:
+        _cleanup_user(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Changement de rôle — bascules avec création Caterer
+# ---------------------------------------------------------------------------
+
+
+def test_role_change_client_to_caterer_creates_caterer(client, login):
+    from database import session_factory
+    from models import Caterer, UserRole
 
     user_id, _ = _create_throwaway_user(UserRole.client_user)
-    # Suffixe random pour éviter les collisions sur SIRET et invoice_prefix
-    # (UNIQUE) si un test précédent a laissé des rows.
-    suffix = uuid.uuid4().hex[:4]
-    test_siret = f"99{uuid.uuid4().int % 10**12:012d}"[:14]
-    test_prefix = f"T{suffix[:5]}"
+    siret = _random_siret()
+    prefix = _random_prefix()
     caterer_id_to_cleanup = None
     try:
         login("admin@test.local")
         r = client.post(
-            f"/admin/users/{user_id}/convert-to-caterer",
+            f"/admin/users/{user_id}/role-change",
             data={
+                "role": "caterer",
                 "caterer_name": "Traiteur Test",
-                "caterer_siret": test_siret,
+                "caterer_siret": siret,
                 "structure_type": "ESAT",
-                "invoice_prefix": test_prefix,
+                "invoice_prefix": prefix,
             },
         )
         assert r.status_code == 302, r.data
-
         u = _get_user(user_id)
         assert u.role == UserRole.caterer
         assert u.caterer_id is not None
         assert u.company_id is None
         caterer_id_to_cleanup = u.caterer_id
 
-        # Vérifie la fiche caterer minimale
         s = session_factory()
         try:
             c = s.get(Caterer, caterer_id_to_cleanup)
             assert c.name == "Traiteur Test"
-            assert c.siret == test_siret
+            assert c.siret == siret
             assert c.is_validated is False
         finally:
             s.close()
     finally:
-        s = session_factory()
-        try:
-            s.execute(User.__table__.delete().where(User.id == user_id))
-            if caterer_id_to_cleanup:
-                s.execute(
-                    Caterer.__table__.delete().where(
-                        Caterer.id == caterer_id_to_cleanup
-                    )
-                )
-            s.commit()
-        finally:
-            s.close()
+        _cleanup_user(user_id)
+        if caterer_id_to_cleanup:
+            _cleanup_caterer(caterer_id_to_cleanup)
 
 
-def test_convert_refuses_caterer_role(client, login):
-    """Un user qui est déjà caterer ne peut pas être 'converti'."""
-    from models import UserRole
-
-    user_id, _ = _create_throwaway_user(UserRole.caterer)
-    try:
-        login("admin@test.local")
-        r = client.post(
-            f"/admin/users/{user_id}/convert-to-caterer",
-            data={
-                "caterer_name": "X",
-                "caterer_siret": "11111111111111",
-                "structure_type": "ESAT",
-                "invoice_prefix": "TST",
-            },
-        )
-        assert r.status_code == 302
-        u = _get_user(user_id)
-        assert u.role == UserRole.caterer
-        assert u.caterer_id is None  # pas de nouvelle fiche créée
-    finally:
-        from database import session_factory
-        from models import User
-
-        s = session_factory()
-        try:
-            s.execute(User.__table__.delete().where(User.id == user_id))
-            s.commit()
-        finally:
-            s.close()
-
-
-def test_convert_refuses_bad_siret(client, login):
-    """SIRET non-14-chiffres doit être rejeté."""
+def test_role_change_to_caterer_requires_inputs(client, login):
     from models import UserRole
 
     user_id, _ = _create_throwaway_user(UserRole.client_user)
     try:
         login("admin@test.local")
         r = client.post(
-            f"/admin/users/{user_id}/convert-to-caterer",
+            f"/admin/users/{user_id}/role-change",
+            data={"role": "caterer"},  # sans aucun input caterer
+        )
+        assert r.status_code == 302
+        u = _get_user(user_id)
+        assert u.role == UserRole.client_user  # pas de bascule
+        assert u.caterer_id is None
+    finally:
+        _cleanup_user(user_id)
+
+
+def test_role_change_to_caterer_rejects_bad_siret(client, login):
+    from models import UserRole
+
+    user_id, _ = _create_throwaway_user(UserRole.client_user)
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
             data={
+                "role": "caterer",
                 "caterer_name": "X",
                 "caterer_siret": "abc",
                 "structure_type": "ESAT",
@@ -481,14 +479,228 @@ def test_convert_refuses_bad_siret(client, login):
         )
         assert r.status_code == 302
         u = _get_user(user_id)
-        assert u.role == UserRole.client_user  # pas de bascule
+        assert u.role == UserRole.client_user
     finally:
-        from database import session_factory
-        from models import User
+        _cleanup_user(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Changement de rôle — bascule depuis caterer (création Company)
+# ---------------------------------------------------------------------------
+
+
+def test_role_change_caterer_to_client_admin_creates_company(client, login):
+    from database import session_factory
+    from models import Company, UserRole
+
+    user_id, caterer_id = _create_throwaway_caterer_user()
+    company_id_to_cleanup = None
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={
+                "role": "client_admin",
+                "company_name": "Nouvelle Entreprise",
+                "company_siret": _random_siret(),
+            },
+        )
+        assert r.status_code == 302, r.data
+        u = _get_user(user_id)
+        assert u.role == UserRole.client_admin
+        assert u.caterer_id is None
+        assert u.company_id is not None
+        company_id_to_cleanup = u.company_id
 
         s = session_factory()
         try:
-            s.execute(User.__table__.delete().where(User.id == user_id))
+            c = s.get(Company, company_id_to_cleanup)
+            assert c.name == "Nouvelle Entreprise"
+        finally:
+            s.close()
+    finally:
+        _cleanup_user(user_id)
+        if company_id_to_cleanup:
+            _cleanup_company(company_id_to_cleanup)
+        _cleanup_caterer(caterer_id)
+
+
+# ---------------------------------------------------------------------------
+# Garde-fous communs
+# ---------------------------------------------------------------------------
+
+
+def test_role_change_refuses_self(client, login):
+    """Le super_admin ne peut pas modifier son propre rôle."""
+    from database import session_factory
+    from models import User
+
+    s = session_factory()
+    try:
+        admin = s.scalar(select(User).where(User.email == "admin@test.local"))
+        admin_id = admin.id
+    finally:
+        s.close()
+    login("admin@test.local")
+    r = client.post(
+        f"/admin/users/{admin_id}/role-change",
+        data={"role": "client_user"},
+    )
+    assert r.status_code == 302
+    u = _get_user(admin_id)
+    from models import UserRole
+
+    assert u.role == UserRole.super_admin  # immuable
+
+
+def test_role_change_refuses_super_admin_target(client, login):
+    """Un super_admin (autre que soi) ne peut pas voir son rôle changé."""
+    from models import UserRole
+
+    other_admin_id, _ = _create_throwaway_user(UserRole.super_admin)
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{other_admin_id}/role-change",
+            data={"role": "client_user"},
+        )
+        assert r.status_code == 302
+        u = _get_user(other_admin_id)
+        assert u.role == UserRole.super_admin
+    finally:
+        if _user_exists(other_admin_id):
+            _cleanup_user(other_admin_id)
+
+
+def test_role_change_refuses_to_super_admin(client, login):
+    """Le sélecteur ne propose pas `super_admin` mais un attaquant
+    forgé pourrait POST `role=super_admin` directement. La route doit
+    refuser."""
+    from models import UserRole
+
+    user_id, _ = _create_throwaway_user(UserRole.client_user)
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={"role": "super_admin"},
+        )
+        assert r.status_code == 302
+        u = _get_user(user_id)
+        assert u.role == UserRole.client_user  # pas de promotion
+    finally:
+        _cleanup_user(user_id)
+
+
+def test_role_change_refuses_business_history_on_nature_change(client, login):
+    """Un user avec une QR ne peut pas voir son rôle basculer vers
+    `caterer` (laisserait la QR pointer sur un user sans Company)."""
+    from database import session_factory
+    from models import (
+        Company,
+        MealType,
+        QuoteRequest,
+        UserRole,
+    )
+
+    s = session_factory()
+    try:
+        acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
+        company_id = acme.id
+    finally:
+        s.close()
+
+    user_id, _ = _create_throwaway_user(UserRole.client_user, company_id=company_id)
+    qr_id = None
+    try:
+        s = session_factory()
+        try:
+            qr = QuoteRequest(
+                company_id=company_id,
+                user_id=user_id,
+                meal_type=MealType.plateaux_repas,
+                event_date=_dt.date.today() + _dt.timedelta(days=30),
+                guest_count=10,
+            )
+            s.add(qr)
+            s.commit()
+            qr_id = qr.id
+        finally:
+            s.close()
+
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={
+                "role": "caterer",
+                "caterer_name": "X",
+                "caterer_siret": _random_siret(),
+                "structure_type": "ESAT",
+                "invoice_prefix": _random_prefix(),
+            },
+        )
+        assert r.status_code == 302
+        u = _get_user(user_id)
+        assert u.role == UserRole.client_user  # pas de bascule
+    finally:
+        s = session_factory()
+        try:
+            if qr_id:
+                s.execute(
+                    QuoteRequest.__table__.delete().where(QuoteRequest.id == qr_id)
+                )
             s.commit()
         finally:
             s.close()
+        if _user_exists(user_id):
+            _cleanup_user(user_id)
+
+
+def test_role_change_audit_logged(client, login):
+    from database import session_factory
+    from models import AuditLog, Company, UserRole
+
+    s = session_factory()
+    try:
+        acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
+        company_id = acme.id
+    finally:
+        s.close()
+
+    user_id, _ = _create_throwaway_user(UserRole.client_admin, company_id=company_id)
+    try:
+        login("admin@test.local")
+        s = session_factory()
+        try:
+            before = (
+                s.scalar(
+                    select(func.count(AuditLog.id)).where(
+                        AuditLog.action == "user.role_change"
+                    )
+                )
+                or 0
+            )
+        finally:
+            s.close()
+
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={"role": "client_user"},
+        )
+        assert r.status_code == 302
+
+        s = session_factory()
+        try:
+            after = (
+                s.scalar(
+                    select(func.count(AuditLog.id)).where(
+                        AuditLog.action == "user.role_change"
+                    )
+                )
+                or 0
+            )
+        finally:
+            s.close()
+        assert after == before + 1
+    finally:
+        _cleanup_user(user_id)

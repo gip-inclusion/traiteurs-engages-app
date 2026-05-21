@@ -419,12 +419,16 @@ _USER_ROLE_LABELS = {
 @login_required
 @role_required("super_admin")
 def users_list():
-    """Liste des utilisateurs avec recherche (?q=) et filtre rôle
-    (?role=). Pas de pagination tant que le volume reste raisonnable :
-    page rendue côté serveur, scroll OK jusqu'à ~1k users."""
+    """Liste des utilisateurs avec recherche (?q=). Pas de filtre rôle —
+    tout passe par la recherche libre + le sélecteur inline qui sert
+    aussi à modifier le rôle.
+
+    Pas de pagination tant que le volume reste raisonnable : page rendue
+    côté serveur, scroll OK jusqu'à ~1k users."""
+    from services.user_admin import can_change_role, can_delete_user
+
     db = get_db()
     q = (request.args.get("q") or "").strip()
-    role_filter = request.args.get("role") or "all"
     stmt = select(User).order_by(User.created_at.desc())
     if q:
         like = f"%{q.lower()}%"
@@ -433,47 +437,29 @@ def users_list():
             | (func.lower(User.first_name).like(like))
             | (func.lower(User.last_name).like(like))
         )
-    if role_filter != "all":
-        try:
-            stmt = stmt.where(User.role == UserRole(role_filter))
-        except ValueError:
-            role_filter = "all"
     users = db.scalars(stmt).all()
+
+    # Pré-calcule par user si la suppression et la bascule de rôle sont
+    # autorisées — le template a juste à lire un dict, pas à recalculer.
+    # Indexé par user.id (str) pour passer la barrière Jinja sans
+    # surprise sur les comparaisons UUID.
+    row_state = {}
+    for u in users:
+        row_state[str(u.id)] = {
+            "can_delete": can_delete_user(db, u, actor=g.current_user) is None,
+            "can_change_role": can_change_role(
+                db, u, UserRole.client_user, actor=g.current_user
+            )
+            is None
+            or can_change_role(db, u, UserRole.caterer, actor=g.current_user) is None,
+        }
     return render_template(
         "admin/users/list.html",
         user=g.current_user,
         users=users,
         q=q,
-        role_filter=role_filter,
         role_labels=_USER_ROLE_LABELS,
-    )
-
-
-@admin_bp.route("/users/<uuid:user_id>")
-@login_required
-@role_required("super_admin")
-def user_detail(user_id):
-    from services.user_admin import (
-        can_convert_to_caterer,
-        can_delete_user,
-        user_metrics,
-    )
-
-    db = get_db()
-    target = db.get(User, user_id)
-    if not target:
-        abort(404)
-    metrics = user_metrics(db, target)
-    delete_blocker = can_delete_user(db, target, actor=g.current_user)
-    convert_blocker = can_convert_to_caterer(db, target, actor=g.current_user)
-    return render_template(
-        "admin/users/detail.html",
-        user=g.current_user,
-        target=target,
-        metrics=metrics,
-        delete_blocker=delete_blocker,
-        convert_blocker=convert_blocker,
-        role_labels=_USER_ROLE_LABELS,
+        row_state=row_state,
     )
 
 
@@ -490,7 +476,7 @@ def user_delete(user_id):
     blocker = can_delete_user(db, target, actor=g.current_user)
     if blocker:
         flash(blocker, "error")
-        return redirect(url_for("admin.user_detail", user_id=user_id))
+        return redirect(url_for("admin.users_list"))
     target_email = target.email
     log_admin_action(
         db,
@@ -506,74 +492,108 @@ def user_delete(user_id):
     return redirect(url_for("admin.users_list"))
 
 
-@admin_bp.route("/users/<uuid:user_id>/convert-to-caterer", methods=["POST"])
+@admin_bp.route("/users/<uuid:user_id>/role-change", methods=["POST"])
 @login_required
 @role_required("super_admin")
-def user_convert_to_caterer(user_id):
+def user_role_change(user_id):
+    """Bascule le rôle de `user_id` vers `request.form['role']`.
+
+    Selon la nature de la bascule (cf. `services.user_admin`), peut
+    exiger des inputs supplémentaires :
+
+    * vers `caterer` : `caterer_name`, `caterer_siret`,
+      `structure_type`, `invoice_prefix`
+    * depuis `caterer` vers `client_*` : `company_name`, `company_siret`
+
+    Le sélecteur de la liste auto-soumet pour les bascules simples ;
+    un modal côté front collecte les inputs pour les bascules
+    nécessitant la création d'une Caterer/Company."""
     from models import CatererStructureType
-    from services.user_admin import can_convert_to_caterer, convert_to_caterer
+    from services.user_admin import can_change_role, change_role
 
     db = get_db()
     target = db.get(User, user_id)
     if not target:
         abort(404)
-    blocker = can_convert_to_caterer(db, target, actor=g.current_user)
+
+    raw_role = (request.form.get("role") or "").strip()
+    try:
+        new_role = UserRole(raw_role)
+    except ValueError:
+        flash("Rôle cible invalide.", "error")
+        return redirect(url_for("admin.users_list"))
+
+    blocker = can_change_role(db, target, new_role, actor=g.current_user)
     if blocker:
         flash(blocker, "error")
-        return redirect(url_for("admin.user_detail", user_id=user_id))
+        return redirect(url_for("admin.users_list"))
 
-    # Inputs requis pour créer la fiche traiteur minimale. La fiche
-    # reste invalidée — le traiteur complétera son profil, l'admin
-    # validera ensuite via /admin/caterers/<id>/validate.
-    caterer_name = (request.form.get("caterer_name") or "").strip()
-    caterer_siret = (request.form.get("caterer_siret") or "").strip()
-    structure_raw = (request.form.get("structure_type") or "").strip()
-    invoice_prefix = (request.form.get("invoice_prefix") or "").strip().upper()
+    old_role = str(target.role)
+    if old_role == raw_role:
+        return redirect(url_for("admin.users_list"))  # no-op
 
-    if not (caterer_name and caterer_siret and structure_raw and invoice_prefix):
-        flash(
-            "Nom, SIRET, type de structure et prefixe facture sont requis "
-            "pour creer la fiche traiteur.",
-            "error",
-        )
-        return redirect(url_for("admin.user_detail", user_id=user_id))
-    if len(caterer_siret) != 14 or not caterer_siret.isdigit():
-        flash("Le SIRET doit comporter exactement 14 chiffres.", "error")
-        return redirect(url_for("admin.user_detail", user_id=user_id))
-    try:
-        structure_type = CatererStructureType(structure_raw)
-    except ValueError:
-        flash("Type de structure invalide.", "error")
-        return redirect(url_for("admin.user_detail", user_id=user_id))
+    kwargs = {}
+    # Validation des inputs requis selon la bascule
+    if target.role != UserRole.caterer and new_role == UserRole.caterer:
+        caterer_name = (request.form.get("caterer_name") or "").strip()
+        caterer_siret = (request.form.get("caterer_siret") or "").strip()
+        structure_raw = (request.form.get("structure_type") or "").strip()
+        invoice_prefix = (request.form.get("invoice_prefix") or "").strip().upper()
+        if not (caterer_name and caterer_siret and structure_raw and invoice_prefix):
+            flash(
+                "Nom, SIRET, type de structure et prefixe facture sont requis "
+                "pour creer la fiche traiteur.",
+                "error",
+            )
+            return redirect(url_for("admin.users_list"))
+        if len(caterer_siret) != 14 or not caterer_siret.isdigit():
+            flash("Le SIRET du traiteur doit comporter 14 chiffres.", "error")
+            return redirect(url_for("admin.users_list"))
+        try:
+            structure_type = CatererStructureType(structure_raw)
+        except ValueError:
+            flash("Type de structure invalide.", "error")
+            return redirect(url_for("admin.users_list"))
+        kwargs = {
+            "caterer_name": caterer_name,
+            "caterer_siret": caterer_siret,
+            "structure_type": structure_type,
+            "invoice_prefix": invoice_prefix,
+        }
+
+    elif target.role == UserRole.caterer and new_role in (
+        UserRole.client_admin,
+        UserRole.client_user,
+    ):
+        company_name = (request.form.get("company_name") or "").strip()
+        company_siret = (request.form.get("company_siret") or "").strip()
+        if not (company_name and company_siret):
+            flash(
+                "Nom et SIRET de l'entreprise sont requis pour creer la fiche.",
+                "error",
+            )
+            return redirect(url_for("admin.users_list"))
+        if len(company_siret) != 14 or not company_siret.isdigit():
+            flash("Le SIRET de l'entreprise doit comporter 14 chiffres.", "error")
+            return redirect(url_for("admin.users_list"))
+        kwargs = {"company_name": company_name, "company_siret": company_siret}
 
     target_email = target.email
-    caterer = convert_to_caterer(
-        db,
-        target,
-        caterer_name=caterer_name,
-        caterer_siret=caterer_siret,
-        structure_type=structure_type,
-        invoice_prefix=invoice_prefix,
-    )
+    change_role(db, target, new_role=new_role, **kwargs)
     log_admin_action(
         db,
         g.current_user,
-        "user.convert_to_caterer",
+        "user.role_change",
         target_type="user",
         target_id=user_id,
-        extra={
-            "email": target_email,
-            "caterer_id": str(caterer.id),
-            "caterer_name": caterer.name,
-        },
+        extra={"email": target_email, "old_role": old_role, "new_role": raw_role},
     )
     db.commit()
     flash(
-        f"Compte {target_email} converti en traiteur. Validez la fiche depuis "
-        f"« Traiteurs » apres que le compte ait complete son profil.",
+        f"Role de {target_email} change : {old_role} -> {raw_role}.",
         "success",
     )
-    return redirect(url_for("admin.user_detail", user_id=user_id))
+    return redirect(url_for("admin.users_list"))
 
 
 @admin_bp.route("/payments")

@@ -6,7 +6,7 @@
 <div class="mb-6 flex items-center justify-between">
   <div>
     <h1 class="font-display font-bold text-2xl text-black">Utilisateurs</h1>
-    <p class="text-sm mt-1 text-mute">{{ users|length }} utilisateur{{ 's' if users|length != 1 }}{% if q or role_filter != 'all' %} (filtre actif){% endif %}</p>
+    <p class="text-sm mt-1 text-mute">{{ users|length }} utilisateur{{ 's' if users|length != 1 }}{% if q %} (filtre actif){% endif %}</p>
   </div>
   <a href="{{ url_for('admin.dashboard') }}" class="inline-flex items-center gap-2 text-sm text-mute">
     <i data-lucide="arrow-left" class="w-4 h-4"></i>
@@ -14,7 +14,7 @@
   </a>
 </div>
 
-{# ---- Filtres ---- #}
+{# ---- Recherche ---- #}
 <form method="GET" action="{{ url_for('admin.users_list') }}" class="bg-white rounded-lg p-4 mb-6 flex flex-wrap items-end gap-3">
   <div class="flex-1 min-w-64">
     <label class="block text-xs font-bold mb-1 text-mute">Recherche (email, prenom, nom)</label>
@@ -22,21 +22,12 @@
       placeholder="bob@example.com"
       class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
   </div>
-  <div>
-    <label class="block text-xs font-bold mb-1 text-mute">Role</label>
-    <select name="role" class="border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
-      <option value="all" {% if role_filter == 'all' %}selected{% endif %}>Tous</option>
-      {% for value, label in role_labels.items() %}
-      <option value="{{ value.value }}" {% if role_filter == value.value %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-  </div>
   <button type="submit"
     class="rounded-full text-white text-sm font-bold px-4 py-2 inline-flex items-center gap-2 bg-navy">
     <i data-lucide="search" class="w-4 h-4"></i>
-    Filtrer
+    Rechercher
   </button>
-  {% if q or role_filter != 'all' %}
+  {% if q %}
   <a href="{{ url_for('admin.users_list') }}" class="text-sm text-mute inline-flex items-center gap-1">
     <i data-lucide="x" class="w-4 h-4"></i>
     Reinitialiser
@@ -59,14 +50,38 @@
     </thead>
     <tbody>
       {% for u in users %}
+      {% set state = row_state.get(u.id|string, {}) %}
       <tr class="hover:bg-cream border-t border-soft">
         <td class="px-4 py-3 text-sm font-medium text-black">{{ u.email }}</td>
         <td class="px-4 py-3 text-sm text-mute">{{ u.first_name }} {{ u.last_name }}</td>
+
+        {# ---- Sélecteur de rôle inline ---- #}
         <td class="px-4 py-3">
+          {% if u.role|string == 'super_admin' %}
           <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-navy-soft text-navy">
-            {{ role_labels.get(u.role, u.role.value) }}
+            {{ role_labels.get(u.role, u.role) }}
           </span>
+          {% elif state.can_change_role %}
+          <form method="POST" action="{{ url_for('admin.user_role_change', user_id=u.id) }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="role"
+              data-action="role-select"
+              data-user-id="{{ u.id }}"
+              data-original-role="{{ u.role }}"
+              data-user-email="{{ u.email }}"
+              class="border rounded-lg px-2 py-1 text-sm text-black outline-none focus:border-navy border-default">
+              <option value="client_admin" {% if u.role|string == 'client_admin' %}selected{% endif %}>Admin client</option>
+              <option value="client_user" {% if u.role|string == 'client_user' %}selected{% endif %}>Utilisateur client</option>
+              <option value="caterer" {% if u.role|string == 'caterer' %}selected{% endif %}>Traiteur</option>
+            </select>
+          </form>
+          {% else %}
+          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft" title="Bascule indisponible (historique metier ou auto-modification)">
+            {{ role_labels.get(u.role, u.role) }}
+          </span>
+          {% endif %}
         </td>
+
         <td class="px-4 py-3 text-sm text-mute">
           {% if u.company %}
           <span class="inline-flex items-center gap-1"><i data-lucide="building-2" class="w-3.5 h-3.5"></i>{{ u.company.name }}</span>
@@ -76,13 +91,30 @@
           -
           {% endif %}
         </td>
+
         <td class="px-4 py-3 text-sm text-mute">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+
+        {# ---- Corbeille ---- #}
         <td class="px-4 py-3 text-right">
-          <a href="{{ url_for('admin.user_detail', user_id=u.id) }}"
-            class="inline-flex items-center gap-1 text-sm font-bold text-navy">
-            Detail
-            <i data-lucide="chevron-right" class="w-4 h-4"></i>
-          </a>
+          {% if state.can_delete %}
+          <form method="POST" action="{{ url_for('admin.user_delete', user_id=u.id) }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+              class="rounded-full p-2 text-danger hover:bg-cream inline-flex items-center justify-center"
+              data-action="confirm-submit"
+              data-confirm="Supprimer definitivement {{ u.email }} ? Cette action est irreversible."
+              aria-label="Supprimer">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </form>
+          {% else %}
+          <button type="button" disabled
+            class="rounded-full p-2 text-mute-soft cursor-not-allowed inline-flex items-center justify-center"
+            title="Suppression bloquee (historique metier, auto-suppression ou dernier super_admin)"
+            aria-label="Suppression indisponible">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -95,7 +127,81 @@
     <i data-lucide="users" class="w-8 h-8 text-navy"></i>
   </div>
   <h3 class="font-display font-bold text-lg text-black mb-2">Aucun utilisateur</h3>
-  <p class="text-sm text-mute">{% if q or role_filter != 'all' %}Aucun utilisateur ne correspond a votre filtre.{% else %}Aucun utilisateur sur la plateforme.{% endif %}</p>
+  <p class="text-sm text-mute">{% if q %}Aucun utilisateur ne correspond a votre recherche.{% else %}Aucun utilisateur sur la plateforme.{% endif %}</p>
 </div>
 {% endif %}
+
+{# ============================================================ #}
+{# Modal de bascule de rôle qui nécessite des infos supplémentaires
+   (vers caterer ou caterer → client). Form unique, champs caterer ou
+   company affichés selon le mode demandé. Ouverture pilotée par
+   `role-select` dans static/js/app.js. #}
+{# ============================================================ #}
+<dialog id="role-change-modal" class="rounded-lg p-0 max-w-lg w-full">
+  <form method="POST" id="role-change-form" class="bg-white p-6 rounded-lg">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="role" id="role-change-target-role">
+
+    <h2 class="font-display font-bold text-xl text-black mb-2" id="role-change-title">Changer le role</h2>
+    <p class="text-sm text-mute mb-4" id="role-change-subtitle"></p>
+
+    {# ---- Champs caterer (affichés quand on bascule vers caterer) ---- #}
+    <div id="role-change-caterer-fields" class="space-y-3 mb-4" hidden>
+      <div>
+        <label class="block text-xs font-bold mb-1 text-mute">Nom du traiteur</label>
+        <input type="text" name="caterer_name"
+          class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+      </div>
+      <div>
+        <label class="block text-xs font-bold mb-1 text-mute">SIRET (14 chiffres)</label>
+        <input type="text" name="caterer_siret" pattern="[0-9]{14}" maxlength="14"
+          class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-bold mb-1 text-mute">Type de structure</label>
+          <select name="structure_type"
+            class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+            <option value="">--</option>
+            <option value="ESAT">ESAT</option>
+            <option value="EA">EA</option>
+            <option value="EI">EI</option>
+            <option value="ACI">ACI</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold mb-1 text-mute">Prefixe facture</label>
+          <input type="text" name="invoice_prefix" maxlength="6"
+            class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+        </div>
+      </div>
+    </div>
+
+    {# ---- Champs company (affichés quand on bascule caterer → client) ---- #}
+    <div id="role-change-company-fields" class="space-y-3 mb-4" hidden>
+      <div>
+        <label class="block text-xs font-bold mb-1 text-mute">Nom de l'entreprise</label>
+        <input type="text" name="company_name"
+          class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+      </div>
+      <div>
+        <label class="block text-xs font-bold mb-1 text-mute">SIRET (14 chiffres)</label>
+        <input type="text" name="company_siret" pattern="[0-9]{14}" maxlength="14"
+          class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2">
+      <button type="button" data-action="role-change-cancel"
+        class="rounded-full text-sm font-bold px-4 py-2 inline-flex items-center bg-cream text-text">
+        Annuler
+      </button>
+      <button type="submit"
+        class="rounded-full text-white text-sm font-bold px-4 py-2 inline-flex items-center gap-2 bg-navy">
+        <i data-lucide="check" class="w-4 h-4"></i>
+        Valider
+      </button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}

@@ -14,13 +14,14 @@ Deux cas usables côté admin :
   (notifications, tokens de reset, audit_logs.actor_id) avant le delete
   pour ne pas heurter les FKs non-nullables.
 
-* **Conversion `client_*` → `caterer`.** Détache la `Company` (et la
-  supprime si elle est orpheline), crée une fiche `Caterer` minimale
-  (`is_validated=False` — l'admin la validera ensuite via
-  `/admin/caterers/<id>/validate`) et bascule `role` + `caterer_id`.
-  Refusée si le user a déjà un historique métier (mêmes critères que
-  la suppression) parce qu'on ne saurait pas où rattacher les rows
-  existantes après bascule.
+* **Changement de rôle.** Bascule entre `client_admin`, `client_user`
+  et `caterer`. Pour les bascules qui changent la nature du compte
+  (vers/depuis `caterer`), l'admin doit fournir les infos minimales de
+  la nouvelle structure (Caterer ou Company). `super_admin` est
+  immuable des deux côtés — pas de promotion via cette voie, pas de
+  rétrogradation non plus (sinon un admin compromis pourrait
+  dégrader le seul super_admin restant). Refusée si le user a un
+  historique métier sur le rôle de départ.
 
 Les routes commitent ; les helpers ne commitent pas (laissent la
 transaction au caller, cohérent avec le reste du codebase — cf.
@@ -36,6 +37,7 @@ from models import (
     CatererReview,
     Company,
     CompanyEmployee,
+    MembershipStatus,
     Message,
     Notification,
     PasswordResetToken,
@@ -188,73 +190,130 @@ def delete_user(db, user: User) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Conversion client → traiteur
+# Changement de rôle
 # ---------------------------------------------------------------------------
 
 
-_CONVERTIBLE_ROLES = {UserRole.client_admin, UserRole.client_user}
+# Rôles modifiables depuis l'UI. `super_admin` est volontairement absent
+# pour éviter qu'un compte admin compromis (ou maladroit) puisse créer
+# ou dégrader des super_admins via cette voie. La promotion vers
+# super_admin reste manuelle (CLI Scalingo / init_db).
+_MUTABLE_ROLES = {UserRole.client_admin, UserRole.client_user, UserRole.caterer}
 
 
-def can_convert_to_caterer(db, user: User, *, actor: User) -> str | None:
-    """Mêmes garde-fous que la suppression + filtre sur le rôle de
-    départ (seul un compte client peut basculer vers caterer)."""
+def _needs_caterer_info(current_role, new_role) -> bool:
+    """True si la bascule crée une fiche `Caterer` (X non-caterer →
+    caterer). Pas True si on reste caterer ou si on quitte caterer."""
+    return current_role != UserRole.caterer and new_role == UserRole.caterer
+
+
+def _needs_company_info(current_role, new_role) -> bool:
+    """True si la bascule crée une fiche `Company` (caterer → client_*
+    quand le user n'a pas déjà de `company_id`)."""
+    return current_role == UserRole.caterer and new_role in (
+        UserRole.client_admin,
+        UserRole.client_user,
+    )
+
+
+def can_change_role(db, user: User, new_role, *, actor: User) -> str | None:
+    """`None` si la bascule est autorisée, sinon un message d'erreur.
+    Couvre les garde-fous communs ; les inputs spécifiques (nom, SIRET)
+    sont validés par la route — ils ne sont pas connus à ce stade."""
     if user.id == actor.id:
         return "Vous ne pouvez pas modifier votre propre compte."
-    if user.role not in _CONVERTIBLE_ROLES:
-        return (
-            "Seul un compte client peut être converti en traiteur. "
-            f"Rôle actuel : {user.role}."
-        )
+    if user.role == UserRole.super_admin:
+        return "Le rôle d'un super administrateur ne peut pas être modifié ici."
+    if new_role not in _MUTABLE_ROLES:
+        return f"Rôle cible invalide : {new_role}."
+    if user.role == new_role:
+        return None  # no-op, pas une erreur
     metrics = _user_metrics(db, user)
-    if _has_business_history(metrics):
+    if _has_business_history(metrics) and (
+        _needs_caterer_info(user.role, new_role)
+        or _needs_company_info(user.role, new_role)
+    ):
         return (
-            "Ce compte a un historique métier — la conversion laisserait "
-            "des devis/messages côté client. Refus."
+            "Ce compte a un historique métier — changer la nature du compte "
+            "(création d'une fiche traiteur ou entreprise) laisserait des "
+            "rows orphelines. Refus."
         )
     return None
 
 
-def convert_to_caterer(
+def change_role(
     db,
     user: User,
     *,
-    caterer_name: str,
-    caterer_siret: str,
-    structure_type,
-    invoice_prefix: str,
-) -> Caterer:
-    """Détache la Company (delete si orpheline), crée une fiche
-    `Caterer` minimale, bascule le user. Présume `can_convert_to_caterer`
-    OK. Le caller commit.
+    new_role,
+    caterer_name: str | None = None,
+    caterer_siret: str | None = None,
+    structure_type=None,
+    invoice_prefix: str | None = None,
+    company_name: str | None = None,
+    company_siret: str | None = None,
+) -> None:
+    """Applique la bascule. Présume `can_change_role` OK et que les
+    inputs nécessaires (selon la bascule) sont fournis. Le caller
+    commit.
 
-    La fiche traiteur reste `is_validated=False` : le super_admin doit
-    encore la valider via `/admin/caterers/<id>/validate` après que le
-    traiteur ait complété son profil (logo, photos, prestations…)."""
-    # Détacher de la Company
-    company_id = user.company_id
-    user.company_id = None
-    user.membership_status = None
-    if company_id:
-        db.flush()
-        remaining = db.scalar(
-            select(func.count(User.id)).where(User.company_id == company_id)
+    * Bascule entre `client_admin` ↔ `client_user` : juste `user.role`,
+      `company_id` reste pointé sur la même Company.
+    * Bascule vers `caterer` : détache Company (delete si orpheline),
+      crée une fiche `Caterer` minimale (`is_validated=False`).
+    * Bascule `caterer` → `client_*` : la fiche `Caterer` reste (mais
+      n'est plus rattachée au user) et on crée une `Company` minimale.
+    """
+    # Cas trivial — pas de changement de nature
+    if not _needs_caterer_info(user.role, new_role) and not _needs_company_info(
+        user.role, new_role
+    ):
+        user.role = new_role
+        return
+
+    # Vers caterer : détacher Company + créer Caterer
+    if _needs_caterer_info(user.role, new_role):
+        company_id = user.company_id
+        user.company_id = None
+        user.membership_status = None
+        if company_id:
+            db.flush()
+            remaining = db.scalar(
+                select(func.count(User.id)).where(User.company_id == company_id)
+            )
+            if (remaining or 0) == 0:
+                company = db.get(Company, company_id)
+                if company is not None:
+                    db.delete(company)
+
+        caterer = Caterer(
+            name=(caterer_name or "").strip(),
+            siret=(caterer_siret or "").strip(),
+            structure_type=structure_type,
+            invoice_prefix=(invoice_prefix or "").strip().upper(),
+            is_validated=False,
         )
-        if (remaining or 0) == 0:
-            company = db.get(Company, company_id)
-            if company is not None:
-                db.delete(company)
+        db.add(caterer)
+        db.flush()
+        user.caterer_id = caterer.id
+        user.role = new_role
+        return
 
-    # Créer la fiche traiteur minimale
-    caterer = Caterer(
-        name=caterer_name.strip(),
-        siret=caterer_siret.strip(),
-        structure_type=structure_type,
-        invoice_prefix=invoice_prefix.strip().upper(),
-        is_validated=False,
-    )
-    db.add(caterer)
-    db.flush()  # nécessaire pour avoir caterer.id avant l'attribution
+    # Depuis caterer vers client_* : détacher Caterer + créer Company
+    if _needs_company_info(user.role, new_role):
+        user.caterer_id = None
+        # On laisse la fiche Caterer en base — l'admin la traitera
+        # séparément via `/admin/caterers/<id>` si besoin. Plus prudent
+        # que de la supprimer automatiquement (elle peut avoir un
+        # historique sur d'autres axes).
 
-    user.role = UserRole.caterer
-    user.caterer_id = caterer.id
-    return caterer
+        company = Company(
+            name=(company_name or "").strip(),
+            siret=(company_siret or "").strip(),
+        )
+        db.add(company)
+        db.flush()
+        user.company_id = company.id
+        user.role = new_role
+        user.membership_status = MembershipStatus.active
+        return
