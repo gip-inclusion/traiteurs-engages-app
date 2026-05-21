@@ -31,7 +31,7 @@ flask-limiter==4.1.1
 # (Fernet, HKDF) — exact pin per the project policy.
 pyotp==2.9.0
 qrcode==8.0
-cryptography==46.0.3
+cryptography==46.0.7
 
 # Serves /static/* at the WSGI layer instead of through Flask routing —
 # critical on Scalingo where there is no Caddy/nginx in front of gunicorn
