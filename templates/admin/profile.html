@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Mon profil - Les Traiteurs Engag&#233;s{% endblock %}
+
+{% block content %}
+<main class="bg-cream min-h-screen">
+
+  <h1 class="font-display font-bold text-4xl mb-6 text-text">Mon profil</h1>
+
+  {% set initials = ((user.first_name or '')[:1] ~ (user.last_name or '')[:1]) | upper %}
+
+  {# ---- Identité ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <div class="flex items-center gap-4">
+      <div class="rounded-full flex items-center justify-center text-white font-display font-bold text-xl"
+           style="width:4rem;height:4rem;flex-shrink:0;background-color:var(--c-navy);">
+        {{ initials or '?' }}
+      </div>
+      <div class="min-w-0">
+        <h2 class="font-display font-bold text-2xl text-text">{{ user.first_name }} {{ user.last_name }}</h2>
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold mt-1 bg-navy-soft text-navy">
+          <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+          Super administrateur
+        </span>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Informations ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <h2 class="font-display font-bold text-xl mb-4 text-text">Informations</h2>
+    <div class="space-y-3">
+      <div class="flex items-center gap-3">
+        <i data-lucide="mail" class="w-4 h-4 text-mute flex-shrink-0"></i>
+        <span class="text-sm text-text">{{ user.email }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Sécurité ---- #}
+  <div class="bg-white rounded-lg p-6 mb-6">
+    <h2 class="font-display font-bold text-xl mb-1 text-text">S&#233;curit&#233;</h2>
+    <p class="text-sm mb-4 text-mute">Mettez &#224; jour votre mot de passe r&#233;guli&#232;rement.</p>
+    <a href="{{ url_for('auth.change_password') }}"
+       class="inline-flex items-center gap-2 rounded-full text-sm font-bold px-4 py-2.5 btn-ghost-navy">
+      <i data-lucide="key-round" class="w-4 h-4"></i>
+      Modifier mon mot de passe
+    </a>
+  </div>
+
+</main>
+{% endblock %}

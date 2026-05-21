@@ -871,4 +871,15 @@ def message_thread(thread_id):
     )
 
 
+@admin_bp.route("/profile")
+@login_required
+@role_required("super_admin")
+def profile():
+    """Page « Mon profil » du super_admin. Pas d'infos métier
+    spécifiques à éditer ici (pas de company, pas de caterer) : la page
+    sert surtout de point d'entrée pour la modification du mot de
+    passe. Cohérent avec `client.profile` / `caterer.profile`."""
+    return render_template("admin/profile.html", user=g.current_user)
+
+
 _register_notifications(admin_bp, roles=("super_admin",))

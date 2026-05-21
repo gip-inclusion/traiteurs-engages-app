@@ -193,6 +193,10 @@
           <i data-lucide="message-circle" class="w-5 h-5 flex-shrink-0"></i>
           <span>Messagerie</span>
         </a>
+        <a href="{{ url_for('admin.profile') }}" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors" data-page="profile">
+          <i data-lucide="user" class="w-5 h-5 flex-shrink-0"></i>
+          <span>Mon profil</span>
+        </a>
         {% endif %}
       </div>
     </nav>
@@ -206,11 +210,6 @@
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-text truncate">{{ g.current_user.first_name }} {{ g.current_user.last_name }}</p>
         </div>
-        <a href="{{ url_for('auth.change_password') }}"
-           class="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors"
-           title="Modifier mon mot de passe">
-          <i data-lucide="key-round" class="w-4.5 h-4.5 text-mute"></i>
-        </a>
         <form method="POST" action="{{ url_for('auth.logout') }}" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors" title="D&#233;connexion">
