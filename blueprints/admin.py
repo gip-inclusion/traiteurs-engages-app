@@ -35,6 +35,8 @@ from models import (
     QuoteRequest,
     QuoteRequestStatus,
     QuoteStatus,
+    User,
+    UserRole,
 )
 from services import messagerie as messagerie_service
 from services import workflow
@@ -395,6 +397,183 @@ def company_detail(company_id):
         requests=requests,
         meal_type_labels=MEAL_TYPE_LABELS,
     )
+
+
+# ---------------------------------------------------------------------------
+# User management — ajouté pour traiter les inscriptions "mauvais rôle"
+# (un user qui s'inscrit comme client alors qu'il voulait s'inscrire comme
+# traiteur). Hors de ce flux il y a peu d'usages : la liste reste légère
+# (pas de pagination tant que < 1k users — on étendra si besoin).
+# ---------------------------------------------------------------------------
+
+
+_USER_ROLE_LABELS = {
+    UserRole.client_admin: "Admin client",
+    UserRole.client_user: "Utilisateur client",
+    UserRole.caterer: "Traiteur",
+    UserRole.super_admin: "Super admin",
+}
+
+
+@admin_bp.route("/users")
+@login_required
+@role_required("super_admin")
+def users_list():
+    """Liste des utilisateurs avec recherche (?q=) et filtre rôle
+    (?role=). Pas de pagination tant que le volume reste raisonnable :
+    page rendue côté serveur, scroll OK jusqu'à ~1k users."""
+    db = get_db()
+    q = (request.args.get("q") or "").strip()
+    role_filter = request.args.get("role") or "all"
+    stmt = select(User).order_by(User.created_at.desc())
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(
+            (func.lower(User.email).like(like))
+            | (func.lower(User.first_name).like(like))
+            | (func.lower(User.last_name).like(like))
+        )
+    if role_filter != "all":
+        try:
+            stmt = stmt.where(User.role == UserRole(role_filter))
+        except ValueError:
+            role_filter = "all"
+    users = db.scalars(stmt).all()
+    return render_template(
+        "admin/users/list.html",
+        user=g.current_user,
+        users=users,
+        q=q,
+        role_filter=role_filter,
+        role_labels=_USER_ROLE_LABELS,
+    )
+
+
+@admin_bp.route("/users/<uuid:user_id>")
+@login_required
+@role_required("super_admin")
+def user_detail(user_id):
+    from services.user_admin import (
+        can_convert_to_caterer,
+        can_delete_user,
+        user_metrics,
+    )
+
+    db = get_db()
+    target = db.get(User, user_id)
+    if not target:
+        abort(404)
+    metrics = user_metrics(db, target)
+    delete_blocker = can_delete_user(db, target, actor=g.current_user)
+    convert_blocker = can_convert_to_caterer(db, target, actor=g.current_user)
+    return render_template(
+        "admin/users/detail.html",
+        user=g.current_user,
+        target=target,
+        metrics=metrics,
+        delete_blocker=delete_blocker,
+        convert_blocker=convert_blocker,
+        role_labels=_USER_ROLE_LABELS,
+    )
+
+
+@admin_bp.route("/users/<uuid:user_id>/delete", methods=["POST"])
+@login_required
+@role_required("super_admin")
+def user_delete(user_id):
+    from services.user_admin import can_delete_user, delete_user
+
+    db = get_db()
+    target = db.get(User, user_id)
+    if not target:
+        abort(404)
+    blocker = can_delete_user(db, target, actor=g.current_user)
+    if blocker:
+        flash(blocker, "error")
+        return redirect(url_for("admin.user_detail", user_id=user_id))
+    target_email = target.email
+    log_admin_action(
+        db,
+        g.current_user,
+        "user.delete",
+        target_type="user",
+        target_id=user_id,
+        extra={"email": target_email, "role": str(target.role)},
+    )
+    delete_user(db, target)
+    db.commit()
+    flash(f"Compte {target_email} supprime.", "success")
+    return redirect(url_for("admin.users_list"))
+
+
+@admin_bp.route("/users/<uuid:user_id>/convert-to-caterer", methods=["POST"])
+@login_required
+@role_required("super_admin")
+def user_convert_to_caterer(user_id):
+    from models import CatererStructureType
+    from services.user_admin import can_convert_to_caterer, convert_to_caterer
+
+    db = get_db()
+    target = db.get(User, user_id)
+    if not target:
+        abort(404)
+    blocker = can_convert_to_caterer(db, target, actor=g.current_user)
+    if blocker:
+        flash(blocker, "error")
+        return redirect(url_for("admin.user_detail", user_id=user_id))
+
+    # Inputs requis pour créer la fiche traiteur minimale. La fiche
+    # reste invalidée — le traiteur complétera son profil, l'admin
+    # validera ensuite via /admin/caterers/<id>/validate.
+    caterer_name = (request.form.get("caterer_name") or "").strip()
+    caterer_siret = (request.form.get("caterer_siret") or "").strip()
+    structure_raw = (request.form.get("structure_type") or "").strip()
+    invoice_prefix = (request.form.get("invoice_prefix") or "").strip().upper()
+
+    if not (caterer_name and caterer_siret and structure_raw and invoice_prefix):
+        flash(
+            "Nom, SIRET, type de structure et prefixe facture sont requis "
+            "pour creer la fiche traiteur.",
+            "error",
+        )
+        return redirect(url_for("admin.user_detail", user_id=user_id))
+    if len(caterer_siret) != 14 or not caterer_siret.isdigit():
+        flash("Le SIRET doit comporter exactement 14 chiffres.", "error")
+        return redirect(url_for("admin.user_detail", user_id=user_id))
+    try:
+        structure_type = CatererStructureType(structure_raw)
+    except ValueError:
+        flash("Type de structure invalide.", "error")
+        return redirect(url_for("admin.user_detail", user_id=user_id))
+
+    target_email = target.email
+    caterer = convert_to_caterer(
+        db,
+        target,
+        caterer_name=caterer_name,
+        caterer_siret=caterer_siret,
+        structure_type=structure_type,
+        invoice_prefix=invoice_prefix,
+    )
+    log_admin_action(
+        db,
+        g.current_user,
+        "user.convert_to_caterer",
+        target_type="user",
+        target_id=user_id,
+        extra={
+            "email": target_email,
+            "caterer_id": str(caterer.id),
+            "caterer_name": caterer.name,
+        },
+    )
+    db.commit()
+    flash(
+        f"Compte {target_email} converti en traiteur. Validez la fiche depuis "
+        f"« Traiteurs » apres que le compte ait complete son profil.",
+        "success",
+    )
+    return redirect(url_for("admin.user_detail", user_id=user_id))
 
 
 @admin_bp.route("/payments")

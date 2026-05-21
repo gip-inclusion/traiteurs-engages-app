@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import back_button %}
+
+{% block title %}{{ target.email }} - Les Traiteurs Engages{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <div class="mb-3">{{ back_button(label="Retour a la liste") }}</div>
+  <h1 class="font-display font-bold text-2xl text-black">{{ target.first_name }} {{ target.last_name }}</h1>
+  <p class="text-sm mt-1 text-mute">{{ target.email }}</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  {# ---- Colonne gauche : infos compte ---- #}
+  <div class="lg:col-span-1 space-y-6">
+    <div class="bg-white rounded-lg p-6">
+      <h2 class="font-display font-bold text-lg text-black mb-4">Informations</h2>
+      <div class="space-y-3">
+        <div>
+          <p class="text-xs font-bold uppercase text-mute">Role</p>
+          <span class="inline-flex items-center px-2 py-1 mt-1 rounded-full text-xs font-bold bg-navy-soft text-navy">
+            {{ role_labels.get(target.role, target.role.value) }}
+          </span>
+        </div>
+        <div>
+          <p class="text-xs font-bold uppercase text-mute">Rattachement</p>
+          {% if target.company %}
+          <p class="text-sm text-black mt-1">
+            <i data-lucide="building-2" class="w-3.5 h-3.5 inline"></i>
+            <a href="{{ url_for('admin.company_detail', company_id=target.company.id) }}" class="text-navy font-bold">{{ target.company.name }}</a>
+          </p>
+          {% elif target.caterer %}
+          <p class="text-sm text-black mt-1">
+            <i data-lucide="chef-hat" class="w-3.5 h-3.5 inline"></i>
+            <a href="{{ url_for('admin.caterer_detail', caterer_id=target.caterer.id) }}" class="text-navy font-bold">{{ target.caterer.name }}</a>
+          </p>
+          {% else %}
+          <p class="text-sm text-mute mt-1">-</p>
+          {% endif %}
+        </div>
+        <div>
+          <p class="text-xs font-bold uppercase text-mute">Inscrit le</p>
+          <p class="text-sm font-medium text-black mt-1">{{ target.created_at.strftime('%d/%m/%Y a %H:%M') }}</p>
+        </div>
+        {% if target.membership_status %}
+        <div>
+          <p class="text-xs font-bold uppercase text-mute">Statut adhesion</p>
+          <p class="text-sm font-medium text-black mt-1">{{ target.membership_status.value }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ---- Activité (métriques) ---- #}
+    <div class="bg-white rounded-lg p-6">
+      <h2 class="font-display font-bold text-lg text-black mb-4">Activite</h2>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-mute">Demandes de devis</span>
+          <span class="font-bold text-black">{{ metrics.quote_requests }}</span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-mute">Messages envoyes</span>
+          <span class="font-bold text-black">{{ metrics.messages_sent }}</span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-mute">Messages recus</span>
+          <span class="font-bold text-black">{{ metrics.messages_received }}</span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-mute">Employes lies</span>
+          <span class="font-bold text-black">{{ metrics.employees }}</span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-mute">Avis publies</span>
+          <span class="font-bold text-black">{{ metrics.reviews }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Colonne droite : actions admin ---- #}
+  <div class="lg:col-span-2 space-y-6">
+    {# Conversion client → traiteur #}
+    <div class="bg-white rounded-lg p-6">
+      <h2 class="font-display font-bold text-lg text-black mb-2">Convertir en traiteur</h2>
+      <p class="text-sm text-mute mb-4">
+        A utiliser si l'utilisateur s'est inscrit en tant que client par erreur.
+        Detache l'entreprise rattachee (et la supprime si elle est orpheline),
+        cree une fiche traiteur minimale (a completer ensuite par l'utilisateur)
+        puis valide la fiche depuis l'onglet « Traiteurs ».
+      </p>
+      {% if convert_blocker %}
+      <div class="bg-warning-soft border border-warning rounded-lg px-3 py-2 text-sm text-warning">
+        <i data-lucide="alert-triangle" class="w-4 h-4 inline"></i>
+        {{ convert_blocker }}
+      </div>
+      {% else %}
+      <form method="POST" action="{{ url_for('admin.user_convert_to_caterer', user_id=target.id) }}" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold mb-1 text-mute">Nom du traiteur</label>
+            <input type="text" name="caterer_name" required
+              class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1 text-mute">SIRET (14 chiffres)</label>
+            <input type="text" name="caterer_siret" required pattern="[0-9]{14}" maxlength="14"
+              class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1 text-mute">Type de structure</label>
+            <select name="structure_type" required
+              class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+              <option value="">--</option>
+              <option value="ESAT">ESAT</option>
+              <option value="EA">EA</option>
+              <option value="EI">EI</option>
+              <option value="ACI">ACI</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold mb-1 text-mute">Prefixe facture (3 lettres)</label>
+            <input type="text" name="invoice_prefix" required maxlength="6"
+              class="w-full border rounded-lg px-3 py-2 text-sm text-black outline-none focus:border-navy border-default">
+          </div>
+        </div>
+        <button type="submit"
+          class="rounded-full text-white text-sm font-bold px-4 py-2.5 inline-flex items-center gap-2 bg-navy"
+          data-action="confirm-submit"
+          data-confirm="Convertir {{ target.email }} en traiteur ? L'utilisateur devra completer sa fiche.">
+          <i data-lucide="repeat" class="w-4 h-4"></i>
+          Convertir en traiteur
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    {# Suppression #}
+    <div class="bg-white rounded-lg p-6">
+      <h2 class="font-display font-bold text-lg text-black mb-2">Supprimer le compte</h2>
+      <p class="text-sm text-mute mb-4">
+        Suppression definitive. A reserver aux comptes crees par erreur
+        et sans historique metier. L'utilisateur devra refaire son
+        inscription avec le bon role apres la suppression.
+      </p>
+      {% if delete_blocker %}
+      <div class="bg-warning-soft border border-warning rounded-lg px-3 py-2 text-sm text-warning">
+        <i data-lucide="alert-triangle" class="w-4 h-4 inline"></i>
+        {{ delete_blocker }}
+      </div>
+      {% else %}
+      <form method="POST" action="{{ url_for('admin.user_delete', user_id=target.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+          class="rounded-full text-white text-sm font-bold px-4 py-2.5 inline-flex items-center gap-2 bg-danger"
+          data-action="confirm-submit"
+          data-confirm="Supprimer definitivement {{ target.email }} ? Cette action est irreversible.">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          Supprimer le compte
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
