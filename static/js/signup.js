@@ -5,35 +5,19 @@
     var catererFields = document.getElementById('caterer-fields');
 
     if (roleInput) roleInput.value = role === 'client' ? 'client_admin' : 'caterer';
-    if (signupForm) signupForm.style.display = 'block';
-    if (catererFields) catererFields.style.display = role === 'caterer' ? 'block' : 'none';
+    // Le formulaire reste masqué tant qu'aucune carte n'a été cliquée
+    // (cf. la classe `hidden` au chargement). Une fois qu'on en choisit
+    // une, on l'affiche pour de bon — pas de bascule vers display:none
+    // lors d'un changement de carte ensuite.
+    if (signupForm) signupForm.classList.remove('hidden');
+    if (catererFields) catererFields.classList.toggle('hidden', role !== 'caterer');
 
-    var tabClient = document.getElementById('tab-client');
-    var tabCaterer = document.getElementById('tab-caterer');
-
-    if (role === 'client') {
-      if (tabClient) {
-        tabClient.style.backgroundColor = 'white';
-        tabClient.style.color = '#1A1A1A';
-        tabClient.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
-      }
-      if (tabCaterer) {
-        tabCaterer.style.backgroundColor = 'transparent';
-        tabCaterer.style.color = '#6B7280';
-        tabCaterer.style.boxShadow = 'none';
-      }
-    } else {
-      if (tabCaterer) {
-        tabCaterer.style.backgroundColor = 'white';
-        tabCaterer.style.color = '#1A1A1A';
-        tabCaterer.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
-      }
-      if (tabClient) {
-        tabClient.style.backgroundColor = 'transparent';
-        tabClient.style.color = '#6B7280';
-        tabClient.style.boxShadow = 'none';
-      }
-    }
+    // Highlight de la carte active. La classe `role-card-active` porte
+    // le style (border coral + fond léger) — cf. static/css/app.css.
+    var cardClient = document.getElementById('card-client');
+    var cardCaterer = document.getElementById('card-caterer');
+    if (cardClient) cardClient.classList.toggle('role-card-active', role === 'client');
+    if (cardCaterer) cardCaterer.classList.toggle('role-card-active', role === 'caterer');
 
     var catererInputs = document.querySelectorAll('#caterer-fields input, #caterer-fields select');
     catererInputs.forEach(function (el) { el.required = (role === 'caterer'); });
@@ -136,8 +120,9 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Default to "Entreprise" (parcours dominant depuis la landing).
-    selectRole('client');
+    // No pre-selection: the form stays hidden until the user clicks
+    // one of the two role cards. Avoids the prior bug where caterers
+    // landed on the pre-selected Entreprise form and filled it out.
     revalidate();
   });
 })();

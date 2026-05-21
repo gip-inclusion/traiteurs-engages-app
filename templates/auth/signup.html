@@ -24,17 +24,24 @@
       </div>
       {% endif %}
 
-      <!-- Role toggle tabs -->
-      <div class="flex rounded-xl p-1 mb-6 bg-cream">
-        <button type="button" id="tab-client" data-action="select-role" data-role="client"
-          class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors">
-          <i data-lucide="building-2" class="w-4 h-4"></i>
-          Entreprise
+      <!-- Role choice cards.
+           Pas de pre-select au chargement (cf. signup.js) — l'utilisateur
+           doit cliquer une carte avant que le formulaire s'affiche.
+           Évite que les traiteurs commencent à remplir le formulaire
+           entreprise par défaut, comme c'était le cas auparavant. -->
+      <p class="text-sm font-medium text-text mb-3" id="role-choice-label">Vous &#234;tes&nbsp;?</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+        <button type="button" id="card-client" data-action="select-role" data-role="client"
+          class="role-card flex flex-col items-start text-left">
+          <i data-lucide="building-2" class="w-6 h-6 mb-2 text-mute"></i>
+          <span class="font-semibold text-sm text-text">Une entreprise</span>
+          <span class="text-xs text-mute mt-1">Je cherche un traiteur pour mes &#233;v&#233;nements</span>
         </button>
-        <button type="button" id="tab-caterer" data-action="select-role" data-role="caterer"
-          class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors">
-          <i data-lucide="chef-hat" class="w-4 h-4"></i>
-          Traiteur
+        <button type="button" id="card-caterer" data-action="select-role" data-role="caterer"
+          class="role-card flex flex-col items-start text-left">
+          <i data-lucide="chef-hat" class="w-6 h-6 mb-2 text-mute"></i>
+          <span class="font-semibold text-sm text-text">Un traiteur</span>
+          <span class="text-xs text-mute mt-1">Je propose des prestations (ESAT, EA, EI, ACI)</span>
         </button>
       </div>
 
