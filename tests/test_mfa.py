@@ -68,9 +68,17 @@ def _enroll_admin_with(secret: str, recovery_codes_plain: list[str]):
 
 @pytest.fixture(autouse=True)
 def _reset_mfa_between_tests():
+    """Each MFA test starts from a clean (un-enrolled) admin so it can
+    drive the enrolment flow explicitly. After the test, restore the
+    seeded enrolment — other test files rely on admin being MFA-ready
+    so the `force_mfa_enrollment` hook doesn't bounce their requests."""
+    from tests.conftest import _ADMIN_MFA_SECRET
+
     _reset_admin_mfa()
     yield
-    _reset_admin_mfa()
+    # Recovery codes left empty to skip 10 × bcrypt per teardown — other
+    # test files don't exercise the recovery path, only the TOTP gate.
+    _enroll_admin_with(_ADMIN_MFA_SECRET, [])
 
 
 def _login(client, email: str, password: str):

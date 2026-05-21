@@ -13,9 +13,17 @@ Alembic migrations, then seeds known users for role-based tests.
 import os
 
 import bcrypt
+import pyotp
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+
+# Known TOTP secret pre-loaded on admin@test.local (see `_seed_users`).
+# The `login` fixture below uses it to clear the MFA second-factor gate
+# automatically, so existing admin tests don't need to know MFA exists.
+# Tests that exercise the un-enrolled path reset this state explicitly
+# (see tests/test_mfa.py).
+_ADMIN_MFA_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 
 
 def _ensure_test_db():
@@ -106,8 +114,13 @@ def client(app):
 
 
 def _seed_users():
+    import datetime
+
+    from sqlalchemy import select
+
     from database import engine
     from models import Caterer, CatererStructureType, Company, User, UserRole
+    from services import mfa as mfa_service
 
     Session = sessionmaker(bind=engine)
     s = Session()
@@ -163,19 +176,49 @@ def _seed_users():
             ]
         )
         s.commit()
+
+        # Pre-enroll admin@test.local in MFA so non-MFA tests can `login()`
+        # straight to the dashboard. Without this, the new force_mfa_enrollment
+        # hook (RGS-AUTH.2) would redirect every admin test to /mfa/setup.
+        # MFA-specific tests reset this state explicitly when they need the
+        # un-enrolled path.
+        admin = s.scalar(select(User).where(User.email == "admin@test.local"))
+        admin.mfa_secret = mfa_service.encrypt_secret(_ADMIN_MFA_SECRET)
+        admin.mfa_recovery_codes = mfa_service.hash_recovery_codes(
+            mfa_service.generate_recovery_codes()
+        )
+        admin.mfa_enabled = True
+        admin.mfa_enrolled_at = datetime.datetime.utcnow()
+        s.commit()
     finally:
         s.close()
 
 
 @pytest.fixture
 def login(client):
-    """Log `client` in as a known seeded user. CSRF is disabled in tests."""
+    """Log `client` in as a known seeded user. CSRF is disabled in tests.
+
+    If the seeded user has MFA enabled (admin@test.local), the partial
+    session minted by /login is auto-cleared by POSTing a fresh TOTP code
+    derived from the well-known seed secret. Callers stay oblivious — they
+    receive a fully-authenticated session as before.
+    """
 
     def _login(email, password="testpass"):
-        return client.post(
+        r = client.post(
             "/login",
             data={"email": email, "password": password},
             follow_redirects=False,
         )
+        # MFA gate: /login redirects to /mfa/verify when the user is enrolled.
+        # Auto-verify with the seeded secret so existing tests stay unaware.
+        if r.status_code == 302 and "/mfa/verify" in (r.headers.get("Location") or ""):
+            code = pyotp.TOTP(_ADMIN_MFA_SECRET).now()
+            r = client.post(
+                "/mfa/verify",
+                data={"code": code},
+                follow_redirects=False,
+            )
+        return r
 
     return _login
