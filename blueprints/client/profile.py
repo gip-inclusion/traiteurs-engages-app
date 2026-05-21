@@ -1,10 +1,10 @@
-import bcrypt
 from flask import flash, g, redirect, render_template, request, url_for
 
 from blueprints.middleware import login_required, role_required
 from database import get_db
 from forms.client import CompanySettingsForm, UserProfileForm
 from models import Company, User
+from services.account import apply_profile_form
 
 
 def register(bp):
@@ -20,24 +20,12 @@ def register(bp):
                 return render_template("client/profile.html", user=user), 400
             db = get_db()
             u = db.get(User, user.id)
-            if form.first_name.data is not None:
-                u.first_name = (form.first_name.data or "").strip() or u.first_name
-            if form.last_name.data is not None:
-                u.last_name = (form.last_name.data or "").strip() or u.last_name
-            new_email = (form.email.data or "").strip().lower()
-            if new_email and new_email != u.email:
-                pwd = form.current_password.data or ""
-                if not pwd or not bcrypt.checkpw(
-                    pwd.encode(), u.password_hash.encode()
-                ):
-                    flash(
-                        "Mot de passe actuel incorrect. Le changement d'email necessite une re-authentification.",
-                        "error",
-                    )
-                    return render_template("client/profile.html", user=user), 400
-                u.email = new_email
+            err = apply_profile_form(db, u, form)
+            if err:
+                flash(err, "error")
+                return render_template("client/profile.html", user=user), 400
             db.commit()
-            flash("Profil mis a jour.", "success")
+            flash("Profil mis à jour.", "success")
             return redirect(url_for("client.profile"))
         return render_template("client/profile.html", user=user)
 
