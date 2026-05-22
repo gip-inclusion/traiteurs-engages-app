@@ -184,5 +184,77 @@
     }
     initBackdropDismiss();
     initFlashToasts();
+    initRoleSelectInline();
   });
+
+  // Inline role <select> on /admin/users: auto-submit for same-nature
+  // bascules (client_* ↔ client_*), modal <dialog> when the target role
+  // requires a fresh Caterer/Company record. The "who needs what" logic
+  // is duplicated minimally server-side (services.user_admin) to validate
+  // inputs; this JS is just a UX shortcut.
+  function initRoleSelectInline() {
+    var modal = document.getElementById('role-change-modal');
+    if (!modal) return;
+    var form = document.getElementById('role-change-form');
+    var roleInput = document.getElementById('role-change-target-role');
+    var title = document.getElementById('role-change-title');
+    var subtitle = document.getElementById('role-change-subtitle');
+    var catererFields = document.getElementById('role-change-caterer-fields');
+    var companyFields = document.getElementById('role-change-company-fields');
+
+    function needsCatererInfo(currentRole, newRole) {
+      return currentRole !== 'caterer' && newRole === 'caterer';
+    }
+    function needsCompanyInfo(currentRole, newRole) {
+      return currentRole === 'caterer' && (newRole === 'client_admin' || newRole === 'client_user');
+    }
+
+    function openModalForBascule(userId, currentRole, newRole, email) {
+      form.action = '/admin/users/' + userId + '/role-change';
+      roleInput.value = newRole;
+
+      title.textContent = 'Changer le role';
+      subtitle.textContent = email + ' : ' + currentRole + ' → ' + newRole;
+
+      var showCaterer = needsCatererInfo(currentRole, newRole);
+      var showCompany = needsCompanyInfo(currentRole, newRole);
+      catererFields.hidden = !showCaterer;
+      companyFields.hidden = !showCompany;
+
+      form.querySelectorAll('input[type="text"]').forEach(function (i) {
+        if (i.name !== 'csrf_token') i.value = '';
+      });
+      form.querySelectorAll('select[name="structure_type"]').forEach(function (s) {
+        s.value = '';
+      });
+
+      modal.showModal();
+    }
+
+    document.addEventListener('change', function (ev) {
+      var sel = ev.target.closest('[data-action="role-select"]');
+      if (!sel) return;
+      var currentRole = sel.dataset.originalRole;
+      var newRole = sel.value;
+      var userId = sel.dataset.userId;
+      var email = sel.dataset.userEmail;
+      if (newRole === currentRole) return;
+
+      if (needsCatererInfo(currentRole, newRole) || needsCompanyInfo(currentRole, newRole)) {
+        // Keep the select on the old value until the admin confirms.
+        sel.value = currentRole;
+        openModalForBascule(userId, currentRole, newRole, email);
+      } else {
+        var inlineForm = sel.closest('form');
+        if (inlineForm) inlineForm.submit();
+      }
+    });
+
+    var cancel = modal.querySelector('[data-action="role-change-cancel"]');
+    if (cancel) {
+      cancel.addEventListener('click', function () {
+        modal.close();
+      });
+    }
+  }
 })();

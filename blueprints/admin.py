@@ -35,6 +35,8 @@ from models import (
     QuoteRequest,
     QuoteRequestStatus,
     QuoteStatus,
+    User,
+    UserRole,
 )
 from services import messagerie as messagerie_service
 from services import workflow
@@ -395,6 +397,226 @@ def company_detail(company_id):
         requests=requests,
         meal_type_labels=MEAL_TYPE_LABELS,
     )
+
+
+# ---------------------------------------------------------------------------
+# User management — ajouté pour traiter les inscriptions "mauvais rôle"
+# (un user qui s'inscrit comme client alors qu'il voulait s'inscrire comme
+# traiteur). Hors de ce flux il y a peu d'usages : la liste reste légère
+# (pas de pagination tant que < 1k users — on étendra si besoin).
+# ---------------------------------------------------------------------------
+
+
+_USER_ROLE_LABELS = {
+    UserRole.client_admin: "Admin client",
+    UserRole.client_user: "Utilisateur client",
+    UserRole.caterer: "Traiteur",
+    UserRole.super_admin: "Super admin",
+}
+
+
+@admin_bp.route("/users")
+@login_required
+@role_required("super_admin")
+def users_list():
+    """Liste des utilisateurs avec recherche (?q=). Pas de filtre rôle —
+    tout passe par la recherche libre + le sélecteur inline qui sert
+    aussi à modifier le rôle.
+
+    Pas de pagination tant que le volume reste raisonnable : page rendue
+    côté serveur, scroll OK jusqu'à ~1k users."""
+    from services.user_admin import super_admin_count, users_with_business_history
+
+    db = get_db()
+    q = (request.args.get("q") or "").strip()
+    stmt = (
+        select(User)
+        .options(joinedload(User.company), joinedload(User.caterer))
+        .order_by(User.created_at.desc())
+    )
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(
+            (func.lower(User.email).like(like))
+            | (func.lower(User.first_name).like(like))
+            | (func.lower(User.last_name).like(like))
+        )
+    users = db.scalars(stmt).unique().all()
+
+    # Bulk-load the two facts the row-state derivation needs, so the loop
+    # below stays O(N) memory / O(1) DB instead of issuing ~18 COUNTs per
+    # user. `can_change_role` is True whenever the user is not self and not
+    # super_admin: the original `or` between (→client_user, →caterer)
+    # targets always finds at least one allowed path (no-op or same-nature
+    # bascule) — so flagging on (self, super_admin) is sufficient and
+    # behavior-preserving.
+    busy_ids = users_with_business_history(db)
+    sa_count = super_admin_count(db)
+    actor_id = g.current_user.id
+
+    row_state = {}
+    for u in users:
+        is_self = u.id == actor_id
+        is_super_admin = u.role == UserRole.super_admin
+        is_last_super_admin = is_super_admin and sa_count <= 1
+        has_history = u.id in busy_ids
+        row_state[str(u.id)] = {
+            "can_delete": not is_self
+            and not is_last_super_admin
+            and not has_history,
+            "can_change_role": not is_self and not is_super_admin,
+        }
+    return render_template(
+        "admin/users/list.html",
+        user=g.current_user,
+        users=users,
+        q=q,
+        role_labels=_USER_ROLE_LABELS,
+        row_state=row_state,
+    )
+
+
+@admin_bp.route("/users/<uuid:user_id>/delete", methods=["POST"])
+@login_required
+@role_required("super_admin")
+@limiter.limit("10 per minute")
+def user_delete(user_id):
+    from services.user_admin import can_delete_user, delete_user
+
+    db = get_db()
+    target = db.get(User, user_id)
+    if not target:
+        abort(404)
+    blocker = can_delete_user(db, target, actor=g.current_user)
+    if blocker:
+        flash(blocker, "error")
+        return redirect(url_for("admin.users_list"))
+    target_email = target.email
+    log_admin_action(
+        db,
+        g.current_user,
+        "user.delete",
+        target_type="user",
+        target_id=user_id,
+        extra={"email": target_email, "role": str(target.role)},
+    )
+    delete_user(db, target)
+    db.commit()
+    flash(f"Compte {target_email} supprime.", "success")
+    return redirect(url_for("admin.users_list"))
+
+
+@admin_bp.route("/users/<uuid:user_id>/role-change", methods=["POST"])
+@login_required
+@role_required("super_admin")
+@limiter.limit("10 per minute")
+def user_role_change(user_id):
+    """Bascule le rôle de `user_id` vers `request.form['role']`.
+
+    Selon la nature de la bascule (cf. `services.user_admin`), peut
+    exiger des inputs supplémentaires :
+
+    * vers `caterer` : `caterer_name`, `caterer_siret`,
+      `structure_type`, `invoice_prefix`
+    * depuis `caterer` vers `client_*` : `company_name`, `company_siret`
+
+    Le sélecteur de la liste auto-soumet pour les bascules simples ;
+    un modal côté front collecte les inputs pour les bascules
+    nécessitant la création d'une Caterer/Company."""
+    from models import CatererStructureType
+    from services.user_admin import can_change_role, change_role
+
+    db = get_db()
+    target = db.get(User, user_id)
+    if not target:
+        abort(404)
+
+    raw_role = (request.form.get("role") or "").strip()
+    try:
+        new_role = UserRole(raw_role)
+    except ValueError:
+        flash("Rôle cible invalide.", "error")
+        return redirect(url_for("admin.users_list"))
+
+    blocker = can_change_role(db, target, new_role, actor=g.current_user)
+    if blocker:
+        flash(blocker, "error")
+        return redirect(url_for("admin.users_list"))
+
+    old_role = str(target.role)
+    if old_role == raw_role:
+        return redirect(url_for("admin.users_list"))  # no-op
+
+    kwargs = {}
+    # Validation des inputs requis selon la bascule
+    if target.role != UserRole.caterer and new_role == UserRole.caterer:
+        caterer_name = (request.form.get("caterer_name") or "").strip()
+        caterer_siret = (request.form.get("caterer_siret") or "").strip()
+        structure_raw = (request.form.get("structure_type") or "").strip()
+        invoice_prefix = (request.form.get("invoice_prefix") or "").strip().upper()
+        if not (caterer_name and caterer_siret and structure_raw and invoice_prefix):
+            flash(
+                "Nom, SIRET, type de structure et prefixe facture sont requis "
+                "pour creer la fiche traiteur.",
+                "error",
+            )
+            return redirect(url_for("admin.users_list"))
+        if len(caterer_siret) != 14 or not caterer_siret.isdigit():
+            flash("Le SIRET du traiteur doit comporter 14 chiffres.", "error")
+            return redirect(url_for("admin.users_list"))
+        try:
+            structure_type = CatererStructureType(structure_raw)
+        except ValueError:
+            flash("Type de structure invalide.", "error")
+            return redirect(url_for("admin.users_list"))
+        kwargs = {
+            "caterer_name": caterer_name,
+            "caterer_siret": caterer_siret,
+            "structure_type": structure_type,
+            "invoice_prefix": invoice_prefix,
+        }
+
+    elif target.role == UserRole.caterer and new_role in (
+        UserRole.client_admin,
+        UserRole.client_user,
+    ):
+        company_name = (request.form.get("company_name") or "").strip()
+        company_siret = (request.form.get("company_siret") or "").strip()
+        if not (company_name and company_siret):
+            flash(
+                "Nom et SIRET de l'entreprise sont requis pour creer la fiche.",
+                "error",
+            )
+            return redirect(url_for("admin.users_list"))
+        if len(company_siret) != 14 or not company_siret.isdigit():
+            flash("Le SIRET de l'entreprise doit comporter 14 chiffres.", "error")
+            return redirect(url_for("admin.users_list"))
+        # Company.siret has unique=True (models.py); without this pre-check
+        # the db.commit() below would raise IntegrityError and 500 the admin.
+        if db.scalar(select(Company.id).where(Company.siret == company_siret)):
+            flash(
+                "Ce SIRET est déjà utilisé par une autre entreprise.",
+                "error",
+            )
+            return redirect(url_for("admin.users_list"))
+        kwargs = {"company_name": company_name, "company_siret": company_siret}
+
+    target_email = target.email
+    change_role(db, target, new_role=new_role, **kwargs)
+    log_admin_action(
+        db,
+        g.current_user,
+        "user.role_change",
+        target_type="user",
+        target_id=user_id,
+        extra={"email": target_email, "old_role": old_role, "new_role": raw_role},
+    )
+    db.commit()
+    flash(
+        f"Role de {target_email} change : {old_role} -> {raw_role}.",
+        "success",
+    )
+    return redirect(url_for("admin.users_list"))
 
 
 @admin_bp.route("/payments")
