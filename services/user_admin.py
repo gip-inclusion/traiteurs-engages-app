@@ -37,6 +37,7 @@ from models import (
     CatererReview,
     Company,
     CompanyEmployee,
+    CompanyService,
     MembershipStatus,
     Message,
     Notification,
@@ -88,16 +89,22 @@ def _user_metrics(db, user: User) -> dict[str, int]:
 
 
 def _has_business_history(metrics: dict[str, int]) -> bool:
-    """Un compte « vraiment vide » = aucune QR, aucun message, pas
-    d'employé rattaché, pas d'avis. Notifications et tokens de reset
-    ne comptent pas — ils sont système, pas métier."""
+    """Un compte « vraiment vide » = aucune QR, aucun message, aucun
+    avis, aucune commande. Notifications et tokens de reset ne comptent
+    pas (système, pas métier).
+
+    `employees` est volontairement EXCLU : tout client rattaché possède
+    un row `CompanyEmployee` qui le représente dans sa propre structure
+    (créé à l'inscription pour qu'il apparaisse dans /client/team). Le
+    compter comme historique métier bloquait à tort la conversion et la
+    suppression de quasiment tous les clients. Ce row est nettoyé par
+    `_delete_company_if_orphan` au moment de la bascule."""
     return any(
         metrics[k] > 0
         for k in (
             "quote_requests",
             "messages_sent",
             "messages_received",
-            "employees",
             "reviews",
             "orders",
         )
@@ -109,14 +116,14 @@ def users_with_business_history(db) -> set:
     the set of user IDs that have at least one business-history row.
     Equivalent to OR-ing every `_user_metrics` source > 0, but at a
     fixed cost (one query per source table) instead of 6×N."""
+    # NB : `CompanyEmployee.user_id` est volontairement absent — cf.
+    # `_has_business_history` (le self-employee n'est pas un historique
+    # métier).
     ids: set = set()
     for stmt in (
         select(QuoteRequest.user_id).distinct(),
         select(Message.sender_id).distinct(),
         select(Message.recipient_id).distinct(),
-        select(CompanyEmployee.user_id)
-        .where(CompanyEmployee.user_id.is_not(None))
-        .distinct(),
         select(CatererReview.reviewer_user_id).distinct(),
         select(Order.client_admin_id).distinct(),
     ):
@@ -164,11 +171,46 @@ def can_delete_user(db, user: User, *, actor: User) -> str | None:
     metrics = _user_metrics(db, user)
     if _has_business_history(metrics):
         return (
-            "Ce compte a un historique métier (devis, messages, employé "
-            "rattaché ou avis). Suppression refusée par sécurité — passez "
-            "par la CLI Scalingo pour les cas complexes."
+            "Ce compte a un historique métier (devis, messages, avis ou "
+            "commandes). Suppression refusée par sécurité — passez par la "
+            "CLI Scalingo pour les cas complexes."
         )
     return None
+
+
+def _delete_company_if_orphan(db, company_id) -> None:
+    """Supprime la `Company` si plus aucun user n'y est rattaché.
+
+    Nettoie d'abord les rows enfants qui n'ont pas de cascade DB
+    (`CompanyEmployee`, `CompanyService`) — sinon le delete de la
+    Company échoue sur une FK NOT NULL. Si des `QuoteRequest` pointent
+    encore sur la structure (cas rare : d'anciens membres ont déposé des
+    devis), on laisse la Company en place plutôt que de planter — elle
+    reste juste détachée, sans utilisateur."""
+    if not company_id:
+        return
+    db.flush()  # propager les détachements (user.company_id = None) avant le comptage
+    remaining = db.scalar(
+        select(func.count(User.id)).where(User.company_id == company_id)
+    )
+    if (remaining or 0) > 0:
+        return
+    qr_count = db.scalar(
+        select(func.count(QuoteRequest.id)).where(QuoteRequest.company_id == company_id)
+    )
+    if (qr_count or 0) > 0:
+        return
+    db.execute(
+        CompanyEmployee.__table__.delete().where(
+            CompanyEmployee.company_id == company_id
+        )
+    )
+    db.execute(
+        CompanyService.__table__.delete().where(CompanyService.company_id == company_id)
+    )
+    company = db.get(Company, company_id)
+    if company is not None:
+        db.delete(company)
 
 
 def delete_user(db, user: User) -> None:
@@ -177,6 +219,8 @@ def delete_user(db, user: User) -> None:
     renvoyé `None`. Le caller commit.
 
     Cascade applicative :
+      * `company_employees` du user : delete AVANT le user (FK
+        `user_id` sans ON DELETE → le delete du user échouerait sinon).
       * `notifications`, `password_reset_tokens` : delete (FK NOT NULL).
       * `audit_logs.actor_id` : UPDATE … SET NULL pour préserver
         l'audit trail (FK nullable, mais sans ON DELETE → Postgres
@@ -184,6 +228,12 @@ def delete_user(db, user: User) -> None:
       * `companies` : delete la Company associée si elle devient
         orpheline (Company à 1 user créée à l'inscription).
     """
+    # Row employé du user lui-même (FK user_id) — à purger avant le
+    # delete du user, sinon ForeignKeyViolation. `_delete_company_if_orphan`
+    # nettoiera ensuite les éventuels rows restants de la structure.
+    db.execute(
+        CompanyEmployee.__table__.delete().where(CompanyEmployee.user_id == user.id)
+    )
     # Notifications (FK NOT NULL → pas de SET NULL possible)
     db.execute(Notification.__table__.delete().where(Notification.user_id == user.id))
     # Tokens de reset (FK NOT NULL)
@@ -205,16 +255,7 @@ def delete_user(db, user: User) -> None:
     # Company orpheline ?
     company_id = user.company_id
     db.delete(user)
-    db.flush()  # propager le delete avant la requête de comptage
-
-    if company_id:
-        remaining = db.scalar(
-            select(func.count(User.id)).where(User.company_id == company_id)
-        )
-        if (remaining or 0) == 0:
-            company = db.get(Company, company_id)
-            if company is not None:
-                db.delete(company)
+    _delete_company_if_orphan(db, company_id)
 
 
 # ---------------------------------------------------------------------------
@@ -304,15 +345,7 @@ def change_role(
         company_id = user.company_id
         user.company_id = None
         user.membership_status = None
-        if company_id:
-            db.flush()
-            remaining = db.scalar(
-                select(func.count(User.id)).where(User.company_id == company_id)
-            )
-            if (remaining or 0) == 0:
-                company = db.get(Company, company_id)
-                if company is not None:
-                    db.delete(company)
+        _delete_company_if_orphan(db, company_id)
 
         caterer = Caterer(
             name=(caterer_name or "").strip(),

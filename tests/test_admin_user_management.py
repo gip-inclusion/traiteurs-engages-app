@@ -80,6 +80,70 @@ def _create_throwaway_caterer_user():
         s.close()
 
 
+def _create_client_admin_with_company_and_self_employee():
+    """Reproduit le cas réel : un client_admin avec sa propre Company ET
+    un row CompanyEmployee qui le représente (créé à l'inscription).
+    C'est exactement la config qui bloquait la conversion à tort.
+    Retourne (user_id, company_id, employee_id)."""
+    from database import session_factory
+    from models import Company, CompanyEmployee, User, UserRole
+
+    s = session_factory()
+    try:
+        suffix = uuid.uuid4().hex[:6]
+        company = Company(
+            name=f"Throw-Co-{suffix}",
+            siret=f"77{uuid.uuid4().int % 10**12:012d}"[:14],
+        )
+        s.add(company)
+        s.flush()
+        email = f"client-self-{suffix}@example.com"
+        u = User(
+            email=email,
+            password_hash=bcrypt.hashpw(b"x", bcrypt.gensalt()).decode(),
+            first_name="Self",
+            last_name="Client",
+            role=UserRole.client_admin,
+            company_id=company.id,
+        )
+        s.add(u)
+        s.flush()
+        emp = CompanyEmployee(
+            company_id=company.id,
+            first_name="Self",
+            last_name="Client",
+            email=email,
+            user_id=u.id,
+        )
+        s.add(emp)
+        s.commit()
+        return u.id, company.id, emp.id
+    finally:
+        s.close()
+
+
+def _company_exists(company_id) -> bool:
+    from database import session_factory
+    from models import Company
+
+    s = session_factory()
+    try:
+        return s.get(Company, company_id) is not None
+    finally:
+        s.close()
+
+
+def _employee_exists(employee_id) -> bool:
+    from database import session_factory
+    from models import CompanyEmployee
+
+    s = session_factory()
+    try:
+        return s.get(CompanyEmployee, employee_id) is not None
+    finally:
+        s.close()
+
+
 def _cleanup_user(user_id):
     from database import session_factory
     from models import User
@@ -475,6 +539,64 @@ def test_role_change_client_to_caterer_creates_caterer(client, login):
         _cleanup_user(user_id)
         if caterer_id_to_cleanup:
             _cleanup_caterer(caterer_id_to_cleanup)
+
+
+def test_role_change_client_admin_with_self_employee_to_caterer(client, login):
+    """Cas réel (« Marine ») : un client_admin avec sa Company et son
+    propre row CompanyEmployee. Avant le fix, le self-employee comptait
+    comme historique métier et bloquait la conversion. Désormais elle
+    doit réussir, et la Company orpheline + son row employé doivent être
+    nettoyés (sinon FK violation au delete de la Company)."""
+    from models import UserRole
+
+    user_id, company_id, employee_id = (
+        _create_client_admin_with_company_and_self_employee()
+    )
+    caterer_id_to_cleanup = None
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={
+                "role": "caterer",
+                "caterer_name": "Marine Traiteur",
+                "caterer_siret": _random_siret(),
+                "structure_type": "ESAT",
+                "invoice_prefix": _random_prefix(),
+            },
+        )
+        assert r.status_code == 302, r.data
+        u = _get_user(user_id)
+        assert u.role == UserRole.caterer
+        assert u.caterer_id is not None
+        assert u.company_id is None
+        caterer_id_to_cleanup = u.caterer_id
+        # Company orpheline + row employé nettoyés
+        assert not _company_exists(company_id)
+        assert not _employee_exists(employee_id)
+    finally:
+        _cleanup_user(user_id)
+        if caterer_id_to_cleanup:
+            _cleanup_caterer(caterer_id_to_cleanup)
+
+
+def test_delete_client_with_only_self_employee_succeeds(client, login):
+    """Un client dont le seul « historique » est son propre row employé
+    doit pouvoir être supprimé (avant le fix : bloqué à tort). La Company
+    orpheline et le row employé partent avec."""
+    user_id, company_id, employee_id = (
+        _create_client_admin_with_company_and_self_employee()
+    )
+    try:
+        login("admin@test.local")
+        r = client.post(f"/admin/users/{user_id}/delete")
+        assert r.status_code == 302, r.data
+        assert not _user_exists(user_id)
+        assert not _company_exists(company_id)
+        assert not _employee_exists(employee_id)
+    finally:
+        if _user_exists(user_id):
+            _cleanup_user(user_id)
 
 
 def test_role_change_to_caterer_requires_inputs(client, login):
