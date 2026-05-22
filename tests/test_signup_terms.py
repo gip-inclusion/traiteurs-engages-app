@@ -1,5 +1,3 @@
-
-
 def _wipe_signup_users():
     from sqlalchemy import select
 
@@ -108,8 +106,6 @@ def _active_terms_id():
         s.close()
 
 
-
-
 def test_signup_client_admin_refuses_without_accept_terms(client):
     try:
         r = client.post(
@@ -216,8 +212,6 @@ def test_signup_invite_refuses_without_accept_terms(client):
             s.close()
 
 
-
-
 def test_signup_client_admin_stamps_terms_version_and_timestamp(client):
     active_id = _active_terms_id()
     try:
@@ -277,8 +271,6 @@ def test_signup_pending_client_user_stamps_terms_too(client):
         assert u.terms_accepted_at is not None
     finally:
         _wipe_signup_users()
-
-
 
 
 def test_current_terms_version_picks_the_latest_effective_row(app):

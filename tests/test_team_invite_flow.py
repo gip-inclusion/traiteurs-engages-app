@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import hashlib as _hashlib
 import re as _re
@@ -9,8 +8,6 @@ from sqlalchemy import select
 
 def _digest(raw: str) -> str:
     return _hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
 
 
 def _acme_id():
@@ -87,8 +84,6 @@ def _fetch_employee(employee_id):
         s.close()
 
 
-
-
 def test_admin_cannot_delete_own_effectifs_row(client, login):
     row_id = _ensure_employee("alice-self@test.local", user_id=_alice_id())
 
@@ -111,8 +106,6 @@ def test_admin_can_delete_other_effectifs_row(client, login):
     )
     assert resp.status_code == 302
     assert _fetch_employee(row_id) is None, "non-self deletes must still work"
-
-
 
 
 def test_create_employee_generates_invite_token(client, login):
@@ -210,8 +203,6 @@ def test_invite_for_already_linked_employee_is_noop(client, login):
     row = _fetch_employee(employee_id)
     assert row.invite_token is None, "must not mint a token for a linked employee"
     assert row.invited_at is None, "must not stamp invited_at for a linked employee"
-
-
 
 
 def test_signup_invite_get_renders_form_for_valid_token(client):
@@ -449,8 +440,6 @@ def test_signup_invite_handles_integrity_error_at_flush(client, monkeypatch):
     assert row.user_id is None
 
 
-
-
 def test_create_employee_rejects_duplicate_email_in_company(client, login):
     _ensure_employee("dup-target@example.com")
 
@@ -480,8 +469,6 @@ def test_create_employee_rejects_duplicate_email_in_company(client, login):
         assert len(rows) == 1, "duplicate email in same company must be rejected"
     finally:
         s.close()
-
-
 
 
 def test_approve_clears_stale_invite_token_on_existing_row(client, login):
@@ -527,8 +514,6 @@ def test_approve_clears_stale_invite_token_on_existing_row(client, login):
     assert row.user_id == pending_user_id, "row must link to the approved user"
     assert row.invite_token is None, "stale invite token must be cleared"
     assert row.invited_at is None
-
-
 
 
 def _seed_quote_request(user_id):

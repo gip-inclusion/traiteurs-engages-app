@@ -1,4 +1,3 @@
-
 import io
 
 import pytest
@@ -26,7 +25,6 @@ def _real_image(fmt: str) -> bytes:
 
 
 class FakeFile:
-
     def __init__(self, filename, data):
         self.filename = filename
         self.stream = io.BytesIO(data)
@@ -35,8 +33,6 @@ class FakeFile:
         with open(path, "wb") as f:
             self.stream.seek(0)
             f.write(self.stream.read())
-
-
 
 
 @pytest.mark.parametrize(
@@ -55,8 +51,6 @@ def test_detect_real_type(ext, header):
 
 def test_detect_real_type_unknown():
     assert _detect_real_type(b"\x00" * 16) is None
-
-
 
 
 def test_validate_accepts_valid_png():
@@ -108,8 +102,6 @@ def test_validate_rejects_oversized_file():
 def test_validate_rejects_unknown_magic_bytes():
     f = FakeFile("mystery.png", b"\x00" * 100)
     assert _validate(f) is None
-
-
 
 
 @pytest.fixture
