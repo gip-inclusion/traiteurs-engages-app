@@ -348,6 +348,40 @@ def test_delete_audit_logged(client, login):
 # ---------------------------------------------------------------------------
 
 
+def test_can_delete_blocks_user_with_orders(monkeypatch):
+    """Order.client_admin_id is a NOT NULL FK; without this guard the
+    HTTP route would crash with IntegrityError when deleting a
+    client_admin that has any order on file. Building a real Order chain
+    (Quote → QuoteRequest → Company …) is heavy, so we stub the metrics
+    instead — the test locks in that 'orders > 0' surfaces as business
+    history."""
+    from database import session_factory
+    from models import User
+    from services import user_admin
+    from services.user_admin import can_delete_user
+
+    def fake_metrics(_db, _user):
+        return {
+            "quote_requests": 0,
+            "messages_sent": 0,
+            "messages_received": 0,
+            "employees": 0,
+            "reviews": 0,
+            "orders": 1,
+        }
+
+    monkeypatch.setattr(user_admin, "_user_metrics", fake_metrics)
+    s = session_factory()
+    try:
+        actor = s.scalar(select(User).where(User.email == "admin@test.local"))
+        target = s.scalar(select(User).where(User.email == "alice@test.local"))
+        msg = can_delete_user(s, target, actor=actor)
+        assert msg is not None
+        assert "historique" in msg.lower()
+    finally:
+        s.close()
+
+
 def test_can_delete_last_super_admin_is_blocked():
     from database import session_factory
     from models import User

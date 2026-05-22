@@ -40,6 +40,7 @@ from models import (
     MembershipStatus,
     Message,
     Notification,
+    Order,
     PasswordResetToken,
     QuoteRequest,
     User,
@@ -75,6 +76,13 @@ def _user_metrics(db, user: User) -> dict[str, int]:
             )
         )
         or 0,
+        # NOT NULL FK — deleting a user with an order on file would crash
+        # the route with IntegrityError, so we surface it as business
+        # history instead.
+        "orders": db.scalar(
+            select(func.count(Order.id)).where(Order.client_admin_id == user.id)
+        )
+        or 0,
     }
     return counts
 
@@ -97,6 +105,7 @@ def _has_business_history(metrics: dict[str, int]) -> bool:
             "messages_received",
             "employees",
             "reviews",
+            "orders",
         )
     )
 
