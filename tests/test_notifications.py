@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import uuid
 from decimal import Decimal
@@ -16,8 +15,6 @@ def session(app):
     finally:
         s.rollback()
         s.close()
-
-
 
 
 def _seed_pending_qr(s, *, n_validated_caterers=2):
@@ -78,8 +75,6 @@ def _seed_pending_qr(s, *, n_validated_caterers=2):
 from models import UserRole  # noqa: E402
 
 
-
-
 def test_notifications_modal_escapes_body_against_xss(client, login):
     from sqlalchemy import select
 
@@ -131,8 +126,6 @@ def test_notifications_modal_escapes_body_against_xss(client, login):
             s.commit()
         finally:
             s.close()
-
-
 
 
 def _bell_badge_html(body: str) -> str:
@@ -230,8 +223,6 @@ def test_bell_badge_renders_unread_count(
     )
 
 
-
-
 def test_approve_notifies_every_validated_caterer(session):
     from sqlalchemy import select
 
@@ -327,8 +318,6 @@ def test_approve_skips_notifications_when_no_validated_caterer(session):
         )
     )
     assert notif_count == 0, "no caterers reached → no notifications should fire"
-
-
 
 
 def _seed_qr_ready_for_submit(session, *, n_caterers, prior_transmitted=0):
@@ -463,8 +452,6 @@ def test_submit_quote_does_not_notify_on_4th_responder(session):
         )
     )
     assert after == before, "closed-out 4th submit must not notify the requester"
-
-
 
 
 def _seed_qr_for_alice(s):

@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import uuid
 from decimal import Decimal
@@ -90,8 +89,6 @@ def _seed_paid_order(
     s.add(o)
     s.flush()
     return o
-
-
 
 
 def test_compute_social_impact_empty_returns_zeros(session):
@@ -230,8 +227,6 @@ def test_compute_social_impact_scopes_to_requester_when_set(session):
     # même entreprise — sinon le test ci-dessus serait trivialement vrai.
     assert alice.id != bob.id
     assert alice.company_id == bob.company_id == company.id
-
-
 
 
 def test_client_dashboard_renders_impact_block(client, login):

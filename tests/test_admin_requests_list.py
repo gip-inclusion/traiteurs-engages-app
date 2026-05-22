@@ -1,4 +1,3 @@
-
 import uuid
 
 
@@ -66,8 +65,6 @@ def _delete_quote_requests(ids):
         s.close()
 
 
-
-
 def test_super_admin_can_reach_the_requests_list(client, login):
     login("admin@test.local")
     r = client.get("/admin/requests")
@@ -95,8 +92,6 @@ def test_anonymous_is_bounced_to_login(client):
     assert r.status_code in (302, 401, 403), (
         f"anonymous user must be bounced; got {r.status_code}"
     )
-
-
 
 
 def test_unknown_status_falls_back_to_all(client, login):
@@ -134,8 +129,6 @@ def test_approved_tab_is_addressable(client, login):
         )
     finally:
         _delete_quote_requests(created)
-
-
 
 
 def test_pagination_caps_each_page_at_25_rows(client, login):
@@ -184,8 +177,6 @@ def test_page_out_of_range_clamps_to_last(client, login):
         )
     finally:
         _delete_quote_requests(created)
-
-
 
 
 def test_detail_link_404s_on_unknown_uuid(client, login):

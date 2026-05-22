@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import uuid
 from decimal import Decimal
@@ -158,8 +157,6 @@ def test_refuse_unknown_quote_raises_quote_not_found(session):
         )
 
 
-
-
 def _set_valid_until(s, quote_id: uuid.UUID, valid_until: _dt.date | None) -> None:
     from sqlalchemy import select
 
@@ -283,8 +280,6 @@ def test_accept_quote_closes_losing_caterers_qrc(session):
     assert qrcs[caterers[2].id].status == QRCStatus.closed
 
 
-
-
 def _seed_pending_review_qr(s) -> uuid.UUID:
     from sqlalchemy import select
 
@@ -354,8 +349,6 @@ def test_reject_quote_request_marks_cancelled_with_reason(session):
 def test_reject_unknown_request_raises_not_found(session):
     with pytest.raises(workflow.RequestNotFound):
         workflow.reject_quote_request(session, request_id=uuid.uuid4(), reason=None)
-
-
 
 
 def _seed_qr_with_qrcs_and_drafts(
@@ -616,8 +609,6 @@ def test_concurrent_submit_only_one_becomes_rank_3(app):
             cleanup.commit()
         finally:
             cleanup.close()
-
-
 
 
 def _seed_confirmed_order(s) -> tuple[uuid.UUID, Caterer]:

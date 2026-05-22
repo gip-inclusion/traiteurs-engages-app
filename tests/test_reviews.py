@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import uuid
 from decimal import Decimal
@@ -84,8 +83,6 @@ def _seed_paid_order(s) -> tuple[uuid.UUID, Caterer, User]:
     s.add(order)
     s.flush()
     return order.id, caterer, alice
-
-
 
 
 def test_submit_review_happy_path(session):
@@ -211,8 +208,6 @@ def test_submit_review_blocks_second_review(session):
         )
 
 
-
-
 def test_aggregate_for_caterer_with_no_reviews_returns_zero(session):
     _, caterer, _ = _seed_paid_order(session)
     agg = reviews_service.aggregate_for_caterer(session, caterer.id)
@@ -252,8 +247,6 @@ def test_aggregate_averages_and_rounds_to_one_decimal(session):
     assert agg.count == 3
     # (5 + 3 + 4) / 3 = 4.0
     assert float(agg.avg) == 4.0
-
-
 
 
 def test_notify_review_invite_creates_one_notification(session):

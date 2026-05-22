@@ -1,4 +1,3 @@
-
 import pytest
 from sqlalchemy import select
 
@@ -40,8 +39,6 @@ def _reset_user(original_email, current_email, first_name, last_name):
         s.close()
 
 
-
-
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
 def test_name_only_update_works_for_every_role(client, login, role):
     email, post_url, _ = _ROUTES[role]
@@ -65,8 +62,6 @@ def test_name_only_update_works_for_every_role(client, login, role):
         assert u.email == email
     finally:
         _reset_user(email, email, original_first, original_last)
-
-
 
 
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
@@ -94,8 +89,6 @@ def test_email_change_with_valid_password_works(client, login, role):
         assert _get_user(email) is None
     finally:
         _reset_user(email, new_email, original_first, original_last)
-
-
 
 
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))

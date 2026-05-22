@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 
 import pytest
@@ -15,8 +14,6 @@ def _line(**kwargs):
         "tva_rate": 10,
         **kwargs,
     }
-
-
 
 
 def test_empty_lines_returns_zeros():
@@ -58,8 +55,6 @@ def test_guest_count_none_amount_per_person_is_zero():
     assert t["amount_per_person"] == Decimal("0.00")
 
 
-
-
 def test_mixed_tva_rates_grouped_correctly():
     lines = [
         _line(
@@ -94,8 +89,6 @@ def test_section_totals_split_correctly():
     assert t["section_totals"]["extras"] == Decimal("25.00")
 
 
-
-
 def test_platform_fee_is_5pct_of_ht():
     # 1000 HT → 50 fee HT, 0 fee TVA (no VAT on the platform fee), 50 fee TTC
     t = calculate_quote_totals(
@@ -120,8 +113,6 @@ def test_platform_fee_independent_of_line_tva_rates():
     # Both should produce the same platform fee TTC because base HT is equal
     # and TVA on the fee is 0.
     assert t_low["platform_fee_ttc"] == t_high["platform_fee_ttc"] == Decimal("50.00")
-
-
 
 
 def test_cent_precision_preserved_across_many_lines():
@@ -159,8 +150,6 @@ def test_returned_values_are_decimal_not_float():
         )
 
 
-
-
 def test_non_list_input_treated_as_empty():
     # Handler sometimes passes garbage from a broken JSON parse; don't crash.
     for bad in (None, "not a list", {"lines": []}, 42):
@@ -168,14 +157,10 @@ def test_non_list_input_treated_as_empty():
         assert t["total_ht"] == Decimal("0.00")
 
 
-
-
 def test_line_missing_fields_default_to_zero():
     t = calculate_quote_totals([{}], guest_count=10)
     assert t["total_ht"] == Decimal("0.00")
     assert t["total_tva"] == Decimal("0.00")
-
-
 
 
 @pytest.mark.parametrize(

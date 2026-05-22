@@ -461,9 +461,7 @@ def users_list():
         is_last_super_admin = is_super_admin and sa_count <= 1
         has_history = u.id in busy_ids
         row_state[str(u.id)] = {
-            "can_delete": not is_self
-            and not is_last_super_admin
-            and not has_history,
+            "can_delete": not is_self and not is_last_super_admin and not has_history,
             "can_change_role": not is_self and not is_super_admin,
         }
     return render_template(
@@ -769,7 +767,6 @@ def stats():
         {"type": meal_slug_to_label.get(r.meal_type, r.meal_type), "count": r.cnt}
         for r in meal_rows
     ]
-
 
     return render_template(
         "admin/stats.html",

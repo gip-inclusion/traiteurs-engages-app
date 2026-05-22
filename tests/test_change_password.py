@@ -1,4 +1,3 @@
-
 import bcrypt
 import pytest
 
@@ -31,8 +30,6 @@ def _reset_password(email, plain="testpass"):
         s.close()
 
 
-
-
 @pytest.mark.parametrize(
     "user_email",
     [
@@ -63,8 +60,6 @@ def test_change_password_works_for_every_role(client, login, user_email):
         )
     finally:
         _reset_password(user_email)
-
-
 
 
 def test_change_password_wrong_current_is_rejected(client, login):
@@ -142,8 +137,6 @@ def test_change_password_same_as_current_is_rejected(client, login):
         )
     finally:
         _reset_password("alice@test.local")
-
-
 
 
 def test_change_password_requires_login(client):

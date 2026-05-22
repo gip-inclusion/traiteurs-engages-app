@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import uuid
 from decimal import Decimal
@@ -37,8 +36,6 @@ def _alice(s):
     from models import User
 
     return s.scalar(select(User).where(User.email == "alice@test.local"))
-
-
 
 
 def test_welcome_signup_client(app, session, captured_emails):
@@ -86,8 +83,6 @@ def test_welcome_signup_swallows_render_error(app, session, captured_emails):
     # Either the template handled it (1 captured) or the @_safe ate
     # an exception (0 captured). Both outcomes must NOT raise here.
     assert len(captured_emails) in (0, 1)
-
-
 
 
 def _seed_transmitted_quote(session):
@@ -188,8 +183,6 @@ def test_quote_received_skips_when_qrc_not_transmitted(app, session, captured_em
     with app.app_context():
         email_triggers.quote_received(session, quote=quote, caterer=caterer)
     assert captured_emails == []
-
-
 
 
 def _seed_order_for_email(session):

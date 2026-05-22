@@ -73,8 +73,6 @@ def test_empty_webhook_secret_rejects_forged_event(client, monkeypatch):
     )
 
 
-
-
 def _seed_order_with_payment(stripe_invoice_id: str):
     import uuid as _uuid
     from decimal import Decimal
@@ -165,8 +163,6 @@ def _load_order(order_id):
         s.close()
 
 
-
-
 def test_signed_invoice_paid_marks_payment_succeeded(client, monkeypatch):
     import config
 
@@ -198,8 +194,6 @@ def test_signed_invoice_paid_marks_payment_succeeded(client, monkeypatch):
     assert payment.status == PaymentStatus.succeeded, payment.status
     assert payment.stripe_charge_id == charge_id
     assert order.status == OrderStatus.paid, order.status
-
-
 
 
 def test_payment_failed_after_paid_does_not_downgrade(client, monkeypatch):

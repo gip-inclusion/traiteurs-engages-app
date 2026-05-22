@@ -1,4 +1,3 @@
-
 import uuid
 
 import pytest
@@ -40,8 +39,6 @@ def _wipe_messages():
         s.close()
 
 
-
-
 def test_admin_thread_view_renders_a_working_composer(client, login):
     from database import session_factory
 
@@ -69,8 +66,6 @@ def test_admin_thread_view_renders_a_working_composer(client, login):
         )
     finally:
         _wipe_messages()
-
-
 
 
 def test_admin_cannot_open_a_thread_it_does_not_participate_in(client, login):
@@ -127,8 +122,6 @@ def test_admin_inbox_lists_only_its_own_threads(client, login):
         )
     finally:
         _wipe_messages()
-
-
 
 
 def test_admin_can_message_any_active_user(client, login):
@@ -286,8 +279,6 @@ def test_participant_can_reply_to_an_admin_initiated_conversation(
         _wipe_messages()
 
 
-
-
 def _seed_qr_for_alice(s):
     import datetime as _dt
 
@@ -354,8 +345,6 @@ def test_qualification_message_route_is_removed(client, login):
     )
 
 
-
-
 def test_admin_cannot_read_a_thread_it_does_not_participate_in_via_json_api(
     client, login
 ):
@@ -386,8 +375,6 @@ def test_admin_cannot_read_a_thread_it_does_not_participate_in_via_json_api(
         )
     finally:
         _wipe_messages()
-
-
 
 
 def test_client_cannot_address_a_non_support_super_admin(client, login):

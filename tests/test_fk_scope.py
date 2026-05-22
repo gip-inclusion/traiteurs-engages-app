@@ -1,5 +1,3 @@
-
-
 def _own_company_service_id(client, login):
     from database import get_db
     from models import CompanyService

@@ -69,8 +69,6 @@ def test_limiter_uses_redis_db_one_when_url_is_set(monkeypatch):
     assert extensions._limiter_storage_uri() == "redis://localhost:6379/1"
 
 
-
-
 def _load_gunicorn_conf():
     import importlib.util
     import pathlib
@@ -109,8 +107,6 @@ def test_gunicorn_conf_caps_request_line_and_field_size():
     conf = _load_gunicorn_conf()
     assert conf.limit_request_line >= 4096
     assert conf.limit_request_field_size >= 8192
-
-
 
 
 def test_csp_includes_form_action_self(client):

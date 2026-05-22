@@ -1,4 +1,3 @@
-
 import datetime as _dt
 import uuid
 
@@ -28,8 +27,6 @@ def _alice(s):
         all_emails = [u.email for u in s.scalars(select(User)).all()]
         raise AssertionError(f"alice@test.local not in test DB; saw {all_emails}")
     return alice
-
-
 
 
 def test_issue_token_persists_with_ttl_in_future(session):
@@ -69,8 +66,6 @@ def test_issue_token_returns_unique_strings(session):
     assert a != b
     # `token_urlsafe(32)` => 43 chars URL-safe base64.
     assert len(a) >= 32
-
-
 
 
 def test_consume_token_rotates_password_hash_and_flags_used(session):
@@ -148,8 +143,6 @@ def test_consume_token_rejects_inactive_user(session):
         pr.consume_token(session, raw_token=raw, new_password="N3w-Strong-Password!")
 
 
-
-
 def test_kick_off_reset_unknown_email_creates_no_row(session):
     from sqlalchemy import func, select
 
@@ -185,8 +178,6 @@ def test_kick_off_reset_known_email_creates_row(session):
     assert after == before + 1
 
 
-
-
 def test_forgot_password_post_unknown_email_returns_200(client):
     r = client.post(
         "/forgot-password",
@@ -210,8 +201,6 @@ def test_forgot_password_post_known_email_returns_200(client):
 def test_reset_password_get_with_invalid_token_renders_form(client):
     r = client.get("/reset-password/totally-fake-token")
     assert r.status_code == 200
-
-
 
 
 def test_consume_token_bumps_password_changed_at(session):
