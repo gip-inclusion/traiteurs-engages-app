@@ -578,6 +578,14 @@ def user_role_change(user_id):
         if len(company_siret) != 14 or not company_siret.isdigit():
             flash("Le SIRET de l'entreprise doit comporter 14 chiffres.", "error")
             return redirect(url_for("admin.users_list"))
+        # Company.siret has unique=True (models.py); without this pre-check
+        # the db.commit() below would raise IntegrityError and 500 the admin.
+        if db.scalar(select(Company.id).where(Company.siret == company_siret)):
+            flash(
+                "Ce SIRET est déjà utilisé par une autre entreprise.",
+                "error",
+            )
+            return redirect(url_for("admin.users_list"))
         kwargs = {"company_name": company_name, "company_siret": company_siret}
 
     target_email = target.email

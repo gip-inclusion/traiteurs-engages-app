@@ -523,6 +523,34 @@ def test_role_change_to_caterer_rejects_bad_siret(client, login):
 # ---------------------------------------------------------------------------
 
 
+def test_role_change_caterer_to_client_rejects_duplicate_siret(client, login):
+    """Company.siret has unique=True. Without the pre-check the route
+    would 500 on db.commit() — the test locks in the friendly flash +
+    redirect instead, and asserts no partial mutation."""
+    from models import UserRole
+
+    user_id, caterer_id = _create_throwaway_caterer_user()
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/users/{user_id}/role-change",
+            data={
+                "role": "client_admin",
+                "company_name": "Doublon",
+                # Acme's SIRET — seeded in conftest, guaranteed to collide.
+                "company_siret": "12345678901234",
+            },
+        )
+        assert r.status_code == 302
+        u = _get_user(user_id)
+        assert u.role == UserRole.caterer  # bascule refused, state intact
+        assert u.caterer_id == caterer_id
+        assert u.company_id is None
+    finally:
+        _cleanup_user(user_id)
+        _cleanup_caterer(caterer_id)
+
+
 def test_role_change_caterer_to_client_admin_creates_company(client, login):
     from database import session_factory
     from models import Company, UserRole
