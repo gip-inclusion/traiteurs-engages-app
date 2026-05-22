@@ -47,34 +47,12 @@
           </p>
 
 
-          <form method="GET" action="{{ url_for('client.search') }}"
-                class="landing-search bg-white rounded-2xl p-4 mx-auto lg:mx-0"
-                style="max-width:32rem;box-shadow:0 4px 12px -2px rgba(0,0,0,0.08);">
-            <div class="flex flex-col sm:flex-row gap-3" style="margin-bottom:0.875rem;">
-              <div class="flex-1 text-left">
-                <label for="hero-location" class="block font-bold mb-1.5"
-                       style="font-size:0.8125rem;color:#1A3A52;">Localisation</label>
-                <input type="text" id="hero-location" name="location"
-                       placeholder="Ville, code postal..."
-                       class="w-full rounded-lg outline-none transition-colors"
-                       style="border:1px solid rgba(26,58,82,0.2);padding:0.625rem 0.875rem;font-size:0.9375rem;color:#1A3A52;">
-              </div>
-              <div class="flex-1 text-left">
-                <label for="hero-capacity" class="block font-bold mb-1.5"
-                       style="font-size:0.8125rem;color:#1A3A52;">Nombre de personnes</label>
-                <input type="number" id="hero-capacity" name="capacity" min="1"
-                       placeholder="Ex : 50"
-                       class="w-full rounded-lg outline-none transition-colors"
-                       style="border:1px solid rgba(26,58,82,0.2);padding:0.625rem 0.875rem;font-size:0.9375rem;color:#1A3A52;">
-              </div>
-            </div>
-            <button type="submit"
-                    class="w-full inline-flex items-center justify-center gap-2 text-white font-bold transition-opacity hover:opacity-90"
-                    style="background-color:#1A3A52;border-radius:9999px;height:2.75rem;padding:0 1.5rem;font-size:0.9375rem;">
-              <i data-lucide="search" class="w-4 h-4"></i>
-              Rechercher
-            </button>
-          </form>
+          <a href="{{ url_for('client.search') }}"
+             class="inline-flex items-center justify-center gap-2 text-white font-bold transition-opacity hover:opacity-90"
+             style="background-color:#1A3A52;border-radius:9999px;height:3.25rem;padding:0 2rem;font-size:1rem;">
+            <i data-lucide="search" class="w-4 h-4"></i>
+            Consulter le catalogue traiteurs
+          </a>
 
 
           <div class="flex justify-center lg:justify-start" style="gap:2rem;margin-top:2.5rem;">
