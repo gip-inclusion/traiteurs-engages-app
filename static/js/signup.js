@@ -1,43 +1,61 @@
 (function () {
+  // Libellés du titre / sous-titre une fois le type choisi. Avant le
+  // choix, le HTML porte « Créer votre compte » / « Rejoignez Les
+  // Traiteurs Engagés » ; on les restaure tels quels en cas de retour.
+  var DEFAULT_TITLE = 'Créer votre compte';
+  var DEFAULT_SUBTITLE = 'Rejoignez Les Traiteurs Engagés';
+  var TITLES = {
+    client: { title: 'Inscription entreprise', subtitle: 'Créez votre compte pour commander des prestations.' },
+    caterer: { title: 'Inscription traiteur', subtitle: 'Créez votre compte pour proposer vos prestations.' },
+  };
+
+  function setStepHeader(role) {
+    var title = document.getElementById('signup-title');
+    var subtitle = document.getElementById('signup-subtitle');
+    if (!title || !subtitle) return;
+    if (role && TITLES[role]) {
+      title.textContent = TITLES[role].title;
+      subtitle.textContent = TITLES[role].subtitle;
+    } else {
+      title.textContent = DEFAULT_TITLE;
+      subtitle.textContent = DEFAULT_SUBTITLE;
+    }
+  }
+
   function selectRole(role) {
     var roleInput = document.getElementById('role-input');
     var signupForm = document.getElementById('signup-form');
     var catererFields = document.getElementById('caterer-fields');
+    var roleChoiceBlock = document.getElementById('role-choice-block');
+    var backBtn = document.getElementById('back-to-role');
 
     if (roleInput) roleInput.value = role === 'client' ? 'client_admin' : 'caterer';
-    if (signupForm) signupForm.style.display = 'block';
-    if (catererFields) catererFields.style.display = role === 'caterer' ? 'block' : 'none';
+    // Cache le bloc de choix et révèle le formulaire. Le retour
+    // (back-to-role) inverse les deux opérations.
+    if (roleChoiceBlock) roleChoiceBlock.classList.add('hidden');
+    if (signupForm) signupForm.classList.remove('hidden');
+    if (backBtn) backBtn.classList.remove('hidden');
+    if (catererFields) catererFields.classList.toggle('hidden', role !== 'caterer');
 
-    var tabClient = document.getElementById('tab-client');
-    var tabCaterer = document.getElementById('tab-caterer');
-
-    if (role === 'client') {
-      if (tabClient) {
-        tabClient.style.backgroundColor = 'white';
-        tabClient.style.color = '#1A1A1A';
-        tabClient.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
-      }
-      if (tabCaterer) {
-        tabCaterer.style.backgroundColor = 'transparent';
-        tabCaterer.style.color = '#6B7280';
-        tabCaterer.style.boxShadow = 'none';
-      }
-    } else {
-      if (tabCaterer) {
-        tabCaterer.style.backgroundColor = 'white';
-        tabCaterer.style.color = '#1A1A1A';
-        tabCaterer.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
-      }
-      if (tabClient) {
-        tabClient.style.backgroundColor = 'transparent';
-        tabClient.style.color = '#6B7280';
-        tabClient.style.boxShadow = 'none';
-      }
-    }
+    setStepHeader(role);
 
     var catererInputs = document.querySelectorAll('#caterer-fields input, #caterer-fields select');
     catererInputs.forEach(function (el) { el.required = (role === 'caterer'); });
 
+    revalidate();
+  }
+
+  function backToRoleChoice() {
+    var roleInput = document.getElementById('role-input');
+    var signupForm = document.getElementById('signup-form');
+    var roleChoiceBlock = document.getElementById('role-choice-block');
+    var backBtn = document.getElementById('back-to-role');
+
+    if (roleInput) roleInput.value = '';
+    if (signupForm) signupForm.classList.add('hidden');
+    if (roleChoiceBlock) roleChoiceBlock.classList.remove('hidden');
+    if (backBtn) backBtn.classList.add('hidden');
+    setStepHeader(null);
     revalidate();
   }
 
@@ -122,6 +140,11 @@
       selectRole(roleEl.dataset.role);
       return;
     }
+    var backEl = ev.target.closest('[data-action="back-to-role"]');
+    if (backEl) {
+      backToRoleChoice();
+      return;
+    }
     var pwEl = ev.target.closest('[data-action="toggle-password"]');
     if (pwEl) {
       togglePassword(pwEl.dataset.target, pwEl);
@@ -136,8 +159,9 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Default to "Entreprise" (parcours dominant depuis la landing).
-    selectRole('client');
+    // No pre-selection: the form stays hidden until the user clicks
+    // one of the two role cards. Avoids the prior bug where caterers
+    // landed on the pre-selected Entreprise form and filled it out.
     revalidate();
   });
 })();

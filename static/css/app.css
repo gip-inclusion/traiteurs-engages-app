@@ -219,6 +219,32 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: var(--c-coral);
 }
 
+/* Role-choice cards on /signup. Force the user to pick a side
+   (Entreprise / Traiteur) before the form is revealed. The arrow
+   slides right on hover to signal clickability — the previous static
+   icon + text was easily read as a passive description block. */
+.role-card {
+  background: #FFFFFF;
+  border: 2px solid var(--c-border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s, transform .15s, box-shadow .15s;
+}
+.role-card:hover {
+  border-color: var(--c-coral);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.role-card-arrow {
+  color: var(--c-mute-soft);
+  transition: transform .15s, color .15s;
+}
+.role-card:hover .role-card-arrow {
+  color: var(--c-coral);
+  transform: translateX(4px);
+}
+
 /* Password requirement bullet — flipped to green by signup.js. */
 .pw-rule-ok {
   color: var(--c-success);
