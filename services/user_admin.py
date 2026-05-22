@@ -110,6 +110,35 @@ def _has_business_history(metrics: dict[str, int]) -> bool:
     )
 
 
+def users_with_business_history(db) -> set:
+    """Bulk variant of `_has_business_history` for list views: returns
+    the set of user IDs that have at least one business-history row.
+    Equivalent to OR-ing every `_user_metrics` source > 0, but at a
+    fixed cost (one query per source table) instead of 6×N."""
+    ids: set = set()
+    for stmt in (
+        select(QuoteRequest.user_id).distinct(),
+        select(Message.sender_id).distinct(),
+        select(Message.recipient_id).distinct(),
+        select(CompanyEmployee.user_id)
+        .where(CompanyEmployee.user_id.is_not(None))
+        .distinct(),
+        select(CatererReview.reviewer_user_id).distinct(),
+        select(Order.client_admin_id).distinct(),
+    ):
+        ids.update(db.scalars(stmt).all())
+    return ids
+
+
+def super_admin_count(db) -> int:
+    """Cheap one-shot count used by list views to derive the
+    last-super-admin guard without recomputing per row."""
+    return (
+        db.scalar(select(func.count(User.id)).where(User.role == UserRole.super_admin))
+        or 0
+    )
+
+
 def _is_last_super_admin(db, user: User) -> bool:
     """True si supprimer/convertir `user` retire le dernier super_admin
     de la base — on refuse pour ne pas se locker hors de l'interface."""

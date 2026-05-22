@@ -425,11 +425,15 @@ def users_list():
 
     Pas de pagination tant que le volume reste raisonnable : page rendue
     côté serveur, scroll OK jusqu'à ~1k users."""
-    from services.user_admin import can_change_role, can_delete_user
+    from services.user_admin import super_admin_count, users_with_business_history
 
     db = get_db()
     q = (request.args.get("q") or "").strip()
-    stmt = select(User).order_by(User.created_at.desc())
+    stmt = (
+        select(User)
+        .options(joinedload(User.company), joinedload(User.caterer))
+        .order_by(User.created_at.desc())
+    )
     if q:
         like = f"%{q.lower()}%"
         stmt = stmt.where(
@@ -437,21 +441,30 @@ def users_list():
             | (func.lower(User.first_name).like(like))
             | (func.lower(User.last_name).like(like))
         )
-    users = db.scalars(stmt).all()
+    users = db.scalars(stmt).unique().all()
 
-    # Pré-calcule par user si la suppression et la bascule de rôle sont
-    # autorisées — le template a juste à lire un dict, pas à recalculer.
-    # Indexé par user.id (str) pour passer la barrière Jinja sans
-    # surprise sur les comparaisons UUID.
+    # Bulk-load the two facts the row-state derivation needs, so the loop
+    # below stays O(N) memory / O(1) DB instead of issuing ~18 COUNTs per
+    # user. `can_change_role` is True whenever the user is not self and not
+    # super_admin: the original `or` between (→client_user, →caterer)
+    # targets always finds at least one allowed path (no-op or same-nature
+    # bascule) — so flagging on (self, super_admin) is sufficient and
+    # behavior-preserving.
+    busy_ids = users_with_business_history(db)
+    sa_count = super_admin_count(db)
+    actor_id = g.current_user.id
+
     row_state = {}
     for u in users:
+        is_self = u.id == actor_id
+        is_super_admin = u.role == UserRole.super_admin
+        is_last_super_admin = is_super_admin and sa_count <= 1
+        has_history = u.id in busy_ids
         row_state[str(u.id)] = {
-            "can_delete": can_delete_user(db, u, actor=g.current_user) is None,
-            "can_change_role": can_change_role(
-                db, u, UserRole.client_user, actor=g.current_user
-            )
-            is None
-            or can_change_role(db, u, UserRole.caterer, actor=g.current_user) is None,
+            "can_delete": not is_self
+            and not is_last_super_admin
+            and not has_history,
+            "can_change_role": not is_self and not is_super_admin,
         }
     return render_template(
         "admin/users/list.html",
