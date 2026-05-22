@@ -122,6 +122,20 @@ def test_csp_includes_form_action_self(client):
     assert "form-action 'self'" in csp, f"CSP must lock form action to self; got: {csp}"
 
 
+def test_csp_form_action_whitelists_stripe_connect(client):
+    """form-action is re-checked by the browser after each redirect, so the
+    302 from POST /caterer/stripe/onboard to connect.stripe.com is silently
+    blocked unless the origin is whitelisted in *this* directive (not just
+    present somewhere else in the CSP)."""
+    resp = client.get("/")
+    csp = resp.headers.get("Content-Security-Policy", "")
+    form_action = next(
+        (d.strip() for d in csp.split(";") if d.strip().startswith("form-action")),
+        "",
+    )
+    assert "https://connect.stripe.com" in form_action, (
+        f"connect.stripe.com must be in form-action; got: {form_action!r}"
+    )
 
 
 def test_secure_cookies_defaults_to_true_when_env_is_absent(monkeypatch):
