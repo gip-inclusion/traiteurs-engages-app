@@ -466,6 +466,7 @@ def users_list():
 @admin_bp.route("/users/<uuid:user_id>/delete", methods=["POST"])
 @login_required
 @role_required("super_admin")
+@limiter.limit("10 per minute")
 def user_delete(user_id):
     from services.user_admin import can_delete_user, delete_user
 
@@ -495,6 +496,7 @@ def user_delete(user_id):
 @admin_bp.route("/users/<uuid:user_id>/role-change", methods=["POST"])
 @login_required
 @role_required("super_admin")
+@limiter.limit("10 per minute")
 def user_role_change(user_id):
     """Bascule le rôle de `user_id` vers `request.form['role']`.
 
