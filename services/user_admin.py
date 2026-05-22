@@ -87,12 +87,6 @@ def _user_metrics(db, user: User) -> dict[str, int]:
     return counts
 
 
-def user_metrics(db, user: User) -> dict[str, int]:
-    """Version exportée — réutilisée par la page détail pour afficher
-    le contexte au super_admin avant qu'il déclenche une action."""
-    return _user_metrics(db, user)
-
-
 def _has_business_history(metrics: dict[str, int]) -> bool:
     """Un compte « vraiment vide » = aucune QR, aucun message, pas
     d'employé rattaché, pas d'avis. Notifications et tokens de reset
@@ -183,16 +177,12 @@ def delete_user(db, user: User) -> None:
     renvoyé `None`. Le caller commit.
 
     Cascade applicative :
-      * `notifications` : delete (pas d'usage post-mortem)
-      * `password_reset_tokens` : delete (sinon FK violation)
-      * `audit_logs.actor_id` : laissé tel quel — la colonne est
-        nullable et on préserve l'audit trail. Postgres set NULL sur
-        delete grâce à la nullable FK sans ON DELETE explicite ? Non,
-        en fait, par défaut sans ON DELETE, c'est NO ACTION → on
-        nettoie via UPDATE explicite ci-dessous.
-      * `companies` : si la Company associée n'a plus aucun user
-        rattaché après cette suppression, on la supprime aussi
-        (Company orpheline créée à l'inscription).
+      * `notifications`, `password_reset_tokens` : delete (FK NOT NULL).
+      * `audit_logs.actor_id` : UPDATE … SET NULL pour préserver
+        l'audit trail (FK nullable, mais sans ON DELETE → Postgres
+        refuse autrement).
+      * `companies` : delete la Company associée si elle devient
+        orpheline (Company à 1 user créée à l'inscription).
     """
     # Notifications (FK NOT NULL → pas de SET NULL possible)
     db.execute(Notification.__table__.delete().where(Notification.user_id == user.id))
