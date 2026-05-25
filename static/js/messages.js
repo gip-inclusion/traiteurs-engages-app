@@ -84,14 +84,45 @@
       container.scrollTop = container.scrollHeight;
     }
 
+    function renderAttachmentsPane(messages) {
+      var listEl = document.getElementById('messagerie-attachments-list');
+      var emptyEl = document.getElementById('messagerie-attachments-empty');
+      if (!listEl || !emptyEl) return;
+      var withAttachment = messages.filter(function (m) { return m.attachment_url; });
+      listEl.innerHTML = '';
+      if (withAttachment.length === 0) {
+        emptyEl.classList.remove('hidden');
+        return;
+      }
+      emptyEl.classList.add('hidden');
+      withAttachment.forEach(function (m) {
+        var li = document.createElement('li');
+        li.innerHTML =
+          '<a href="' + escapeHtml(m.attachment_url) + '" target="_blank" rel="noopener" ' +
+          'class="flex items-center gap-3 p-3 rounded-lg bg-cream hover:opacity-90 transition-opacity">' +
+          '<span class="w-9 h-9 rounded-lg flex items-center justify-center bg-white flex-shrink-0">' +
+          '<i data-lucide="paperclip" class="w-4 h-4 text-text-soft"></i></span>' +
+          '<span class="min-w-0 flex-1">' +
+          '<span class="block text-sm font-bold text-text truncate">' +
+          escapeHtml(m.attachment_name || 'Pièce jointe') + '</span>' +
+          '<span class="block text-xs text-mute">' + escapeHtml(formatDate(m.created_at)) + '</span>' +
+          '</span>' +
+          '<i data-lucide="download" class="w-4 h-4 text-text-soft flex-shrink-0"></i>' +
+          '</a>';
+        listEl.appendChild(li);
+      });
+    }
+
     function loadMessages() {
       fetch('/api/messages/' + threadId)
         .then(function (r) { return r.json(); })
         .then(function (data) {
+          var messages = data.messages || [];
           container.innerHTML = '';
-          (data.messages || []).forEach(function (msg) {
+          messages.forEach(function (msg) {
             container.appendChild(renderMessage(msg));
           });
+          renderAttachmentsPane(messages);
           if (window.lucide) lucide.createIcons();
           scrollToBottom();
         });
