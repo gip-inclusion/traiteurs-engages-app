@@ -219,6 +219,32 @@ def test_submitting_revision_supersedes_old_quote(session):
     assert old.status == QuoteStatus.superseded
 
 
+def test_superseded_quote_not_revisable_but_active_version_is(session):
+    """Après une 1re révision (V1→V2 envoyée), V1 est `superseded` et ne
+    doit plus être révisable (sinon le bouton « Modifier » qui pointe
+    dessus renvoyait un 404). La version active (V2) reste révisable
+    → V3. Capture le bug de sélection du devis côté détail traiteur."""
+    qr_id, caterer, v1_id = _seed_sent_quote(session)
+    v2 = workflow.start_quote_revision(
+        session, request_id=qr_id, quote_id=v1_id, caterer=caterer
+    )
+    session.flush()
+    workflow.submit_quote(session, request_id=qr_id, quote_id=v2.id, caterer=caterer)
+    session.flush()
+
+    with pytest.raises(workflow.QuoteNotFound):
+        workflow.start_quote_revision(
+            session, request_id=qr_id, quote_id=v1_id, caterer=caterer
+        )
+
+    v3 = workflow.start_quote_revision(
+        session, request_id=qr_id, quote_id=v2.id, caterer=caterer
+    )
+    assert v3.version == 3
+    assert v3.reference.endswith("-V3")
+    assert v3.supersedes_id == v2.id
+
+
 def test_revision_allowed_even_when_three_already_transmitted(session):
     """Le traiteur qui révise fait partie des 3 répondants : la règle
     des 3 ne doit PAS le bloquer (pas de QuoteRequestClosed) et son QRC

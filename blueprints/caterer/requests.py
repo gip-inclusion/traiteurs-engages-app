@@ -72,10 +72,19 @@ def _derive_qrc_display_status(qr, caterer_id):
         (link for link in qr.caterers if link.caterer_id == caterer_id),
         None,
     )
-    caterer_quote = next(
-        (q for q in qr.quotes if q.caterer_id == caterer_id),
-        None,
-    )
+    # Devis « actif » du traiteur : on ignore les versions remplacées
+    # (`superseded`) et les brouillons de révision (draft + supersedes_id),
+    # puis on prend la version la plus haute. Sans ça, avec plusieurs
+    # devis (V1 remplacée + V2 envoyée), `next(...)` renvoyait un devis
+    # arbitraire et le statut affiché était faux.
+    candidate_quotes = [
+        q
+        for q in qr.quotes
+        if q.caterer_id == caterer_id
+        and q.status != QuoteStatus.superseded
+        and not (q.status == QuoteStatus.draft and q.supersedes_id is not None)
+    ]
+    caterer_quote = max(candidate_quotes, key=lambda q: q.version, default=None)
     no_active_quote = caterer_quote is None or caterer_quote.status == QuoteStatus.draft
     if qrc and qrc.status == QRCStatus.closed and no_active_quote:
         return "closed"
@@ -146,10 +155,20 @@ def register(bp):
         qr = qrc.quote_request
         _ = qr.company
         _ = qr.user
+        # Devis « actif » : on écarte les versions remplacées
+        # (`superseded`) et les brouillons de révision (draft +
+        # supersedes_id) pour afficher la dernière version officielle.
+        # Sinon le bouton « Modifier mon devis » pointait sur un devis
+        # remplacé → 404, et l'aperçu montrait l'ancienne version.
         existing_quote = db.scalar(
             select(Quote)
             .where(Quote.quote_request_id == qr_id)
             .where(Quote.caterer_id == caterer.id)
+            .where(Quote.status != QuoteStatus.superseded)
+            .where(
+                (Quote.status != QuoteStatus.draft) | (Quote.supersedes_id.is_(None))
+            )
+            .order_by(Quote.version.desc())
         )
         qrc.display_status = _derive_qrc_display_status(qr, caterer.id)
         # Powers the "Historique avec ce client" card.
