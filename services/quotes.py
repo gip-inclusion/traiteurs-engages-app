@@ -1,4 +1,5 @@
 import datetime
+import re
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import extract, func, select
@@ -79,13 +80,29 @@ def line_to_dict(line: QuoteLine) -> dict:
 
 def generate_quote_reference(session, caterer):
     # DEVIS-{prefix}-YYYY-NNN, sequential per caterer per year.
+    # On ne compte que les devis INITIAUX (version == 1) : les révisions
+    # (V2, V3…) réutilisent le numéro de base de l'original, donc elles
+    # ne doivent pas consommer un numéro de séquence (sinon les devis
+    # neufs sauteraient des numéros).
     year = datetime.date.today().year
     count = session.scalar(
         select(func.count(Quote.id))
         .where(Quote.caterer_id == caterer.id)
         .where(extract("year", Quote.created_at) == year)
+        .where(Quote.version == 1)
     )
     return f"DEVIS-{caterer.invoice_prefix}-{year}-{count + 1:03d}"
+
+
+def revision_reference(base_reference: str, version: int) -> str:
+    """Référence d'une révision : on repart de la base (en retirant un
+    éventuel suffixe `-V{n}` déjà présent) et on ajoute `-V{version}`.
+
+    `DEVIS-X-2026-014`     + v2 → `DEVIS-X-2026-014-V2`
+    `DEVIS-X-2026-014-V2`  + v3 → `DEVIS-X-2026-014-V3`
+    """
+    base = re.sub(r"-V\d+$", "", base_reference)
+    return f"{base}-V{version}"
 
 
 def derive_invoice_reference(quote_reference):

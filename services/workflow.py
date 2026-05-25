@@ -14,6 +14,7 @@ from models import (
     OrderStatus,
     QRCStatus,
     Quote,
+    QuoteLine,
     QuoteRequest,
     QuoteRequestCaterer,
     QuoteRequestStatus,
@@ -345,6 +346,30 @@ def submit_quote(
     if not qrc:
         raise QuoteNotFound
 
+    # Cas révision : le brouillon remplace un devis déjà transmis. Le
+    # traiteur occupe déjà son slot (QRC `transmitted_to_client`), donc
+    # on NE réapplique PAS la règle des 3 (sinon un 3e répondant ne
+    # pourrait jamais réviser) et on ne re-rank pas. On marque seulement
+    # l'ancien devis `superseded` et on notifie le client de la révision.
+    if quote.supersedes_id is not None:
+        old = db.get(Quote, quote.supersedes_id)
+        if old is not None and old.status == QuoteStatus.sent:
+            old.status = QuoteStatus.superseded
+        quote.status = QuoteStatus.sent
+        qrc.responded_at = datetime.datetime.utcnow()
+        if qr.user_id is not None:
+            notify(
+                db,
+                user_id=qr.user_id,
+                type="quote_received",
+                title="Devis révisé reçu",
+                body=f"{caterer.name} vient de vous envoyer un devis révisé.",
+                related_entity_type="quote",
+                related_entity_id=quote.id,
+            )
+        db.flush()
+        return quote
+
     if qrc.status == QRCStatus.closed:
         raise QuoteRequestClosed
 
@@ -387,6 +412,89 @@ def submit_quote(
 
     db.flush()
     return quote
+
+
+def start_quote_revision(
+    db,
+    *,
+    request_id: uuid.UUID,
+    quote_id: uuid.UUID,
+    caterer: Caterer,
+) -> Quote:
+    """Crée (ou réutilise) un brouillon de révision pour un devis déjà
+    envoyé, copié à l'identique pour que le traiteur n'ait qu'à ajuster.
+
+    Garde-fous :
+      * la demande doit être encore ouverte (`sent_to_caterers`) ;
+      * le devis source doit appartenir au traiteur et être au statut
+        `sent` (déclencheur = « devis envoyé » uniquement) ;
+      * si un brouillon de révision existe déjà pour ce devis, on le
+        renvoie au lieu d'en empiler un second.
+
+    Ne soumet pas : le brouillon repart dans l'éditeur, l'envoi passe
+    par `submit_quote` (qui détecte `supersedes_id` et bascule l'ancien
+    en `superseded`). Le caller commit.
+    """
+    qr = db.scalar(
+        select(QuoteRequest).where(QuoteRequest.id == request_id).with_for_update()
+    )
+    if qr is None:
+        raise RequestNotFound
+    if qr.status != QuoteRequestStatus.sent_to_caterers:
+        raise QuoteRequestNotOpen
+
+    source = db.scalar(
+        select(Quote).where(
+            Quote.id == quote_id,
+            Quote.caterer_id == caterer.id,
+            Quote.quote_request_id == request_id,
+            Quote.status == QuoteStatus.sent,
+        )
+    )
+    if source is None:
+        raise QuoteNotFound
+
+    # Idempotence : un brouillon de révision déjà ouvert pour ce devis
+    # est réutilisé (évite d'empiler plusieurs V(n) draft concurrents).
+    existing = db.scalar(
+        select(Quote).where(
+            Quote.supersedes_id == source.id,
+            Quote.status == QuoteStatus.draft,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    from services.quotes import revision_reference
+
+    revision = Quote(
+        quote_request_id=source.quote_request_id,
+        caterer_id=source.caterer_id,
+        reference=revision_reference(source.reference, source.version + 1),
+        total_amount_ht=source.total_amount_ht,
+        amount_per_person=source.amount_per_person,
+        notes=source.notes,
+        valid_until=source.valid_until,
+        status=QuoteStatus.draft,
+        version=source.version + 1,
+        supersedes_id=source.id,
+    )
+    db.add(revision)
+    db.flush()  # obtenir revision.id avant de rattacher les lignes
+    for line in source.lines:
+        db.add(
+            QuoteLine(
+                quote_id=revision.id,
+                position=line.position,
+                section=line.section,
+                description=line.description,
+                quantity=line.quantity,
+                unit_price_ht=line.unit_price_ht,
+                tva_rate=line.tva_rate,
+            )
+        )
+    db.flush()
+    return revision
 
 
 def mark_delivered(

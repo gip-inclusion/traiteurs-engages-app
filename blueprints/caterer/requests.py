@@ -457,6 +457,34 @@ def register(bp):
             flash("Devis mis a jour.", "success")
         return redirect(url_for("caterer.request_detail", qr_id=qr_id))
 
+    @bp.route("/requests/<uuid:qr_id>/quote/<uuid:q_id>/revise", methods=["POST"])
+    @login_required
+    @role_required("caterer")
+    @validated_caterer_required
+    def quote_revise(qr_id, q_id):
+        """« Modifier mon devis » sur un devis déjà envoyé : crée (ou
+        réutilise) un brouillon de révision pré-rempli puis renvoie vers
+        l'éditeur. L'envoi de la révision passe ensuite par le flux normal
+        (`quote_update` → `submit_quote`), qui bascule l'ancien devis en
+        `superseded`."""
+        caterer = g.current_user.caterer
+        db = get_db()
+        try:
+            revision = workflow.start_quote_revision(
+                db, request_id=qr_id, quote_id=q_id, caterer=caterer
+            )
+            db.commit()
+        except (workflow.QuoteNotFound, workflow.RequestNotFound):
+            abort(404)
+        except workflow.QuoteRequestNotOpen:
+            flash(
+                "Cette demande n'accepte plus de devis : un autre traiteur "
+                "a deja ete retenu.",
+                "info",
+            )
+            return redirect(url_for("caterer.request_detail", qr_id=qr_id))
+        return redirect(url_for("caterer.quote_edit", qr_id=qr_id, q_id=revision.id))
+
     @bp.route("/requests/<uuid:qr_id>/quote/<uuid:q_id>/pdf", methods=["GET"])
     @login_required
     @role_required("caterer")
