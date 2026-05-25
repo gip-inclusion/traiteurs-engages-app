@@ -1,7 +1,19 @@
 import logging
+import os
 import uuid
 
-from flask import Blueprint, abort, g, jsonify, request
+from botocore.exceptions import BotoCoreError, ClientError
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    g,
+    jsonify,
+    request,
+    send_file,
+    stream_with_context,
+    url_for,
+)
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
@@ -213,6 +225,15 @@ def get_messages(thread_id):
                 "body": msg.body,
                 "is_read": msg.is_read,
                 "created_at": msg.created_at.isoformat(),
+                # Lien vers la route authentifiée (jamais l'URL de
+                # stockage brute) — la PJ d'un thread privé ne doit être
+                # servie qu'à ses participants.
+                "attachment_url": (
+                    url_for("api.message_attachment", message_id=msg.id)
+                    if msg.attachment_url
+                    else None
+                ),
+                "attachment_name": msg.attachment_name,
             }
         )
     return jsonify({"messages": result})
@@ -292,14 +313,26 @@ def _allowed_recipients_for(db, user, *, order_id=None, quote_request_id=None):
 @limiter.limit("60 per minute")
 def send_message():
     user = g.current_user
-    data = request.get_json() or {}
+    # Le front poste en multipart quand il y a une pièce jointe, en JSON
+    # sinon. `data.get(...)` marche pour les deux (ImmutableMultiDict / dict).
+    upload = None
+    if (request.content_type or "").startswith("multipart/form-data"):
+        data = request.form
+        upload = request.files.get("file")
+        if upload is not None and not (upload.filename or "").strip():
+            upload = None
+    else:
+        data = request.get_json() or {}
     try:
         recipient_id = uuid.UUID(str(data.get("recipient_id", "")))
     except (ValueError, TypeError):
         abort(400)
     body = (data.get("body") or "").strip()
-    if not body:
-        return jsonify({"error": "Le message ne peut pas etre vide."}), 400
+    # PJ seule autorisée : au moins un texte OU un fichier.
+    if not body and upload is None:
+        return jsonify(
+            {"error": "Le message doit contenir un texte ou une piece jointe."}
+        ), 400
     if len(body) > MESSAGE_BODY_MAX:
         return jsonify(
             {"error": f"Le message ne peut pas depasser {MESSAGE_BODY_MAX} caracteres."}
@@ -388,6 +421,24 @@ def send_message():
         ):
             return jsonify({"error": "Destinataire non autorise."}), 403
 
+    # Upload APRÈS le gate d'autorisation : on ne stocke rien si le
+    # destinataire n'est pas autorisé. save_upload valide type (images +
+    # PDF), magic bytes, taille (10 Mo) et ré-encode/nettoie le fichier.
+    attachment_url = None
+    attachment_name = None
+    if upload is not None:
+        from services.uploads import save_upload
+
+        attachment_url = save_upload(upload, subfolder="messages")
+        if attachment_url is None:
+            return jsonify(
+                {
+                    "error": "Piece jointe refusee : formats acceptes images ou PDF, "
+                    "taille max 10 Mo."
+                }
+            ), 400
+        attachment_name = (upload.filename or "piece-jointe")[:255]
+
     msg = Message(
         thread_id=thread_id,
         sender_id=user.id,
@@ -395,6 +446,8 @@ def send_message():
         order_id=order_id,
         quote_request_id=quote_request_id,
         body=body,
+        attachment_url=attachment_url,
+        attachment_name=attachment_name,
     )
     db.add(msg)
     db.flush()
@@ -428,6 +481,81 @@ def send_message():
     db.commit()
 
     return jsonify({"status": "ok", "thread_id": str(thread_id)}), 201
+
+
+@api_bp.route("/messages/<uuid:message_id>/attachment")
+@login_required
+@validated_caterer_required
+def message_attachment(message_id):
+    """Sert la pièce jointe d'un message — UNIQUEMENT à ses participants.
+
+    Le proxy public /uploads est réservé aux logos traiteurs ; une PJ de
+    thread privé doit passer par ce contrôle d'accès. La PJ est servie en
+    `attachment` (téléchargement) et non `inline` pour ne pas exécuter de
+    contenu dans le navigateur."""
+    user = g.current_user
+    db = get_db()
+    msg = db.get(Message, message_id)
+    if msg is None or not msg.attachment_url:
+        abort(404)
+    if user.id not in (msg.sender_id, msg.recipient_id) and user.role != "super_admin":
+        abort(403)
+
+    # Sanitize le nom pour le header (le filename vient de l'utilisateur).
+    download_name = (msg.attachment_name or "piece-jointe").replace('"', "")
+    download_name = download_name.replace("\r", "").replace("\n", "")
+
+    from services.uploads import (
+        UPLOAD_DIR,
+        _get_s3,
+        _s3_enabled,
+        _s3_key_from_url,
+    )
+
+    # Stockage S3 : stream depuis le bucket privé.
+    if msg.attachment_url.startswith("/uploads/") and _s3_enabled():
+        from config import settings
+
+        key = _s3_key_from_url(msg.attachment_url)
+        try:
+            obj = _get_s3().get_object(Bucket=settings.s3_bucket, Key=key)
+        except (BotoCoreError, ClientError):
+            abort(404)
+        body_stream = obj["Body"]
+
+        def _generate():
+            try:
+                while True:
+                    chunk = body_stream.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                body_stream.close()
+
+        return Response(
+            stream_with_context(_generate()),
+            headers={
+                "Content-Type": obj.get("ContentType") or "application/octet-stream",
+                "Content-Disposition": f'attachment; filename="{download_name}"',
+            },
+            direct_passthrough=True,
+        )
+
+    # Stockage local (dev) : fichier sous static/uploads/.
+    if msg.attachment_url.startswith("/static/uploads/"):
+        rel = msg.attachment_url[len("/static/uploads/") :]
+        path = os.path.normpath(os.path.join(UPLOAD_DIR, rel))
+        # Garde-fou path-traversal : le chemin résolu doit rester dans
+        # UPLOAD_DIR (les noms viennent de save_upload, mais ceinture +
+        # bretelles).
+        if not path.startswith(os.path.abspath(UPLOAD_DIR) + os.sep):
+            abort(404)
+        if not os.path.exists(path):
+            abort(404)
+        return send_file(path, as_attachment=True, download_name=download_name)
+
+    abort(404)
 
 
 @api_bp.route("/notifications")

@@ -134,10 +134,29 @@
           Vue administrateur — l'envoi de messages est désactivé.
         </div>
         {% else %}
+        {# Chip du fichier sélectionné — affiché par messages.js au choix
+           d'une pièce jointe, masqué par défaut. #}
+        <div id="message-file-chip" class="hidden mx-4 mb-1 px-3 py-2 rounded-lg text-xs bg-cream text-text flex items-center justify-between gap-2">
+          <span class="inline-flex items-center gap-1.5 min-w-0">
+            <i data-lucide="paperclip" class="w-3.5 h-3.5 flex-shrink-0"></i>
+            <span id="message-file-name" class="truncate"></span>
+          </span>
+          <button type="button" id="message-file-remove" class="text-mute hover:text-danger flex-shrink-0" aria-label="Retirer la pièce jointe">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
         <form id="message-form" class="border-t border-soft p-4 flex items-center gap-2">
           <input type="hidden" name="recipient_id" value="{{ ctx.active.other_user_id }}">
-
-
+          {# Input fichier masqué, déclenché par le bouton trombone (CSP :
+             pas d'onclick inline, le click est câblé dans messages.js). #}
+          <input type="file" id="message-file" name="file"
+                 accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                 class="hidden">
+          <button type="button" id="message-attach-btn"
+                  class="rounded-full w-10 h-10 flex items-center justify-center text-mute hover:text-navy hover:bg-cream transition-colors flex-shrink-0"
+                  title="Joindre un fichier (image ou PDF, 10 Mo max)" aria-label="Joindre un fichier">
+            <i data-lucide="paperclip" class="w-5 h-5"></i>
+          </button>
           <input type="text" name="body"
                  placeholder="Votre message... (Entrée pour envoyer)"
                  class="flex-1 border rounded-full px-4 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default"

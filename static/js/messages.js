@@ -50,10 +50,24 @@
 
       var bubbleWrap = document.createElement('div');
       bubbleWrap.className = 'max-w-[70%] flex flex-col ' + (isSent ? 'items-end' : 'items-start');
+      // Le body peut être vide (message « pièce jointe seule »).
+      var bodyHtml = msg.body
+        ? '<p class="whitespace-pre-line">' + escapeHtml(msg.body) + '</p>'
+        : '';
+      var attachmentHtml = '';
+      if (msg.attachment_url) {
+        attachmentHtml =
+          '<a href="' + escapeHtml(msg.attachment_url) + '" target="_blank" rel="noopener" ' +
+          'class="inline-flex items-center gap-1.5 underline ' +
+          (isSent ? 'text-white' : 'text-navy') + (bodyHtml ? ' mt-1.5' : '') + '">' +
+          '<i data-lucide="paperclip" class="w-3.5 h-3.5 flex-shrink-0"></i>' +
+          '<span class="truncate">' + escapeHtml(msg.attachment_name || 'Pièce jointe') + '</span>' +
+          '</a>';
+      }
       bubbleWrap.innerHTML =
         '<div class="rounded-2xl px-4 py-2.5 text-sm ' +
           (isSent ? 'bg-navy text-white' : 'bg-cream text-text') +
-        '"><p class="whitespace-pre-line">' + escapeHtml(msg.body) + '</p></div>' +
+        '">' + bodyHtml + attachmentHtml + '</div>' +
         '<p class="text-xs mt-1 text-mute">' + escapeHtml(formatDate(msg.created_at)) + '</p>';
 
       if (!isSent) {
@@ -87,9 +101,19 @@
     if (form) {
       var bodyInput = form.querySelector('[name="body"]');
       var sendBtn = document.getElementById('message-send-btn');
+      var fileInput = document.getElementById('message-file');
+      var attachBtn = document.getElementById('message-attach-btn');
+      var fileChip = document.getElementById('message-file-chip');
+      var fileChipName = document.getElementById('message-file-name');
+      var fileRemove = document.getElementById('message-file-remove');
+
+      function hasFile() {
+        return fileInput && fileInput.files && fileInput.files.length > 0;
+      }
 
       function refreshSendBtn() {
-        var enabled = bodyInput.value.trim().length > 0;
+        // PJ seule autorisée : actif si texte OU fichier.
+        var enabled = bodyInput.value.trim().length > 0 || hasFile();
         sendBtn.disabled = !enabled;
         if (enabled) {
           sendBtn.classList.remove('bg-disabled', 'opacity-60');
@@ -100,30 +124,73 @@
         }
       }
 
+      function clearFile() {
+        if (fileInput) fileInput.value = '';
+        if (fileChip) fileChip.classList.add('hidden');
+      }
+
       bodyInput.addEventListener('input', refreshSendBtn);
+      if (attachBtn && fileInput) {
+        attachBtn.addEventListener('click', function () { fileInput.click(); });
+      }
+      if (fileInput) {
+        fileInput.addEventListener('change', function () {
+          if (hasFile() && fileChip && fileChipName) {
+            fileChipName.textContent = fileInput.files[0].name;
+            fileChip.classList.remove('hidden');
+          } else if (fileChip) {
+            fileChip.classList.add('hidden');
+          }
+          refreshSendBtn();
+        });
+      }
+      if (fileRemove) {
+        fileRemove.addEventListener('click', function () {
+          clearFile();
+          refreshSendBtn();
+        });
+      }
       refreshSendBtn();
 
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         var body = bodyInput.value.trim();
-        if (!body) return;
-        var payload = {
-          recipient_id: form.querySelector('[name="recipient_id"]').value,
-          body: body,
-        };
-        var orderId = form.querySelector('[name="order_id"]');
-        if (orderId && orderId.value) payload.order_id = orderId.value;
-        var qrId = form.querySelector('[name="quote_request_id"]');
-        if (qrId && qrId.value) payload.quote_request_id = qrId.value;
+        if (!body && !hasFile()) return;
 
+        var recipientId = form.querySelector('[name="recipient_id"]').value;
+        var orderId = form.querySelector('[name="order_id"]');
+        var qrId = form.querySelector('[name="quote_request_id"]');
         var csrfMeta = document.querySelector('meta[name="csrf-token"]');
         var csrfToken = csrfMeta ? csrfMeta.content : '';
         sendBtn.disabled = true;
-        fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-          body: JSON.stringify(payload),
-        })
+
+        var fetchOpts;
+        if (hasFile()) {
+          // Multipart quand il y a un fichier — ne PAS fixer Content-Type,
+          // le navigateur ajoute le boundary lui-même.
+          var fd = new FormData();
+          fd.append('recipient_id', recipientId);
+          fd.append('body', body);
+          if (orderId && orderId.value) fd.append('order_id', orderId.value);
+          if (qrId && qrId.value) fd.append('quote_request_id', qrId.value);
+          fd.append('file', fileInput.files[0]);
+          fetchOpts = {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken },
+            body: fd,
+          };
+        } else {
+          var payload = { recipient_id: recipientId, body: body };
+          if (orderId && orderId.value) payload.order_id = orderId.value;
+          if (qrId && qrId.value) payload.quote_request_id = qrId.value;
+          fetchOpts = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify(payload),
+          };
+        }
+
+        fetch('/api/messages', fetchOpts)
           .then(function (r) {
             return r.json().then(function (data) { return { ok: r.ok, data: data }; });
           })
@@ -136,6 +203,7 @@
             }
             clearErrorBanner();
             bodyInput.value = '';
+            clearFile();
             refreshSendBtn();
             loadMessages();
           })
