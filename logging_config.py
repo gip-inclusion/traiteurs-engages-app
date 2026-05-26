@@ -294,16 +294,23 @@ def install_request_id_hooks(app) -> None:
         )
         # user_id and ip are stamped on every record by ContextFilter, so we
         # don't duplicate them here — only the http_request-line-specific
-        # fields go through `extra`.
+        # fields go through `extra`. The `http` sub-dict follows the
+        # OpenTelemetry / Datadog Standard Attributes convention so out-of-
+        # the-box dashboards work; `duration_ms` is kept (unit in name,
+        # vendor-neutral) rather than converted to ns/seconds. `status` was
+        # renamed to `http.status_code` to avoid colliding with Datadog's
+        # reserved `status` field (log severity).
         extra: dict[str, Any] = {
             "event": "http_request",
-            "method": request.method,
-            "path": request.path,
+            "http": {
+                "method": request.method,
+                "url": request.path,
+                "status_code": response.status_code,
+                "useragent": request.headers.get("User-Agent"),
+                "referer": request.headers.get("Referer"),
+            },
             "endpoint": request.endpoint,
-            "status": response.status_code,
             "duration_ms": duration_ms,
-            "user_agent": request.headers.get("User-Agent"),
-            "referer": request.headers.get("Referer"),
             "req_bytes": request.content_length,
             "sql_queries": g.get("sql_query_count", 0),
             "sql_ms": round(g.get("sql_total_ms", 0.0), 2),

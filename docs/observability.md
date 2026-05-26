@@ -28,22 +28,22 @@ fournisse explicitement.
 Sur la ligne `event=http_request` (un log par requête, émis par
 `@app.after_request`) :
 
-| Champ           | Exemple              | Notes                                  |
-|-----------------|----------------------|----------------------------------------|
-| `event`         | `http_request`       |                                        |
-| `method`        | `POST`               |                                        |
-| `path`          | `/caterer/requests/…`|                                        |
-| `endpoint`      | `caterer.requests.…` | nom Flask, plus stable que `path`      |
-| `status`        | `200`                |                                        |
-| `duration_ms`   | `42.18`              | `time.perf_counter` autour de la req   |
-| `user_agent`    | …                    |                                        |
-| `referer`       | …                    | peut être `null`                       |
-| `req_bytes`     | `1024`               | `Content-Length` entrant               |
-| `sql_queries`   | `7`                  | agrégat via SQLAlchemy events          |
-| `sql_ms`        | `13.4`               | total cumulé des requêtes SQL          |
-| `user_id`       | `uuid`               | seulement si authentifié               |
-| `user_role`     | `client_admin`       |                                        |
-| `company_id`    | `uuid`               | si applicable                          |
+| Champ              | Exemple              | Notes                                       |
+|--------------------|----------------------|---------------------------------------------|
+| `event`            | `http_request`       |                                             |
+| `http.method`      | `POST`               | convention OTel / Datadog Standard Attrs    |
+| `http.url`         | `/caterer/requests/…`|                                             |
+| `http.status_code` | `200`                | nommé ainsi pour éviter le clash avec le `status` réservé Datadog (sévérité) |
+| `http.useragent`   | …                    |                                             |
+| `http.referer`     | …                    | peut être `null`                            |
+| `endpoint`         | `caterer.requests.…` | nom Flask, plus stable que `http.url`       |
+| `duration_ms`      | `42.18`              | unité dans le nom, vendor-neutral           |
+| `req_bytes`        | `1024`               | `Content-Length` entrant                    |
+| `sql_queries`      | `7`                  | agrégat via SQLAlchemy events               |
+| `sql_ms`           | `13.4`               | total cumulé des requêtes SQL               |
+| `user_id`          | `uuid`               | seulement si authentifié (stampé par filter)|
+| `user_role`        | `client_admin`       |                                             |
+| `company_id`       | `uuid`               | si applicable                               |
 
 Sur erreur non gérée, `event=unhandled_exception` ajoute `exc_type` et le
 stack trace via `logger.exception` (signal `got_request_exception`).
