@@ -22,7 +22,13 @@ from sqlalchemy import event
 
 _TRACE_ID: ContextVar[str | None] = ContextVar("trace_id", default=None)
 _SPAN_ID: ContextVar[str | None] = ContextVar("span_id", default=None)
-_BOUND: ContextVar[dict[str, Any]] = ContextVar("bound_context", default={})
+# Default is None (not `{}`) so we can never accidentally mutate a shared
+# default-dict instance — readers fall back to a fresh empty mapping.
+_BOUND: ContextVar[dict[str, Any] | None] = ContextVar("bound_context", default=None)
+
+
+def _bound() -> dict[str, Any]:
+    return _BOUND.get() or {}
 
 _HEX = set("0123456789abcdef")
 
@@ -62,6 +68,10 @@ def _new_span_id() -> str:
     return uuid.uuid4().hex[:16]
 
 
+def _all_hex(s: str) -> bool:
+    return bool(s) and all(c in _HEX for c in s.lower())
+
+
 def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     # W3C traceparent: "00-<32 hex>-<16 hex>-<flags>"
     if not value:
@@ -70,10 +80,51 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     if len(parts) != 4 or parts[0] != "00":
         return None, None
     tid, sid = parts[1], parts[2]
-    if len(tid) == 32 and set(tid.lower()) <= _HEX and tid != "0" * 32:
-        if len(sid) == 16 and set(sid.lower()) <= _HEX and sid != "0" * 16:
+    if len(tid) == 32 and _all_hex(tid) and tid != "0" * 32:
+        if len(sid) == 16 and _all_hex(sid) and sid != "0" * 16:
             return tid.lower(), sid.lower()
     return None, None
+
+
+def _resolve_inbound_trace(traceparent: str | None, x_request_id: str | None) -> tuple[str, str | None]:
+    """Return (trace_id, parent_span_id) from inbound headers, minting if absent."""
+    tid, parent_sid = _parse_traceparent(traceparent)
+    if tid:
+        return tid, parent_sid
+    legacy = (x_request_id or "").strip().lower()
+    if 12 <= len(legacy) <= 64 and _all_hex(legacy):
+        return legacy.ljust(32, "0")[:32], None
+    return _new_trace_id(), None
+
+
+class TraceContextMiddleware:
+    """WSGI middleware that initialises trace context at the very start of
+    every request — *before* Flask's before_request hooks run.
+
+    Without this, a CSRFProtect rejection (or any before_request that
+    short-circuits) would skip our `_start_trace` and leave the worker's
+    `_BOUND`/`_TRACE_ID` contextvars carrying values from the *previous*
+    request handled by the same thread. The result was cross-request
+    pollution of `user_id` and trace ids in the log line emitted by
+    `_log_request` for the rejected request.
+
+    Resetting in WSGI guarantees a clean slate regardless of which Flask
+    hooks fire downstream.
+    """
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        traceparent = environ.get("HTTP_TRACEPARENT")
+        x_request_id = environ.get("HTTP_X_REQUEST_ID")
+        tid, parent_sid = _resolve_inbound_trace(traceparent, x_request_id)
+        _TRACE_ID.set(tid)
+        _SPAN_ID.set(_new_span_id())
+        _BOUND.set({})
+        if parent_sid:
+            environ["traceperf.parent_span_id"] = parent_sid
+        return self.wsgi_app(environ, start_response)
 
 
 class ContextFilter(logging.Filter):
@@ -99,7 +150,7 @@ class ContextFilter(logging.Filter):
                 if uid:
                     live_user_id = str(uid)
 
-        bound = _BOUND.get()
+        bound = _bound()
         # Precedence: explicit `extra=` on the call site wins; then bind();
         # then the live request scan; then None. This lets callers override
         # (e.g. a worker re-hydrating user_id from a message arg).
@@ -146,7 +197,12 @@ LOGGING_CONFIG: dict = {
             "filters": ["context"],
         },
     },
-    "root": {"level": _LOG_LEVEL, "handlers": ["stdout"]},
+    # Filter is duplicated on the root logger so caplog (and any other
+    # propagation-listening handler we wire later) sees records with the
+    # context fields already stamped. The filter is idempotent — it only
+    # writes attrs that aren't already set — so running it twice is cheap
+    # and safe.
+    "root": {"level": _LOG_LEVEL, "handlers": ["stdout"], "filters": ["context"]},
     "loggers": {
         # We log every request ourselves; werkzeug/gunicorn access lines are
         # noise on top of that.
@@ -169,13 +225,13 @@ def bind(**fields: Any) -> None:
     >>> bind(order_id=str(order.id))
     >>> logger.info("invoice_sent")  # JSON line carries order_id automatically
     """
-    current = dict(_BOUND.get())
+    current = dict(_bound())
     current.update({k: v for k, v in fields.items() if v is not None})
     _BOUND.set(current)
 
 
 def unbind(*keys: str) -> None:
-    current = dict(_BOUND.get())
+    current = dict(_bound())
     for k in keys:
         current.pop(k, None)
     _BOUND.set(current)
@@ -198,49 +254,47 @@ def reset_trace_context() -> None:
 
 
 def install_request_id_hooks(app) -> None:
-    """Wire request lifecycle, trace propagation and unhandled-exception logs."""
+    """Wire request lifecycle, trace propagation and unhandled-exception logs.
+
+    Installs a WSGI middleware so trace context is initialised even when a
+    `before_request` hook (e.g. CSRFProtect) short-circuits — see
+    `TraceContextMiddleware` for the leak this prevents.
+    """
+    app.wsgi_app = TraceContextMiddleware(app.wsgi_app)
+
     req_logger = logging.getLogger("app.request")
     exc_logger = logging.getLogger("app.exception")
 
     @app.before_request
     def _start_trace():
-        # Honour upstream traceparent first (W3C), then legacy X-Request-Id,
-        # else mint a fresh trace.
-        tid, parent_sid = _parse_traceparent(request.headers.get("traceparent"))
-        if not tid:
-            legacy = request.headers.get("X-Request-Id", "").strip()
-            # Keep legacy ids if they look hex-ish (12+ hex chars), else mint.
-            if (
-                12 <= len(legacy) <= 64
-                and set(legacy.lower()) <= _HEX
-            ):
-                tid = legacy.lower().ljust(32, "0")[:32]
-            else:
-                tid = _new_trace_id()
-        sid = _new_span_id()
-        _TRACE_ID.set(tid)
-        _SPAN_ID.set(sid)
-        _BOUND.set({})
+        # Trace ids were minted by TraceContextMiddleware; we only stash
+        # them on `g` for code that reads them directly + the request
+        # lifecycle metrics.
+        tid = _TRACE_ID.get() or _new_trace_id()
+        sid = _SPAN_ID.get() or _new_span_id()
         g.trace_id = tid
         g.span_id = sid
         g.request_id = tid  # back-compat for code reading g.request_id
-        g.parent_span_id = parent_sid
+        g.parent_span_id = request.environ.get("traceperf.parent_span_id")
         g.request_started_at = time.perf_counter()
         g.sql_query_count = 0
         g.sql_total_ms = 0.0
 
     @app.after_request
     def _log_request(response):
-        # CSRFProtect can short-circuit before before_request fires; fall back
-        # so the log line still carries a correlation id.
-        tid = g.get("trace_id") or _TRACE_ID.get() or _new_trace_id()
+        # Trace context is guaranteed set by the WSGI middleware, so reads
+        # from contextvars are always populated even when `_start_trace`
+        # didn't run (CSRF reject before before_request).
+        tid = _TRACE_ID.get() or g.get("trace_id") or _new_trace_id()
         started = g.get("request_started_at")
         duration_ms = (
             round((time.perf_counter() - started) * 1000, 2)
             if started is not None
             else None
         )
-        user = g.get("current_user")
+        # user_id and ip are stamped on every record by ContextFilter, so we
+        # don't duplicate them here — only the http_request-line-specific
+        # fields go through `extra`.
         extra: dict[str, Any] = {
             "event": "http_request",
             "method": request.method,
@@ -254,14 +308,18 @@ def install_request_id_hooks(app) -> None:
             "sql_queries": g.get("sql_query_count", 0),
             "sql_ms": round(g.get("sql_total_ms", 0.0), 2),
         }
+        parent_sid = g.get("parent_span_id")
+        if parent_sid:
+            extra["parent_span_id"] = parent_sid
+        user = g.get("current_user")
         if user is not None:
-            extra["user_id"] = str(getattr(user, "id", "") or "") or None
             role = getattr(user, "role", None)
             extra["user_role"] = getattr(role, "value", None) or (
                 str(role) if role is not None else None
             )
             cid = getattr(user, "company_id", None)
-            extra["company_id"] = str(cid) if cid else None
+            if cid:
+                extra["company_id"] = str(cid)
         req_logger.info("request", extra=extra)
         response.headers.setdefault("X-Request-Id", tid)
         response.headers.setdefault("X-Trace-Id", tid)
