@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from models import Caterer, MembershipStatus, Notification, User, UserRole
+
+_notif_logger = logging.getLogger("app.notifications")
 
 
 def create_notification(
@@ -25,7 +29,28 @@ def create_notification(
     return notification
 
 
-notify = create_notification
+def notify(session: Session, **kwargs):
+    """Single-user notification with structured log emission.
+
+    Logging is here (not in `create_notification`) so the per-record
+    `notification_created` event isn't duplicated when `notify_users`
+    fans out — that path emits a single `notifications_dispatched`
+    event with a count instead.
+    """
+    note = create_notification(session, **kwargs)
+    uid = kwargs.get("user_id")
+    rid = kwargs.get("related_entity_id")
+    _notif_logger.info(
+        "notification_created",
+        extra={
+            "event": "notification_created",
+            "notification_type": kwargs.get("type"),
+            "recipient_id": str(uid) if uid else None,
+            "related_entity_type": kwargs.get("related_entity_type"),
+            "related_entity_id": str(rid) if rid else None,
+        },
+    )
+    return note
 
 
 def notify_users(session: Session, user_ids, **kwargs):
@@ -38,6 +63,17 @@ def notify_users(session: Session, user_ids, **kwargs):
             continue
         seen.add(uid)
         out.append(create_notification(session, user_id=uid, **kwargs))
+    rid = kwargs.get("related_entity_id")
+    _notif_logger.info(
+        "notifications_dispatched",
+        extra={
+            "event": "notifications_dispatched",
+            "notification_type": kwargs.get("type"),
+            "recipient_count": len(out),
+            "related_entity_type": kwargs.get("related_entity_type"),
+            "related_entity_id": str(rid) if rid else None,
+        },
+    )
     return out
 
 
