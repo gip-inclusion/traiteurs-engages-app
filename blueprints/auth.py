@@ -147,6 +147,13 @@ def login():
         hash_to_check = user.password_hash if user else _DUMMY_PASSWORD_HASH
         password_ok = bcrypt.checkpw(password.encode(), hash_to_check.encode())
         if not user or not password_ok:
+            # No email/user_id in the log: avoids confirming whether the
+            # account exists when stdout is grep'd. ip is auto-stamped by
+            # ContextFilter, which is enough for brute-force detection.
+            logger.warning(
+                "login_failed",
+                extra={"event": "login_failed", "reason": "bad_credentials"},
+            )
             flash("Email ou mot de passe incorrect.", "error")
             return render_template("auth/login.html")
         # Audit H-2: one opaque message for every inactive state so an
@@ -183,6 +190,14 @@ def login():
         session.clear()
         _stamp_session(user)
         session.permanent = True
+        logger.info(
+            "login_success",
+            extra={
+                "event": "login_success",
+                "user_id": str(user.id),
+                "role": getattr(user.role, "value", str(user.role)),
+            },
+        )
         endpoint = ROLE_DASHBOARDS.get(UserRole(user.role), "client.dashboard")
         return redirect(url_for(endpoint))
     return render_template("auth/login.html")
@@ -510,6 +525,11 @@ def signup_invite(token: str):
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
     # VULN-18: POST + CSRF so a <img src=".../logout"> can't log the user out.
+    user = g.get("current_user")
+    if user is not None:
+        logger.info(
+            "logout", extra={"event": "logout", "user_id": str(user.id)}
+        )
     session.clear()
     return redirect(url_for("auth.login"))
 
@@ -530,6 +550,10 @@ def forgot_password():
     db = get_db()
     kick_off_reset(db, email=email)
     db.commit()
+    # No email in the log: kick_off_reset is intentionally opaque about
+    # whether the address mapped to a user (audit anti-enumeration), and
+    # we keep stdout consistent with that.
+    logger.info("password_reset_requested", extra={"event": "password_reset_requested"})
     return render_template("auth/forgot_password_sent.html", email=email)
 
 
@@ -554,8 +578,12 @@ def reset_password(token):
 
     db = get_db()
     try:
-        consume_token(db, raw_token=token, new_password=new_password)
+        user = consume_token(db, raw_token=token, new_password=new_password)
     except ResetTokenInvalid:
+        logger.warning(
+            "password_reset_invalid_token",
+            extra={"event": "password_reset_invalid_token"},
+        )
         flash(
             "Ce lien de réinitialisation est invalide ou a expiré. "
             "Demandez-en un nouveau.",
@@ -563,6 +591,10 @@ def reset_password(token):
         )
         return redirect(url_for("auth.forgot_password"))
     db.commit()
+    logger.info(
+        "password_reset_completed",
+        extra={"event": "password_reset_completed", "user_id": str(user.id)},
+    )
     flash("Votre mot de passe a été mis à jour. Vous pouvez vous connecter.", "success")
     return redirect(url_for("auth.login"))
 
