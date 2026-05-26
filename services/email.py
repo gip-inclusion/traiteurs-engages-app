@@ -57,6 +57,15 @@ def _post_to_brevo(payload: dict, api_key: str, *, timeout: float = 10.0) -> Non
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if 200 <= resp.status < 300:
+                logger.info(
+                    "email_sent",
+                    extra={
+                        "event": "email_sent",
+                        "subject": payload.get("subject"),
+                        "recipient_count": len(payload.get("to", [])),
+                        "brevo_status": resp.status,
+                    },
+                )
                 return
             raise EmailSendError(f"unexpected Brevo status {resp.status}")
     except urllib.error.HTTPError as exc:
