@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -15,6 +16,8 @@ from models import (
     PaymentStatus,
 )
 from services.quotes import calculate_quote_totals, derive_invoice_reference
+
+_billing_logger = logging.getLogger("app.billing")
 
 CENTS_PER_EURO = Decimal("100")
 
@@ -276,6 +279,20 @@ def create_invoice_for_order(session, order: Order) -> dict[str, Any]:
         amount_ttc=platform_fee_ht + platform_fee_tva,
     )
     session.add(commission_caterer)
+
+    _billing_logger.info(
+        "invoice_created",
+        extra={
+            "event": "invoice_created",
+            "order_id": str(order.id),
+            "caterer_id": str(caterer.id),
+            "invoice_reference": invoice_ref,
+            "stripe_invoice_id": invoice.get("id"),
+            "amount_ttc": float(totals["total_ttc"]),
+            "platform_fee_ttc_cents": platform_fee_ttc_cents,
+            "attempt": order.invoice_attempt,
+        },
+    )
 
     return invoice
 

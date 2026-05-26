@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import uuid
 
 from sqlalchemy import func, select
+
+_workflow_logger = logging.getLogger("app.workflow")
 
 from models import (
     Caterer,
@@ -114,6 +117,18 @@ def refuse_quote(
     if remaining == 0:
         qr.status = QuoteRequestStatus.quotes_refused
 
+    _workflow_logger.info(
+        "quote_refused",
+        extra={
+            "event": "quote_refused",
+            "quote_request_id": str(request_id),
+            "quote_id": str(quote_id),
+            "caterer_id": str(quote.caterer_id),
+            "company_id": str(qr.company_id),
+            "remaining_open_quotes": remaining,
+        },
+    )
+
 
 def accept_quote(
     db,
@@ -212,6 +227,18 @@ def accept_quote(
         related_entity_type="order",
         related_entity_id=order.id,
     )
+    _workflow_logger.info(
+        "quote_accepted",
+        extra={
+            "event": "quote_accepted",
+            "quote_request_id": str(request_id),
+            "quote_id": str(quote_id),
+            "order_id": str(order.id),
+            "caterer_id": str(accepted.caterer_id),
+            "company_id": str(qr.company_id),
+            "losing_caterers": len(losing_qrcs),
+        },
+    )
     return order
 
 
@@ -277,6 +304,15 @@ def approve_quote_request(
                 related_entity_id=qr.id,
             )
     db.flush()
+    _workflow_logger.info(
+        "quote_request_approved",
+        extra={
+            "event": "quote_request_approved",
+            "quote_request_id": str(request_id),
+            "company_id": str(qr.company_id),
+            "caterers_targeted": len(targets),
+        },
+    )
     return qrcs
 
 
@@ -305,6 +341,15 @@ def reject_quote_request(
             related_entity_type="quote_request",
             related_entity_id=qr.id,
         )
+    _workflow_logger.info(
+        "quote_request_rejected",
+        extra={
+            "event": "quote_request_rejected",
+            "quote_request_id": str(request_id),
+            "company_id": str(qr.company_id),
+            "has_reason": bool(reason),
+        },
+    )
 
 
 def submit_quote(
@@ -386,6 +431,18 @@ def submit_quote(
         )
 
     db.flush()
+    _workflow_logger.info(
+        "quote_submitted",
+        extra={
+            "event": "quote_submitted",
+            "quote_request_id": str(request_id),
+            "quote_id": str(quote_id),
+            "caterer_id": str(caterer.id),
+            "company_id": str(qr.company_id),
+            "response_rank": qrc.response_rank,
+            "closes_request": qrc.response_rank == 3,
+        },
+    )
     return quote
 
 
@@ -417,5 +474,14 @@ def mark_delivered(
         body=f"{caterer.name} a marqué la commande comme livrée.",
         related_entity_type="order",
         related_entity_id=order.id,
+    )
+    _workflow_logger.info(
+        "order_delivered",
+        extra={
+            "event": "order_delivered",
+            "order_id": str(order_id),
+            "caterer_id": str(caterer.id),
+            "company_id": str(qr.company_id),
+        },
     )
     return order

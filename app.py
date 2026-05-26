@@ -18,9 +18,13 @@ from whitenoise import WhiteNoise
 
 import config
 from config import settings
-from database import ScopedSession, get_db
+from database import ScopedSession, engine, get_db
 from extensions import csrf, limiter
-from logging_config import configure_logging, install_request_id_hooks
+from logging_config import (
+    configure_logging,
+    install_request_id_hooks,
+    install_sql_tracing,
+)
 from models import (
     DRINK_LABELS,
     MembershipStatus,
@@ -38,6 +42,7 @@ from models import (
 _BLOCKED_MEMBERSHIP_STATUSES = {MembershipStatus.pending, MembershipStatus.rejected}
 
 configure_logging()
+install_sql_tracing(engine)
 
 
 CSP = (

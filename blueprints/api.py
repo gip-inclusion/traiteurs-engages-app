@@ -399,6 +399,20 @@ def send_message():
     db.add(msg)
     db.flush()
 
+    logger.info(
+        "message_sent",
+        extra={
+            "event": "message_sent",
+            "message_id": str(msg.id),
+            "thread_id": str(thread_id),
+            "sender_id": str(user.id),
+            "recipient_id": str(recipient_id),
+            "order_id": str(order_id) if order_id else None,
+            "quote_request_id": str(quote_request_id) if quote_request_id else None,
+            "body_length": len(body),
+        },
+    )
+
     # Audit admin → user messages (support touches, qualification,
     # escalation). Admin↔admin chatter is internal noise.
     if is_admin and recipient.role != "super_admin":
