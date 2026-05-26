@@ -17,7 +17,7 @@ import uuid
 from contextvars import ContextVar
 from typing import Any
 
-from flask import g, got_request_exception, request
+from flask import g, got_request_exception, has_request_context, request
 from sqlalchemy import event
 
 _TRACE_ID: ContextVar[str | None] = ContextVar("trace_id", default=None)
@@ -50,13 +50,40 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
 
 
 class ContextFilter(logging.Filter):
-    """Stamps every record with the active trace/span and bound fields."""
+    """Stamps every record with trace/span ids, the active user, and the
+    caller IP — so any `logger.info(...)` line carries enough context to be
+    pivotted on without the caller having to remember to add `extra=`."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.trace_id = _TRACE_ID.get() or "-"
         record.span_id = _SPAN_ID.get() or "-"
         record.request_id = record.trace_id  # back-compat alias
-        for key, value in _BOUND.get().items():
+
+        # Resolve user_id and ip from the live Flask request if we have one.
+        # Outside a request (CLI, Dramatiq worker, threads), they fall back to
+        # whatever bind() left in the context — None otherwise.
+        live_user_id: str | None = None
+        live_ip: str | None = None
+        if has_request_context():
+            live_ip = request.remote_addr
+            user = g.get("current_user")
+            if user is not None:
+                uid = getattr(user, "id", None)
+                if uid:
+                    live_user_id = str(uid)
+
+        bound = _BOUND.get()
+        # Precedence: explicit `extra=` on the call site wins; then bind();
+        # then the live request scan; then None. This lets callers override
+        # (e.g. a worker re-hydrating user_id from a message arg).
+        if not hasattr(record, "user_id"):
+            record.user_id = bound.get("user_id", live_user_id)
+        if not hasattr(record, "ip"):
+            record.ip = bound.get("ip", live_ip)
+
+        for key, value in bound.items():
+            if key in ("user_id", "ip"):
+                continue
             if not hasattr(record, key):
                 setattr(record, key, value)
         return True
@@ -194,7 +221,6 @@ def install_request_id_hooks(app) -> None:
             "endpoint": request.endpoint,
             "status": response.status_code,
             "duration_ms": duration_ms,
-            "remote_addr": request.remote_addr,
             "user_agent": request.headers.get("User-Agent"),
             "referer": request.headers.get("Referer"),
             "req_bytes": request.content_length,

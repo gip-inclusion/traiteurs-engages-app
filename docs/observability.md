@@ -7,7 +7,7 @@ branché ensuite.
 
 ## Schéma de champs
 
-Chaque ligne JSON porte au minimum :
+Chaque ligne JSON porte **systématiquement** :
 
 | Champ      | Source                       | Description                                  |
 |------------|------------------------------|----------------------------------------------|
@@ -17,6 +17,13 @@ Chaque ligne JSON porte au minimum :
 | `trace_id` | `ContextFilter`              | 32 hex — corrèle toute la requête / job      |
 | `span_id`  | `ContextFilter`              | 16 hex — unique à la requête / job courant   |
 | `request_id` | alias de `trace_id`         | conservé pour compat avec les anciens logs   |
+| `user_id`  | `ContextFilter`              | `g.current_user.id` si auth, sinon `null`    |
+| `ip`       | `ContextFilter`              | `request.remote_addr` (passe par `ProxyFix`) |
+
+`user_id` et `ip` sont posés automatiquement sur **toute** ligne émise
+pendant une requête HTTP — pas besoin de passer `extra=`. Hors requête
+(CLI, worker Dramatiq), ils sont `null` à moins qu'un `bind()` les
+fournisse explicitement.
 
 Sur la ligne `event=http_request` (un log par requête, émis par
 `@app.after_request`) :
@@ -29,7 +36,6 @@ Sur la ligne `event=http_request` (un log par requête, émis par
 | `endpoint`      | `caterer.requests.…` | nom Flask, plus stable que `path`      |
 | `status`        | `200`                |                                        |
 | `duration_ms`   | `42.18`              | `time.perf_counter` autour de la req   |
-| `remote_addr`   | `90.x.x.x`           | passe par `ProxyFix` quand activé      |
 | `user_agent`    | …                    |                                        |
 | `referer`       | …                    | peut être `null`                       |
 | `req_bytes`     | `1024`               | `Content-Length` entrant               |
