@@ -57,11 +57,13 @@ def _post_to_brevo(payload: dict, api_key: str, *, timeout: float = 10.0) -> Non
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if 200 <= resp.status < 300:
+                # Do not log the subject — today they're all static templates
+                # but a future `f"Bonjour {first_name}…"` would silently leak
+                # PII. recipient_count + status is enough to monitor delivery.
                 logger.info(
                     "email_sent",
                     extra={
                         "event": "email_sent",
-                        "subject": payload.get("subject"),
                         "recipient_count": len(payload.get("to", [])),
                         "brevo_status": resp.status,
                     },

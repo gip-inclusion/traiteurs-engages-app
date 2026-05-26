@@ -45,6 +45,12 @@ def log_admin_action(
     # Mirror the audit row to stdout so Datadog (and the operational log
     # stream) sees admin actions in real time. The DB row stays canonical
     # for forensic queries — this is the observability copy.
+    #
+    # Deliberately omit `extra={}` from the stdout payload: callers pass
+    # values like target email or free-text rejection reasons that are PII
+    # and have a different retention/access contract in DB vs. Datadog.
+    # Operators who need those details query the AuditLog row by
+    # `action + ts + actor_id`.
     _audit_logger.info(
         "admin_action",
         extra={
@@ -53,6 +59,5 @@ def log_admin_action(
             "actor_id": str(actor.id) if actor else None,
             "target_type": target_type,
             "target_id": str(target_id) if target_id else None,
-            "action_extra": extra,
         },
     )
