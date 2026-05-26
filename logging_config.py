@@ -28,24 +28,30 @@ _HEX = set("0123456789abcdef")
 
 
 def _client_ip() -> str | None:
-    """Best-effort client IP, honouring X-Forwarded-For when present.
+    """Best-effort client IP.
 
-    When ProxyFix is wired (prod, `trust_proxy_headers=True`), `remote_addr`
-    is already rewritten from XFF and the two paths converge. When it isn't
-    (dev runs, or a request slips past ProxyFix), reading XFF directly keeps
-    the logged IP accurate. The first value is the original client; later
-    entries are intermediate proxies.
+    Gated on `settings.trust_proxy_headers` — the same flag that controls
+    ProxyFix. Without it, XFF and X-Real-IP are client-controlled headers
+    and reading them would let anyone forge their logged IP (`.env.example`
+    spells this out). With it, we trust the upstream proxy and pick the
+    left-most XFF entry as the original client.
 
-    Trust note: XFF is forgeable by the client unless a trusted proxy sits
-    in front and overwrites it. On Scalingo the platform router does that;
-    self-hosted setups must keep ProxyFix gated on a real proxy.
+    When the flag is on but XFF is absent, fall back to `remote_addr` —
+    which ProxyFix has already rewritten from the trusted XFF.
     """
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        first = xff.split(",", 1)[0].strip()
-        if first:
-            return first
-    return request.headers.get("X-Real-IP") or request.remote_addr
+    from config import settings
+
+    if settings.trust_proxy_headers:
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            first = xff.split(",", 1)[0].strip()
+            if first:
+                return first
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip
+    # Untrusted deployments: peer TCP address, not spoofable from the wire.
+    return request.remote_addr
 
 
 def _new_trace_id() -> str:

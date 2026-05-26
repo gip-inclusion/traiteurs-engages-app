@@ -18,7 +18,7 @@ Chaque ligne JSON porte **systématiquement** :
 | `span_id`  | `ContextFilter`              | 16 hex — unique à la requête / job courant   |
 | `request_id` | alias de `trace_id`         | conservé pour compat avec les anciens logs   |
 | `user_id`  | `ContextFilter`              | `g.current_user.id` si auth, sinon `null`    |
-| `ip`       | `ContextFilter`              | `X-Forwarded-For` (1er hop) → `X-Real-IP` → `remote_addr` |
+| `ip`       | `ContextFilter`              | voir « Résolution de l'IP » plus bas         |
 
 `user_id` et `ip` sont posés automatiquement sur **toute** ligne émise
 pendant une requête HTTP — pas besoin de passer `extra=`. Hors requête
@@ -51,6 +51,23 @@ stack trace via `logger.exception` (signal `got_request_exception`).
 Sur requête SQL dépassant `LOG_SLOW_QUERY_MS` (défaut **500 ms**) :
 `event=slow_query` avec `duration_ms` et `statement` (tronqué à 500
 caractères).
+
+## Résolution de l'IP
+
+L'extraction de `ip` est **gardée par `settings.trust_proxy_headers`** (même
+flag qui active `ProxyFix`). C'est délibéré — `X-Forwarded-For` et
+`X-Real-IP` sont des en-têtes contrôlés par le client, et les lire sans
+proxy de confiance en amont permettrait à n'importe qui de forger l'IP
+loguée (cf. `.env.example`).
+
+| `trust_proxy_headers` | Source de `ip`                                     |
+|-----------------------|----------------------------------------------------|
+| `True` (prod Scalingo)| `X-Forwarded-For` (1er hop) → `X-Real-IP` → `remote_addr` |
+| `False` (dev, par déf.)| `request.remote_addr` (peer TCP, non spoofable)   |
+
+Sur Scalingo le routeur réécrit XFF lui-même, donc la valeur est fiable.
+En self-host, ne mettez `TRUST_PROXY_HEADERS=1` que si un proxy
+(Caddy/nginx) en front réécrit XFF — sinon vos logs IP sont mensongers.
 
 ## Propagation de la trace
 
