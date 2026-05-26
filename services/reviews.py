@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -17,6 +18,8 @@ from models import (
     QuoteRequest,
     User,
 )
+
+_review_logger = logging.getLogger("app.reviews")
 
 
 @dataclass(frozen=True)
@@ -131,15 +134,28 @@ def submit_review(
     rating = _coerce_rating(rating_raw)
     order = _load_reviewable_order(db, order_id=order_id, viewer=viewer)
     quote = db.get(Quote, order.quote_id)
+    comment = (comment_raw or "").strip() or None
     review = CatererReview(
         caterer_id=quote.caterer_id,
         order_id=order.id,
         reviewer_user_id=viewer.id,
         rating=rating,
-        comment=(comment_raw or "").strip() or None,
+        comment=comment,
     )
     db.add(review)
     db.flush()
+    _review_logger.info(
+        "review_submitted",
+        extra={
+            "event": "review_submitted",
+            "review_id": str(review.id),
+            "caterer_id": str(quote.caterer_id),
+            "order_id": str(order.id),
+            "reviewer_user_id": str(viewer.id),
+            "rating": rating,
+            "has_comment": bool(comment),
+        },
+    )
     return review
 
 
