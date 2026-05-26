@@ -27,6 +27,27 @@ _BOUND: ContextVar[dict[str, Any]] = ContextVar("bound_context", default={})
 _HEX = set("0123456789abcdef")
 
 
+def _client_ip() -> str | None:
+    """Best-effort client IP, honouring X-Forwarded-For when present.
+
+    When ProxyFix is wired (prod, `trust_proxy_headers=True`), `remote_addr`
+    is already rewritten from XFF and the two paths converge. When it isn't
+    (dev runs, or a request slips past ProxyFix), reading XFF directly keeps
+    the logged IP accurate. The first value is the original client; later
+    entries are intermediate proxies.
+
+    Trust note: XFF is forgeable by the client unless a trusted proxy sits
+    in front and overwrites it. On Scalingo the platform router does that;
+    self-hosted setups must keep ProxyFix gated on a real proxy.
+    """
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        first = xff.split(",", 1)[0].strip()
+        if first:
+            return first
+    return request.headers.get("X-Real-IP") or request.remote_addr
+
+
 def _new_trace_id() -> str:
     return uuid.uuid4().hex
 
@@ -65,7 +86,7 @@ class ContextFilter(logging.Filter):
         live_user_id: str | None = None
         live_ip: str | None = None
         if has_request_context():
-            live_ip = request.remote_addr
+            live_ip = _client_ip()
             user = g.get("current_user")
             if user is not None:
                 uid = getattr(user, "id", None)

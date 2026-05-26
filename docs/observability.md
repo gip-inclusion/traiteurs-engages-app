@@ -18,7 +18,7 @@ Chaque ligne JSON porte **systématiquement** :
 | `span_id`  | `ContextFilter`              | 16 hex — unique à la requête / job courant   |
 | `request_id` | alias de `trace_id`         | conservé pour compat avec les anciens logs   |
 | `user_id`  | `ContextFilter`              | `g.current_user.id` si auth, sinon `null`    |
-| `ip`       | `ContextFilter`              | `request.remote_addr` (passe par `ProxyFix`) |
+| `ip`       | `ContextFilter`              | `X-Forwarded-For` (1er hop) → `X-Real-IP` → `remote_addr` |
 
 `user_id` et `ip` sont posés automatiquement sur **toute** ligne émise
 pendant une requête HTTP — pas besoin de passer `extra=`. Hors requête
