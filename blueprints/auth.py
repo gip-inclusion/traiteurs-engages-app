@@ -530,9 +530,7 @@ def logout():
         db = get_db()
         user = db.scalar(select(User).where(User.id == user_id))
         if user is not None:
-            logger.info(
-                "logout", extra={"event": "logout", "user_id": str(user.id)}
-            )
+            logger.info("logout", extra={"event": "logout", "user_id": str(user.id)})
             revoke_all_sessions(db, user)
             db.commit()
     session.clear()

@@ -43,9 +43,7 @@ def _bob_id():
         s.close()
 
 
-def _create_throwaway_acme_user(
-    *, email_prefix="throwaway", status=None
-):
+def _create_throwaway_acme_user(*, email_prefix="throwaway", status=None):
     import uuid as _uuid
 
     import bcrypt as _bcrypt
@@ -231,9 +229,7 @@ def test_team_reject_revokes_target_session_and_tokens(client, login):
             s.close()
 
         login("alice@test.local")
-        resp = client.post(
-            f"/client/team/reject/{pending_id}", follow_redirects=False
-        )
+        resp = client.post(f"/client/team/reject/{pending_id}", follow_redirects=False)
         assert resp.status_code == 302
 
         target = _fetch_user(pending_id)

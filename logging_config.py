@@ -30,6 +30,7 @@ _BOUND: ContextVar[dict[str, Any] | None] = ContextVar("bound_context", default=
 def _bound() -> dict[str, Any]:
     return _BOUND.get() or {}
 
+
 _HEX = set("0123456789abcdef")
 
 
@@ -86,7 +87,9 @@ def _parse_traceparent(value: str | None) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _resolve_inbound_trace(traceparent: str | None, x_request_id: str | None) -> tuple[str, str | None]:
+def _resolve_inbound_trace(
+    traceparent: str | None, x_request_id: str | None
+) -> tuple[str, str | None]:
     """Return (trace_id, parent_span_id) from inbound headers, minting if absent."""
     tid, parent_sid = _parse_traceparent(traceparent)
     if tid:

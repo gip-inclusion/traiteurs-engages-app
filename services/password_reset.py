@@ -39,7 +39,9 @@ def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
     return row, raw
 
 
-def _invalidate_outstanding_tokens(db: Session, *, user_id, now: datetime.datetime) -> None:
+def _invalidate_outstanding_tokens(
+    db: Session, *, user_id, now: datetime.datetime
+) -> None:
     db.execute(
         PasswordResetToken.__table__.update()
         .where(
