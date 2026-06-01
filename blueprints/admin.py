@@ -40,6 +40,7 @@ from models import (
 )
 from services import messagerie as messagerie_service
 from services import workflow
+from blueprints.auth import _stamp_session
 from services.account import apply_profile_form
 from services.audit import log_admin_action
 from services.notifications import (
@@ -1066,6 +1067,9 @@ def profile():
             flash(err, "error")
             return render_template("admin/profile.html", user=user), 400
         db.commit()
+        # Email change bumps password_changed_at to evict other sessions;
+        # re-stamp here so the current one survives.
+        _stamp_session(user)
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.profile"))
     return render_template("admin/profile.html", user=user)

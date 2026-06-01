@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from flask import flash, g, redirect, render_template, request, url_for
 from pydantic import ValidationError
 
+from blueprints.auth import _stamp_session
 from blueprints.middleware import login_required, role_required
 from database import get_db
 from extensions import limiter
@@ -104,6 +105,9 @@ def register(bp):
             flash(err, "error")
             return render_template("caterer/account.html", user=user), 400
         db.commit()
+        # Email change bumps password_changed_at to evict other sessions;
+        # re-stamp here so the current one survives.
+        _stamp_session(user)
         flash("Profil mis à jour.", "success")
         return redirect(url_for("caterer.account"))
 

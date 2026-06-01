@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from models import User
 from services.audit import log_admin_action
+from services.password_reset import revoke_all_sessions
 
 
 def apply_profile_form(db, user, form) -> str | None:
@@ -50,6 +51,10 @@ def apply_profile_form(db, user, form) -> str | None:
     # parallèle pour le RGPD ; actor_id + actor_email + target_id + IP/UA
     # suffisent pour la forensique.
     user.email = new_email
+    # Changer l'adresse = signal "je reprends la main" : on évince les
+    # autres sessions et on neutralise les tokens de reset en vol émis
+    # sur l'ancienne adresse (indexés par user_id, pas par email).
+    revoke_all_sessions(db, user)
     log_admin_action(
         db,
         user,
