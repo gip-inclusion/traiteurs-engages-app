@@ -47,6 +47,7 @@ from models import (
     User,
     UserRole,
 )
+from services.password_reset import revoke_all_sessions
 
 
 def _user_metrics(db, user: User) -> dict[str, int]:
@@ -338,6 +339,10 @@ def change_role(
         user.role, new_role
     ):
         user.role = new_role
+        # Même bascule "douce" (client_admin ↔ client_user) : le scope
+        # autorisé change, on évite que les onglets ouverts héritent du
+        # nouveau périmètre sans repasser par /login.
+        revoke_all_sessions(db, user)
         return
 
     # Vers caterer : détacher Company + créer Caterer
@@ -358,6 +363,7 @@ def change_role(
         db.flush()
         user.caterer_id = caterer.id
         user.role = new_role
+        revoke_all_sessions(db, user)
         return
 
     # Depuis caterer vers client_* : détacher Caterer + créer Company
@@ -377,4 +383,5 @@ def change_role(
         user.company_id = company.id
         user.role = new_role
         user.membership_status = MembershipStatus.active
+        revoke_all_sessions(db, user)
         return
