@@ -639,7 +639,11 @@ def change_password():
     ).decode()
     # Audit H-5: bump invalidates the user's OTHER sessions; _stamp_session
     # below rewrites the current session's snapshot so it doesn't self-evict.
-    user.password_changed_at = datetime.datetime.utcnow()
+    # revoke_all_sessions also burns any in-flight password-reset token so
+    # an attacker-issued /forgot-password link can't be redeemed afterwards.
+    from services.password_reset import revoke_all_sessions
+
+    revoke_all_sessions(db, user)
     log_admin_action(
         db,
         user,
