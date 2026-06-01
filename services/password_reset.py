@@ -39,6 +39,30 @@ def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
     return row, raw
 
 
+def _invalidate_outstanding_tokens(db: Session, *, user_id, now: datetime.datetime) -> None:
+    # Bulk SET used_at=now on every outstanding token for this user. Used
+    # both when revoking and when (re)issuing so only the freshest token
+    # is ever redeemable.
+    db.execute(
+        PasswordResetToken.__table__.update()
+        .where(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+
+
+def revoke_all_sessions(db: Session, user: User) -> None:
+    # Centralised revocation: bumps password_changed_at (load_current_user
+    # then evicts every existing cookie) AND marks outstanding reset
+    # tokens as used so an in-flight /forgot-password link can't be
+    # cashed in afterwards. Caller commits.
+    now = datetime.datetime.utcnow()
+    user.password_changed_at = now
+    _invalidate_outstanding_tokens(db, user_id=user.id, now=now)
+
+
 def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     if not raw_token:
         raise ResetTokenInvalid
@@ -58,6 +82,21 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     user = db.get(User, row.user_id)
     if user is None or not user.is_active:
         raise ResetTokenInvalid
+    # Defence in depth: reject a token issued before the last revocation
+    # of the user (membership revoked, password changed elsewhere, email
+    # rotated, etc.). Mirrors load_current_user's snapshot check.
+    if (
+        user.password_changed_at is not None
+        and row.created_at is not None
+        and row.created_at < user.password_changed_at
+    ):
+        raise ResetTokenInvalid
+    # Audit H-2 mirror: a rejected/pending account must not be able to
+    # complete a reset and "succeed" in a misleading way.
+    from models import MembershipStatus
+
+    if user.membership_status in (MembershipStatus.pending, MembershipStatus.rejected):
+        raise ResetTokenInvalid
 
     now = datetime.datetime.utcnow()
     row.used_at = now
@@ -66,6 +105,9 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     ).decode("utf-8")
     # Bumping invalidates every existing session (see load_current_user).
     user.password_changed_at = now
+    # Burn any other in-flight tokens for this user (attacker-issued
+    # parallel reset can't be cashed in after the legitimate one).
+    _invalidate_outstanding_tokens(db, user_id=user.id, now=now)
     db.flush()
     return user
 
@@ -79,6 +121,9 @@ def kick_off_reset(db: Session, *, email: str) -> None:
         bcrypt.hashpw(b"timing-noise", bcrypt.gensalt())
         return
 
+    # Single live token per user: a fresh /forgot-password burns any
+    # previously-emitted link so only the most recent recipient can reset.
+    _invalidate_outstanding_tokens(db, user_id=user.id, now=datetime.datetime.utcnow())
     _row, raw_token = issue_token(db, user=user)
     reset_url = f"{config.BASE_URL}/reset-password/{raw_token}"
 
