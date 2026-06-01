@@ -210,10 +210,6 @@ def register(bp):
         employee.first_name = form.first_name.data.strip()
         employee.last_name = form.last_name.data.strip()
         new_email = form.email.data.strip().lower()
-        # A pending invite is bound to the email at the moment the admin
-        # generated it. Letting the admin re-aim the link at a different
-        # address after the fact would silently rebind the (future) account
-        # to a different recipient — force a fresh /invite click instead.
         if employee.user_id is None and new_email != (employee.email or "").lower():
             employee.invite_token = None
             employee.invited_at = None
@@ -236,9 +232,6 @@ def register(bp):
         if employee.user_id == user.id:
             flash("Vous ne pouvez pas vous retirer vous-même des effectifs.", "error")
             return redirect(url_for("client.team"))
-        # YWH-PGM43799-1: deleting the CompanyEmployee row alone leaves
-        # the linked User active, still rattached to the company, with
-        # live sessions and an open reset window. Detach + revoke first.
         if employee.user_id:
             target = db.get(User, employee.user_id)
             if target is not None and target.company_id == user.company_id:
@@ -351,9 +344,6 @@ def register(bp):
         db = get_db()
         target_user = get_pending_user(user_id, admin.company_id)
         target_user.membership_status = MembershipStatus.rejected
-        # rejected accounts can't /login anymore (auth gate), but an
-        # outstanding /forgot-password link or an open browser tab would
-        # still ride through — bump + invalidate to close both.
         revoke_all_sessions(db, target_user)
         db.commit()
         flash("Membre rejete.", "info")

@@ -145,10 +145,7 @@ def test_change_password_requires_login(client):
     assert "/login" in r.headers["Location"]
 
 
-def test_change_password_bumps_password_changed_at(client, login):
-    """A successful change bumps `password_changed_at` — c'est ce champ
-    qui, comparé au snapshot de session, déconnecte les autres
-    appareils (audit H-5, PR #69)."""
+def test_change_password_bumps_session_revocation_epoch(client, login):
     from sqlalchemy import select
 
     from database import session_factory
@@ -157,7 +154,7 @@ def test_change_password_bumps_password_changed_at(client, login):
     s = session_factory()
     try:
         alice = s.scalar(select(User).where(User.email == "alice@test.local"))
-        before = alice.password_changed_at
+        before = alice.sessions_invalidated_at
     finally:
         s.close()
 
@@ -176,7 +173,7 @@ def test_change_password_bumps_password_changed_at(client, login):
         s = session_factory()
         try:
             alice = s.scalar(select(User).where(User.email == "alice@test.local"))
-            after = alice.password_changed_at
+            after = alice.sessions_invalidated_at
         finally:
             s.close()
 

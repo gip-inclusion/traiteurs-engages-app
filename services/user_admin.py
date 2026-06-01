@@ -339,9 +339,6 @@ def change_role(
         user.role, new_role
     ):
         user.role = new_role
-        # Même bascule "douce" (client_admin ↔ client_user) : le scope
-        # autorisé change, on évite que les onglets ouverts héritent du
-        # nouveau périmètre sans repasser par /login.
         revoke_all_sessions(db, user)
         return
 

@@ -43,6 +43,63 @@ def _bob_id():
         s.close()
 
 
+def _create_throwaway_acme_user(
+    *, email_prefix="throwaway", status=None
+):
+    import uuid as _uuid
+
+    import bcrypt as _bcrypt
+
+    from database import session_factory
+    from models import MembershipStatus, User, UserRole
+
+    s = session_factory()
+    try:
+        suffix = _uuid.uuid4().hex[:8]
+        u = User(
+            email=f"{email_prefix}-{suffix}@example.com",
+            password_hash=_bcrypt.hashpw(b"x", _bcrypt.gensalt()).decode(),
+            first_name="Throw",
+            last_name="Away",
+            role=UserRole.client_user,
+            company_id=_acme_id(),
+            membership_status=status or MembershipStatus.active,
+        )
+        s.add(u)
+        s.commit()
+        return u.id
+    finally:
+        s.close()
+
+
+def _fetch_user(user_id):
+    from database import session_factory
+    from models import User
+
+    s = session_factory()
+    try:
+        return s.get(User, user_id)
+    finally:
+        s.close()
+
+
+def _cleanup_user(user_id):
+    from database import session_factory
+    from models import PasswordResetToken, User
+
+    s = session_factory()
+    try:
+        s.execute(
+            PasswordResetToken.__table__.delete().where(
+                PasswordResetToken.user_id == user_id
+            )
+        )
+        s.execute(User.__table__.delete().where(User.id == user_id))
+        s.commit()
+    finally:
+        s.close()
+
+
 def _ensure_employee(email, *, user_id=None, invite_token=None, invited_at=None):
     from database import session_factory
     from models import CompanyEmployee
@@ -98,14 +155,103 @@ def test_admin_cannot_delete_own_effectifs_row(client, login):
 
 
 def test_admin_can_delete_other_effectifs_row(client, login):
-    row_id = _ensure_employee("colleague-to-delete@test.local", user_id=_bob_id())
+    victim_id = _create_throwaway_acme_user(email_prefix="delete-victim")
+    try:
+        row_id = _ensure_employee("colleague-to-delete@test.local", user_id=victim_id)
 
-    login("alice@test.local")
-    resp = client.post(
-        f"/client/team/employees/{row_id}/delete", follow_redirects=False
+        login("alice@test.local")
+        resp = client.post(
+            f"/client/team/employees/{row_id}/delete", follow_redirects=False
+        )
+        assert resp.status_code == 302
+        assert _fetch_employee(row_id) is None, "non-self deletes must still work"
+    finally:
+        _cleanup_user(victim_id)
+
+
+def test_delete_linked_employee_revokes_target_session_and_detaches(client, login):
+    from database import session_factory
+    from models import PasswordResetToken, User
+    from services import password_reset as pr
+
+    victim_id = _create_throwaway_acme_user(email_prefix="detach-victim")
+    try:
+        s = session_factory()
+        try:
+            row, _raw = pr.issue_token(s, user=s.get(User, victim_id))
+            s.commit()
+            token_id = row.id
+        finally:
+            s.close()
+
+        row_id = _ensure_employee("detach-target@test.local", user_id=victim_id)
+        login("alice@test.local")
+        resp = client.post(
+            f"/client/team/employees/{row_id}/delete", follow_redirects=False
+        )
+        assert resp.status_code == 302
+
+        from models import MembershipStatus
+
+        victim = _fetch_user(victim_id)
+        assert victim is not None, "the User must still exist (only detached)"
+        assert victim.company_id is None, "company link must be cut"
+        assert victim.membership_status == MembershipStatus.rejected
+        assert victim.sessions_invalidated_at is not None, (
+            "session cookies must be evicted via sessions_invalidated_at bump"
+        )
+
+        s = session_factory()
+        try:
+            refreshed = s.get(PasswordResetToken, token_id)
+            assert refreshed.used_at is not None, (
+                "outstanding reset token must be invalidated on detach"
+            )
+        finally:
+            s.close()
+    finally:
+        _cleanup_user(victim_id)
+
+
+def test_team_reject_revokes_target_session_and_tokens(client, login):
+    from database import session_factory
+    from models import MembershipStatus, PasswordResetToken, User
+    from services import password_reset as pr
+
+    pending_id = _create_throwaway_acme_user(
+        email_prefix="reject-target", status=MembershipStatus.pending
     )
-    assert resp.status_code == 302
-    assert _fetch_employee(row_id) is None, "non-self deletes must still work"
+    try:
+        s = session_factory()
+        try:
+            row, _raw = pr.issue_token(s, user=s.get(User, pending_id))
+            s.commit()
+            token_id = row.id
+        finally:
+            s.close()
+
+        login("alice@test.local")
+        resp = client.post(
+            f"/client/team/reject/{pending_id}", follow_redirects=False
+        )
+        assert resp.status_code == 302
+
+        target = _fetch_user(pending_id)
+        assert target.membership_status == MembershipStatus.rejected
+        assert target.sessions_invalidated_at is not None, (
+            "rejection must bump sessions_invalidated_at to evict cookies"
+        )
+
+        s = session_factory()
+        try:
+            refreshed = s.get(PasswordResetToken, token_id)
+            assert refreshed.used_at is not None, (
+                "outstanding reset token must be invalidated on rejection"
+            )
+        finally:
+            s.close()
+    finally:
+        _cleanup_user(pending_id)
 
 
 def test_create_employee_generates_invite_token(client, login):

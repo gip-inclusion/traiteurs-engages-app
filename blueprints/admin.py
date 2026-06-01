@@ -347,10 +347,6 @@ def caterer_invalidate(caterer_id):
     if not caterer:
         abort(404)
     caterer.is_validated = False
-    # validated_caterer_required gates the business routes but profile /
-    # account / Stripe onboarding aren't gated by it. Force-logout staff so
-    # they can't keep mutating public content or Stripe state from a stale
-    # cookie after an admin decides they shouldn't operate anymore.
     staff = db.scalars(select(User).where(User.caterer_id == caterer_id)).all()
     for member in staff:
         revoke_all_sessions(db, member)
@@ -1075,8 +1071,6 @@ def profile():
             flash(err, "error")
             return render_template("admin/profile.html", user=user), 400
         db.commit()
-        # Email change bumps password_changed_at to evict other sessions;
-        # re-stamp here so the current one survives.
         _stamp_session(user)
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.profile"))
