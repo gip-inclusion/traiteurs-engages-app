@@ -9,8 +9,6 @@ import uuid
 
 from sqlalchemy import func, select
 
-_workflow_logger = logging.getLogger("app.workflow")
-
 from models import (
     Caterer,
     Order,
@@ -29,6 +27,8 @@ from services.notifications import (
     notify,
     notify_users,
 )
+
+_workflow_logger = logging.getLogger("app.workflow")
 
 
 class WorkflowError(Exception):

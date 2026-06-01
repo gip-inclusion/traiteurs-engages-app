@@ -273,10 +273,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     membership_status: Mapped[MembershipStatus | None] = mapped_column(String(20))
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255))
-    # Bumped on every password rotation; load_current_user rejects sessions
-    # whose snapshot mismatches. NULL for users issued before the column
-    # existed so the deploy doesn't force-logout anyone.
-    password_changed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
+    sessions_invalidated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
     # Nullable: pre-CGS-gate users stay untouched; new signups must fill both.
     terms_accepted_version_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("terms_versions.id")

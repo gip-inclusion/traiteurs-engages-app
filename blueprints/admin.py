@@ -40,6 +40,7 @@ from models import (
 )
 from services import messagerie as messagerie_service
 from services import workflow
+from blueprints.auth import _stamp_session
 from services.account import apply_profile_form
 from services.audit import log_admin_action
 from services.notifications import (
@@ -47,6 +48,7 @@ from services.notifications import (
     company_admin_user_ids,
     notify_users,
 )
+from services.password_reset import revoke_all_sessions
 from services.quotes import build_pdf_preview
 from blueprints._notifications import register as _register_notifications
 
@@ -345,6 +347,9 @@ def caterer_invalidate(caterer_id):
     if not caterer:
         abort(404)
     caterer.is_validated = False
+    staff = db.scalars(select(User).where(User.caterer_id == caterer_id)).all()
+    for member in staff:
+        revoke_all_sessions(db, member)
     log_admin_action(
         db,
         g.current_user,
@@ -1066,6 +1071,7 @@ def profile():
             flash(err, "error")
             return render_template("admin/profile.html", user=user), 400
         db.commit()
+        _stamp_session(user)
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.profile"))
     return render_template("admin/profile.html", user=user)

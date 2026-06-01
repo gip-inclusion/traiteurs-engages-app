@@ -35,6 +35,7 @@ from services.notifications import (
     notify_users,
     super_admin_user_ids,
 )
+from services.password_reset import revoke_all_sessions
 from services.slugs import generate_invoice_prefix
 from services.terms import current_terms_version, is_terms_accepted
 
@@ -124,11 +125,11 @@ ROLE_DASHBOARDS = {
 
 
 def _stamp_session(user):
-    # Snapshot password_changed_at so load_current_user can invalidate
-    # this session when the column moves forward (force-logout on reset).
     session["user_id"] = str(user.id)
-    session["pwd_changed_at"] = (
-        user.password_changed_at.isoformat() if user.password_changed_at else None
+    session["session_epoch"] = (
+        user.sessions_invalidated_at.isoformat()
+        if user.sessions_invalidated_at
+        else None
     )
 
 
@@ -524,12 +525,14 @@ def signup_invite(token: str):
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
-    # VULN-18: POST + CSRF so a <img src=".../logout"> can't log the user out.
-    user = g.get("current_user")
-    if user is not None:
-        logger.info(
-            "logout", extra={"event": "logout", "user_id": str(user.id)}
-        )
+    user_id = session.get("user_id")
+    if user_id:
+        db = get_db()
+        user = db.scalar(select(User).where(User.id == user_id))
+        if user is not None:
+            logger.info("logout", extra={"event": "logout", "user_id": str(user.id)})
+            revoke_all_sessions(db, user)
+            db.commit()
     session.clear()
     return redirect(url_for("auth.login"))
 
@@ -637,9 +640,7 @@ def change_password():
     user.password_hash = bcrypt.hashpw(
         new_password.encode("utf-8"), bcrypt.gensalt()
     ).decode()
-    # Audit H-5: bump invalidates the user's OTHER sessions; _stamp_session
-    # below rewrites the current session's snapshot so it doesn't self-evict.
-    user.password_changed_at = datetime.datetime.utcnow()
+    revoke_all_sessions(db, user)
     log_admin_action(
         db,
         user,

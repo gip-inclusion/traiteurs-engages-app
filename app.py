@@ -226,12 +226,9 @@ def create_app():
                 session.clear()
                 user = None
             if user:
-                # Invalidate sessions whose password_changed_at snapshot is
-                # stale (reset happened elsewhere). Scalar query bypasses
-                # the identity map so a parallel commit is visible here.
-                stamped = session.get("pwd_changed_at")
+                stamped = session.get("session_epoch")
                 live_at = db.scalar(
-                    select(User.password_changed_at).where(User.id == user_id)
+                    select(User.sessions_invalidated_at).where(User.id == user_id)
                 )
                 live = live_at.isoformat() if live_at else None
                 if stamped != live:

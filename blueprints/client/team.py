@@ -18,6 +18,7 @@ from extensions import limiter
 from forms.client import EmployeeForm, ServiceForm
 from models import Company, CompanyEmployee, CompanyService, MembershipStatus, User
 from services.notifications import notify
+from services.password_reset import revoke_all_sessions
 
 # Invite expires this many days after invited_at; rejected on redemption.
 INVITE_TOKEN_TTL_DAYS = 7
@@ -208,7 +209,11 @@ def register(bp):
             return redirect(url_for("client.team"))
         employee.first_name = form.first_name.data.strip()
         employee.last_name = form.last_name.data.strip()
-        employee.email = form.email.data.strip().lower()
+        new_email = form.email.data.strip().lower()
+        if employee.user_id is None and new_email != (employee.email or "").lower():
+            employee.invite_token = None
+            employee.invited_at = None
+        employee.email = new_email
         employee.position = (form.position.data or "").strip() or None
         employee.service_id = own_service_id(db, user, form.service_id.data)
         db.commit()
@@ -227,6 +232,12 @@ def register(bp):
         if employee.user_id == user.id:
             flash("Vous ne pouvez pas vous retirer vous-même des effectifs.", "error")
             return redirect(url_for("client.team"))
+        if employee.user_id:
+            target = db.get(User, employee.user_id)
+            if target is not None and target.company_id == user.company_id:
+                target.membership_status = MembershipStatus.rejected
+                target.company_id = None
+                revoke_all_sessions(db, target)
         db.delete(employee)
         db.commit()
         flash("Employe supprime.", "success")
@@ -333,6 +344,7 @@ def register(bp):
         db = get_db()
         target_user = get_pending_user(user_id, admin.company_id)
         target_user.membership_status = MembershipStatus.rejected
+        revoke_all_sessions(db, target_user)
         db.commit()
         flash("Membre rejete.", "info")
         return redirect(url_for("client.team"))
