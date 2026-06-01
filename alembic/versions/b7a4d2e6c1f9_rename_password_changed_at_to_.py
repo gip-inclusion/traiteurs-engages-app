@@ -1,10 +1,3 @@
-"""rename users.password_changed_at to users.sessions_invalidated_at
-
-Revision ID: b7a4d2e6c1f9
-Revises: c4d2e8f7a1b9
-Create Date: 2026-06-01
-"""
-
 from typing import Sequence, Union
 
 from alembic import op

@@ -3,8 +3,6 @@ from decimal import Decimal
 
 import pytest
 
-# WeasyPrint depends on system libs (libpango, libpangoft2). The Dockerfile
-# installs them; bare local environments may not. Skip rather than error.
 pytest.importorskip("weasyprint")
 
 
@@ -85,8 +83,6 @@ def test_pdf_route_returns_pdf(client, login):
     resp = client.get(f"/caterer/requests/{qr_id}/quote/{q_id}/pdf")
     assert resp.status_code == 200, resp.status_code
     assert resp.mimetype == "application/pdf"
-    # Magic bytes — proves WeasyPrint actually produced a PDF rather than
-    # an HTML error page slipping through with the wrong mimetype.
     assert resp.data[:4] == b"%PDF"
     disposition = resp.headers.get("Content-Disposition", "")
     assert "attachment" in disposition
@@ -95,7 +91,5 @@ def test_pdf_route_returns_pdf(client, login):
 
 def test_pdf_route_rejects_other_caterer(client, login):
     qr_id, q_id, _ = _seed_request_with_quote_lines()
-    # alice is a client_admin, not a caterer — role_required short-circuits
-    # to 403/redirect before the query, so test with no login (401-ish).
     resp = client.get(f"/caterer/requests/{qr_id}/quote/{q_id}/pdf")
     assert resp.status_code in (302, 401, 403), resp.status_code

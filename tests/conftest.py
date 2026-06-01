@@ -1,6 +1,3 @@
-# Real Postgres so sequences / NUMERIC / constraints behave like prod.
-# Each session drops + recreates `traiteurs_test`, applies migrations,
-# and seeds role-based fixtures.
 import os
 
 import bcrypt
@@ -14,8 +11,6 @@ def _ensure_test_db():
         "DATABASE_URL", "postgresql://traiteurs:traiteurs@db:5432/traiteurs"
     )
     test_db_name = "traiteurs_test"
-    # Connect to the maintenance DB so dropping traiteurs_test can't fail
-    # with "cannot drop the currently open database".
     maint_url = parent_url.rsplit("/", 1)[0] + "/postgres"
     parent_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT")
     with parent_engine.connect() as conn:
@@ -34,18 +29,14 @@ def _ensure_test_db():
 
 @pytest.fixture(scope="session", autouse=True)
 def _required_env():
-    # `${VAR:-}` interpolation leaves empty values present in os.environ,
-    # which setdefault wouldn't override — treat empty as absent.
     if not os.environ.get("SECRET_KEY"):
         os.environ["SECRET_KEY"] = "x" * 32
     test_url = _ensure_test_db()
     os.environ["DATABASE_URL"] = test_url
     os.environ.pop("STRIPE_SECRET_KEY", None)
     os.environ["DRAMATIQ_TESTING"] = "1"
-    # Audit H-3: in-memory limiter store is opt-in outside dev/test.
     if not os.environ.get("LIMITER_ALLOW_MEMORY"):
         os.environ["LIMITER_ALLOW_MEMORY"] = "1"
-    # H-13 flipped SECURE_COOKIES default to True; test client doesn't do HTTPS.
     if not os.environ.get("SECURE_COOKIES"):
         os.environ["SECURE_COOKIES"] = "false"
     yield
@@ -53,7 +44,6 @@ def _required_env():
 
 @pytest.fixture(scope="session")
 def app(_required_env):
-    # Late import: config.Settings() runs at import and needs SECRET_KEY.
     from alembic import command
     from alembic.config import Config as AlembicConfig
 
@@ -67,7 +57,6 @@ def app(_required_env):
         TESTING=True,
         WTF_CSRF_ENABLED=False,
     )
-    # Disable the limiter so the 10/min login cap doesn't fail the suite.
     from extensions import limiter
 
     limiter.enabled = False
@@ -152,10 +141,6 @@ def login(client):
             data={"email": email, "password": password},
             follow_redirects=False,
         )
-        # Catch silent auth failures: a failed login rerenders 200, and
-        # @login_required redirects unauth'd traffic to /login (302), so
-        # without this assertion downstream tests can pass for the wrong
-        # reasons.
         assert resp.status_code == 302, (
             f"login({email!r}) failed: status={resp.status_code} body={resp.data!r}"
         )

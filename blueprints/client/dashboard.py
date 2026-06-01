@@ -56,8 +56,6 @@ def register(bp):
             orders_stmt = orders_stmt.where(own_only)
         recent_orders = db.execute(orders_stmt).unique().scalars().all()
 
-        # Mirrors /client/requests so dashboard rows match the list cards;
-        # selectinload(quotes) avoids the helpers' N+1.
         from blueprints.client.requests import (
             _derive_request_display_status,
             _request_quote_counts,
@@ -77,7 +75,6 @@ def register(bp):
             qr.display_status = _derive_request_display_status(qr)
             qr.received_quotes, qr.expected_quotes = _request_quote_counts(qr)
 
-        # Admin-only company-wide breakdown; client_user hides the panel.
         budget_data = []
         if is_admin:
             services = (
@@ -120,7 +117,6 @@ def register(bp):
             budget_total_stmt = budget_total_stmt.where(own_only)
         budget_spent_total = db.execute(budget_total_stmt).scalar_one()
 
-        # Cast to float to match budget_spent_total (Jinja %f rejects Decimal).
         impact = compute_social_impact(
             db,
             company_id=user.company_id,

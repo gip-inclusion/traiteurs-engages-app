@@ -1,10 +1,3 @@
-"""Lock the rate-limiter storage selection (audit VULN-101).
-
-The limiter MUST point at Redis whenever REDIS_URL is set. A regression
-that lets it fall back to in-memory in a multi-worker prod would silently
-disable brute-force protection.
-"""
-
 import importlib
 
 
@@ -25,7 +18,6 @@ def test_limiter_uses_memory_when_redis_url_unset(monkeypatch):
 def test_limiter_uses_redis_db1_when_redis_url_set(monkeypatch):
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     ext = _reload_extensions()
-    # We carve out DB 1 to isolate rate-limiter keys from dramatiq's DB 0.
     assert ext.limiter._storage_uri == "redis://redis:6379/1", (
         f"Expected redis://redis:6379/1, got {ext.limiter._storage_uri}"
     )

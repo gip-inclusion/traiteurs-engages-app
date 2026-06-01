@@ -24,8 +24,6 @@ _OFFERING_DECIMAL_FIELDS = ("price_per_person_min", "total_min")
 
 
 def _parse_offering_specs(form) -> dict:
-    # Drop unknown slugs and silently skip non-numeric values so a half-
-    # filled row doesn't crash the save.
     out: dict = {}
     for slug in SERVICE_OFFERING_LABELS:
         row: dict = {}
@@ -53,8 +51,6 @@ def _parse_offering_specs(form) -> dict:
 
 
 def _aggregate_legacy_fields(caterer, specs: dict) -> None:
-    # Search/catalogue still read the legacy global columns; recompute them
-    # from the per-offering specs (min of mins, max of maxes).
     if not specs:
         return
     cap_mins = [
@@ -194,7 +190,6 @@ def register(bp):
         elif request.form.get("logo_delete") == "1":
             caterer.logo_url = None
 
-        # Validate slugs so a tampered POST can't write unknown values.
         offered = [
             v
             for v in request.form.getlist("service_offerings")
@@ -202,7 +197,6 @@ def register(bp):
         ]
         caterer.service_offerings = offered or None
 
-        # Only keep specs for offerings the caterer actually offers.
         all_specs = _parse_offering_specs(request.form)
         kept_specs = {
             slug: row for slug, row in all_specs.items() if slug in (offered or [])

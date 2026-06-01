@@ -54,8 +54,6 @@ from blueprints._notifications import register as _register_notifications
 
 logger = logging.getLogger(__name__)
 
-# Mirror of the caterer/client cap to keep a malicious line-count from
-# saturating the WeasyPrint worker.
 _MAX_PDF_LINES = 500
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -79,8 +77,6 @@ def dashboard():
     orders_this_month = db.scalar(
         select(func.count(Order.id)).where(Order.created_at >= month_start)
     )
-    # File de qualification : uniquement pending_review, en miroir de
-    # /admin/qualification.
     recent_requests = (
         db.scalars(
             select(QuoteRequest)
@@ -93,8 +89,6 @@ def dashboard():
         .all()
     )
 
-    # Eager-load Order → Quote → (QuoteRequest, Caterer) to avoid N+1
-    # in the dashboard "à facturer" block.
     orders_to_invoice = (
         db.scalars(
             select(Order)
@@ -162,17 +156,12 @@ _REQUESTS_PAGE_SIZE = 25
 @login_required
 @role_required("super_admin")
 def requests_list():
-    # Full read-only registry; /qualification is the work-to-do view.
-    # SQL paging mirrors /admin/messages (VULN-21) so a 10k-row platform
-    # doesn't OOM the worker.
     db = get_db()
     status_filter = request.args.get("status", "all")
     if status_filter not in _REQUEST_STATUS_TABS:
         status_filter = "all"
     page = max(1, request.args.get("page", 1, type=int) or 1)
 
-    # Float pending_review only on the "all" tab; once filtered, the CASE
-    # is dead weight.
     stmt = select(QuoteRequest).options(joinedload(QuoteRequest.company))
     count_stmt = select(func.count(QuoteRequest.id))
     if status_filter != "all":
@@ -251,9 +240,6 @@ def qualification_approve(request_id):
     if qrcs:
         flash(f"Demande approuvee et envoyee a {len(qrcs)} traiteur(s).", "success")
     else:
-        # Catalogue empty: workflow fans out to all validated caterers, so
-        # an empty fanout means no validated caterer exists. Surface so the
-        # admin can follow up with the client.
         flash(
             "Demande approuvee, mais aucun traiteur valide n'est present "
             "dans le catalogue. Pensez a contacter le client.",
@@ -404,14 +390,6 @@ def company_detail(company_id):
     )
 
 
-# ---------------------------------------------------------------------------
-# User management — ajouté pour traiter les inscriptions "mauvais rôle"
-# (un user qui s'inscrit comme client alors qu'il voulait s'inscrire comme
-# traiteur). Hors de ce flux il y a peu d'usages : la liste reste légère
-# (pas de pagination tant que < 1k users — on étendra si besoin).
-# ---------------------------------------------------------------------------
-
-
 _USER_ROLE_LABELS = {
     UserRole.client_admin: "Admin client",
     UserRole.client_user: "Utilisateur client",
@@ -424,12 +402,6 @@ _USER_ROLE_LABELS = {
 @login_required
 @role_required("super_admin")
 def users_list():
-    """Liste des utilisateurs avec recherche (?q=). Pas de filtre rôle —
-    tout passe par la recherche libre + le sélecteur inline qui sert
-    aussi à modifier le rôle.
-
-    Pas de pagination tant que le volume reste raisonnable : page rendue
-    côté serveur, scroll OK jusqu'à ~1k users."""
     from services.user_admin import super_admin_count, users_with_business_history
 
     db = get_db()
@@ -448,13 +420,6 @@ def users_list():
         )
     users = db.scalars(stmt).unique().all()
 
-    # Bulk-load the two facts the row-state derivation needs, so the loop
-    # below stays O(N) memory / O(1) DB instead of issuing ~18 COUNTs per
-    # user. `can_change_role` is True whenever the user is not self and not
-    # super_admin: the original `or` between (→client_user, →caterer)
-    # targets always finds at least one allowed path (no-op or same-nature
-    # bascule) — so flagging on (self, super_admin) is sufficient and
-    # behavior-preserving.
     busy_ids = users_with_business_history(db)
     sa_count = super_admin_count(db)
     actor_id = g.current_user.id
@@ -514,18 +479,6 @@ def user_delete(user_id):
 @role_required("super_admin")
 @limiter.limit("10 per minute")
 def user_role_change(user_id):
-    """Bascule le rôle de `user_id` vers `request.form['role']`.
-
-    Selon la nature de la bascule (cf. `services.user_admin`), peut
-    exiger des inputs supplémentaires :
-
-    * vers `caterer` : `caterer_name`, `caterer_siret`,
-      `structure_type`, `invoice_prefix`
-    * depuis `caterer` vers `client_*` : `company_name`, `company_siret`
-
-    Le sélecteur de la liste auto-soumet pour les bascules simples ;
-    un modal côté front collecte les inputs pour les bascules
-    nécessitant la création d'une Caterer/Company."""
     from models import CatererStructureType
     from services.user_admin import can_change_role, change_role
 
@@ -548,10 +501,9 @@ def user_role_change(user_id):
 
     old_role = str(target.role)
     if old_role == raw_role:
-        return redirect(url_for("admin.users_list"))  # no-op
+        return redirect(url_for("admin.users_list"))
 
     kwargs = {}
-    # Validation des inputs requis selon la bascule
     if target.role != UserRole.caterer and new_role == UserRole.caterer:
         caterer_name = (request.form.get("caterer_name") or "").strip()
         caterer_siret = (request.form.get("caterer_siret") or "").strip()
@@ -594,8 +546,6 @@ def user_role_change(user_id):
         if len(company_siret) != 14 or not company_siret.isdigit():
             flash("Le SIRET de l'entreprise doit comporter 14 chiffres.", "error")
             return redirect(url_for("admin.users_list"))
-        # Company.siret has unique=True (models.py); without this pre-check
-        # the db.commit() below would raise IntegrityError and 500 the admin.
         if db.scalar(select(Company.id).where(Company.siret == company_siret)):
             flash(
                 "Ce SIRET est déjà utilisé par une autre entreprise.",
@@ -806,8 +756,6 @@ _TAB_TO_STATUSES = {
     "disputed": (OrderStatus.disputed,),
 }
 
-# Manual transitions: each move requires the order's current status to
-# match the source.
 _ADMIN_ORDER_TRANSITIONS = {
     "invoice": (OrderStatus.delivered, OrderStatus.invoiced),
     "pay": (OrderStatus.invoiced, OrderStatus.paid),
@@ -884,7 +832,6 @@ def order_detail(order_id):
 @role_required("super_admin")
 @limiter.limit("20 per minute")
 def quote_pdf(q_id):
-    # Lazy import: WeasyPrint loads Cairo/Pango at import time.
     from services.quote_pdf import render_quote_pdf
 
     db = get_db()
@@ -992,8 +939,6 @@ def order_transition(order_id):
         related_entity_id=order_id,
     )
 
-    # notify_review_invite is idempotent so both admin and webhook paths
-    # can call it.
     if target == OrderStatus.paid:
         from services.reviews import notify_review_invite
 

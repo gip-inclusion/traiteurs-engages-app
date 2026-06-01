@@ -56,8 +56,6 @@ _QR_DIRECT_FIELDS = (
     "halal_count",
     "gluten_free_count",
     "lactose_free_count",
-    # drinks_alcohol is derived from the drinks list in apply_drinks below;
-    # leaving it out prevents a tampered POST from lying about alcohol.
     "wants_waitstaff",
     "wants_equipment",
     "wants_decoration",
@@ -83,8 +81,6 @@ _QR_OPTIONAL_FIELDS = (
 
 
 def apply_quote_request_form(qr, form):
-    # Drinks live outside WTForms (no FieldList for dynamic checkbox groups);
-    # every handler must also call apply_drinks(qr, request.form).
     for field in _QR_DIRECT_FIELDS:
         setattr(qr, field, getattr(form, field).data)
     for field in _QR_OPTIONAL_FIELDS:
@@ -92,10 +88,6 @@ def apply_quote_request_form(qr, form):
 
 
 def apply_drinks(qr, request_form):
-    # Unknown slug keys are ignored so a forged POST can't write garbage.
-    # Accept only browser-emitted truthy values so `drinks_x=0` doesn't smuggle
-    # a checkbox in. drinks_alcohol is derived to keep the legacy boolean
-    # trustworthy without trusting the client.
     selected = [
         slug
         for slug in DRINK_LABELS

@@ -1,6 +1,3 @@
-# Creates 4 demo requests showcasing each caterer-side badge. Idempotent
-# via the [STATUS_DEMO] tag — reruns wipe and recreate. Requires seed_data.py
-# to have run first (reuses its ESAT caterer + Acme client).
 from __future__ import annotations
 
 import datetime
@@ -36,7 +33,6 @@ DEMO_TAG = "[STATUS_DEMO]"
 
 
 def _wipe_previous_fixtures(db) -> int:
-    # Cascades to QRCs / Quotes / QuoteLines / Orders so no orphans remain.
     old_qrs = db.scalars(
         select(QuoteRequest).where(QuoteRequest.message_to_caterer.like(f"{DEMO_TAG}%"))
     ).all()
@@ -192,7 +188,6 @@ def main():
         )
         db.flush()
 
-        # Timestamp suffix so reruns don't collide on Quote.reference UNIQUE.
         ts = int(now.timestamp())
         prefix = caterer.invoice_prefix
 

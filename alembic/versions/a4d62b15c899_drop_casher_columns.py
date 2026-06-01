@@ -1,10 +1,3 @@
-"""drop dietary_casher and casher_count columns
-
-Revision ID: a4d62b15c899
-Revises: f9c8e2b53741
-Create Date: 2026-04-30
-"""
-
 from typing import Sequence, Union
 
 import sqlalchemy as sa

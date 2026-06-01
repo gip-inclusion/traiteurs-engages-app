@@ -15,14 +15,8 @@ def _is_truthy_env(name: str) -> bool:
 
 
 def _limiter_storage_uri() -> str:
-    # Audit VULN-101 / H-3: in-memory storage is per-process, so multi-worker
-    # gunicorn silently multiplies every limit by N (login throttle becomes
-    # useless) and worker recycles reset the counters. Refuse to start outside
-    # dev/test unless an explicit single-worker opt-in is set.
     redis_url = os.getenv("REDIS_URL")
     if redis_url:
-        # Use a dedicated Redis DB index so rate-limiter keys never collide
-        # with dramatiq queues. Strip any trailing /N from REDIS_URL first.
         base = (
             redis_url.rstrip("/").rsplit("/", 1)[0]
             if redis_url.count("/") >= 3
@@ -51,7 +45,5 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute", "1000 per hour"],
     storage_uri=_limiter_storage_uri(),
-    # moving-window is accurate for auth throttling; fixed-window would let
-    # a burst slip through at the edge.
     strategy="moving-window",
 )

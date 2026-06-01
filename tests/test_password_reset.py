@@ -49,9 +49,6 @@ def test_issue_token_persists_with_ttl_in_future(session):
         select(PasswordResetToken).where(PasswordResetToken.id == row.id)
     )
     assert persisted is not None
-    # The stored column must be the SHA-256 digest of the raw token, not
-    # the raw value itself — the security guarantee of the hash-at-rest
-    # change is that a DB leak should not expose live tokens.
     assert persisted.token == pr._hash_token(raw)
     assert persisted.token != raw
 
@@ -64,7 +61,6 @@ def test_issue_token_returns_unique_strings(session):
     _row_b, b = pr.issue_token(session, user=alice)
     session.flush()
     assert a != b
-    # `token_urlsafe(32)` => 43 chars URL-safe base64.
     assert len(a) >= 32
 
 
@@ -168,7 +164,7 @@ def test_kick_off_reset_known_email_creates_row(session):
             PasswordResetToken.user_id == alice.id
         )
     )
-    pr.kick_off_reset(session, email=alice.email.upper())  # case-insensitive
+    pr.kick_off_reset(session, email=alice.email.upper())
     session.flush()
     after = session.scalar(
         select(func.count(PasswordResetToken.id)).where(
@@ -266,9 +262,6 @@ def test_session_invalidated_after_password_reset(client):
         r = client.get("/client/dashboard", follow_redirects=False)
         assert r.status_code == 200, "alice should be authenticated post-login"
 
-        # Step 2 : alice's password gets reset out-of-band (simulating a
-        # parallel device hitting /reset-password/<token>). The session
-        # cookie that worked above must now be refused.
         s = session_factory()
         try:
             alice = _alice(s)
@@ -284,10 +277,6 @@ def test_session_invalidated_after_password_reset(client):
             f"stale session must be rejected after password reset; got {r.status_code}"
         )
     finally:
-        # Restore alice to the seeded state regardless of whether the
-        # assertions above passed. Without this, a failure leaves a
-        # rotated password hash behind and every test that logs in as
-        # alice afterwards breaks.
         s = session_factory()
         try:
             alice = _alice(s)

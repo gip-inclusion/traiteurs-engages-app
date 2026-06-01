@@ -161,11 +161,6 @@ def test_signup_invite_refuses_without_accept_terms(client):
     from database import session_factory
     from models import CompanyEmployee
 
-    # Seed an invite row on the ACME company so the redemption is valid
-    # apart from the missing accept_terms. The DB column stores the
-    # SHA-256 digest of the raw token (see services / auth handlers),
-    # so we mirror that here while the HTTP request below still uses
-    # the raw — same shape as a real admin → invitee handoff.
     import hashlib as _hashlib
 
     token = "terms-refusal-token-eeeeeeeeeeeeeeeeeeeeeeeeeeee"
@@ -192,7 +187,7 @@ def test_signup_invite_refuses_without_accept_terms(client):
     try:
         r = client.post(
             f"/signup/invite/{token}",
-            data={"password": "VeryStrongPw1!"},  # no accept_terms
+            data={"password": "VeryStrongPw1!"},
             follow_redirects=False,
         )
         assert r.status_code == 200, (
@@ -244,10 +239,6 @@ def test_signup_client_admin_stamps_terms_version_and_timestamp(client):
 
 
 def test_signup_pending_client_user_stamps_terms_too(client):
-    """Joining an existing SIRET creates a `client_user` in pending
-    state. That row is still a real User and must carry the same legal
-    trace as a standalone signup — otherwise the approval-pending path
-    drops the audit silently."""
     active_id = _active_terms_id()
     try:
         r = client.post(
@@ -258,7 +249,7 @@ def test_signup_pending_client_user_stamps_terms_too(client):
                 "password": "VeryStrongPw1!",
                 "first_name": "Term",
                 "last_name": "Pending",
-                "siret": "12345678901234",  # ACME, pre-seeded
+                "siret": "12345678901234",
                 "accept_terms": "1",
             },
             follow_redirects=False,
@@ -279,8 +270,6 @@ def test_current_terms_version_picks_the_latest_effective_row(app):
     from database import session_factory
     from services.terms import current_terms_version
 
-    # Seed a v-future and a v-past so we have three rows total
-    # alongside the migration-seeded v1.
     past_id = _seed_extra_terms_version("vpast", _dt.date(2020, 1, 1))
     future_id = _seed_extra_terms_version(
         "vfuture", _dt.date.today() + _dt.timedelta(days=365)
@@ -288,19 +277,16 @@ def test_current_terms_version_picks_the_latest_effective_row(app):
     try:
         s = session_factory()
         try:
-            # Today: the helper must NOT pick the future row.
             today_active = current_terms_version(s, today=_dt.date.today())
             assert today_active.id != future_id, (
                 "future version must not be 'in force' on today"
             )
 
-            # Far past: the v-past row is the only one effective.
             past_active = current_terms_version(s, today=_dt.date(2020, 6, 1))
             assert past_active.id == past_id, (
                 "the date-tie resolver must pick the past row when today < v1"
             )
 
-            # Far future: the v-future row wins.
             far_future = current_terms_version(
                 s, today=_dt.date.today() + _dt.timedelta(days=400)
             )

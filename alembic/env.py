@@ -14,8 +14,6 @@ from models import Base
 
 config = context.config
 
-# Inject the live DATABASE_URL from pydantic settings so alembic uses the
-# same source of truth as the app (and secrets stay out of alembic.ini).
 config.set_main_option("sqlalchemy.url", app_config.DATABASE_URL)
 
 if config.config_file_name is not None:

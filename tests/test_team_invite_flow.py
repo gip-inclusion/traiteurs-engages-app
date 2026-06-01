@@ -277,9 +277,6 @@ def test_create_employee_generates_invite_token(client, login):
             )
         )
         assert row is not None
-        # Post-hardening: the DB stores the SHA-256 digest of the raw
-        # token (64 hex chars). The raw lives only in the admin's
-        # session for the single redirect that pops the modal.
         assert row.invite_token is not None
         assert len(row.invite_token) == 64, (
             f"expected 64-char SHA-256 hex, got len={len(row.invite_token)}"
@@ -309,9 +306,6 @@ def test_invite_rotation_changes_token(client, login):
 
     after = _fetch_employee(employee_id).invite_token
     assert after and after != before, "rotation must produce a fresh token"
-    # Stored value is the SHA-256 digest, not the raw — a deterministic
-    # rotation (counter, predictable seed) would still slip through
-    # `after != before`, so we lock the shape down too.
     assert len(after) == 64, f"rotated digest wrong length: {len(after)}"
     assert _re.fullmatch(r"[0-9a-f]+", after), (
         "rotated digest must be lowercase hex (SHA-256)"
@@ -426,7 +420,6 @@ def test_signup_invite_token_is_single_use(client):
     )
     assert first.status_code == 302
 
-    # Different test client to drop the session set by first redemption.
     fresh = client.application.test_client()
     second = fresh.get(f"/signup/invite/{token}")
     assert second.status_code == 404
@@ -477,7 +470,6 @@ def test_signup_invite_weak_password_rejected(client):
         data={"password": "short", "accept_terms": "on"},
         follow_redirects=False,
     )
-    # validate_password rejects → form re-rendered, token still alive.
     assert resp.status_code == 200
 
     from database import session_factory
@@ -498,7 +490,6 @@ def test_signup_invite_collision_with_existing_user_redirects_to_login(client):
         invite_token=token,
         invited_at=_dt.datetime.utcnow(),
     )
-    # Pre-create the User out of band to simulate the collision.
     from database import session_factory
     from models import MembershipStatus, User, UserRole
 
@@ -544,9 +535,6 @@ def test_signup_invite_handles_integrity_error_at_flush(client, monkeypatch):
     fired = {"n": 0}
 
     def patched_flush(self, *args, **kwargs):
-        # Only intercept the flush that's about to persist *our* User.
-        # Any housekeeping flush from elsewhere falls through to the real
-        # implementation.
         for obj in self.new:
             if getattr(obj, "email", None) == "race-flush@example.com":
                 fired["n"] += 1
@@ -571,10 +559,6 @@ def test_signup_invite_handles_integrity_error_at_flush(client, monkeypatch):
         f"expected redirect to /login, got {resp.headers.get('Location')}"
     )
 
-    # Rollback must preserve the row's pre-redemption state — the token
-    # stays alive so the legitimate invitee can still complete signup
-    # after the race resolves, and user_id is not linked to the
-    # never-persisted User.
     row = _fetch_employee(employee_id)
     assert row.invite_token == _digest(token), (
         "rollback must preserve the invite digest"
@@ -595,7 +579,7 @@ def test_create_employee_rejects_duplicate_email_in_company(client, login):
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 302  # redirect with error flash
+    assert resp.status_code == 302
 
     from database import session_factory
     from models import CompanyEmployee
@@ -616,14 +600,12 @@ def test_create_employee_rejects_duplicate_email_in_company(client, login):
 def test_approve_clears_stale_invite_token_on_existing_row(client, login):
     pending_email = "approve-stale@test.local"
 
-    # Pre-create the admin-side invite row.
     employee_id = _ensure_employee(
         pending_email,
         invite_token="stale-token-hhhhhhhhhhhhhhhhhhhhhhhhhh",
         invited_at=_dt.datetime.utcnow(),
     )
 
-    # Create the matching pending User as if they signed up through SIRET.
     from database import session_factory
     from models import MembershipStatus, User, UserRole
 

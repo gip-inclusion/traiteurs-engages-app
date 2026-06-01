@@ -9,7 +9,6 @@ def _own_company_service_id(client, login):
         s = db.scalar(select(CompanyService).limit(1))
         if s:
             return str(s.id)
-        # No service yet — let alice create one through the UI
     resp = client.post("/client/team/services", data={"name": "Test Service"})
     assert resp.status_code in (200, 302)
     with client.application.app_context():
@@ -59,7 +58,6 @@ def test_quote_request_cannot_attach_to_other_company_service(client, login):
             select(Company).where(Company.name != "ACME Test").limit(1)
         )
         if bob_company is None:
-            # set up a second company
             other = Company(name="Other Co", siret="00000000000001")
             db.add(other)
             db.flush()
@@ -94,7 +92,6 @@ def test_quote_request_cannot_attach_to_other_company_service(client, login):
     )
     assert resp.status_code in (200, 302), f"unexpected status {resp.status_code}"
 
-    # The created QuoteRequest must NOT carry bob's service_id.
     from models import QuoteRequest
 
     with client.application.app_context():

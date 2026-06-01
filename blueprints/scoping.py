@@ -1,7 +1,3 @@
-# Every query for a resource owned by a client company or caterer MUST go
-# through these helpers so the ownership filter is never forgotten.
-#   client_admin → sees every demand/commande of the company
-#   client_user  → sees only the demands they created (and their orders)
 from flask import abort
 from sqlalchemy import select
 
@@ -19,16 +15,12 @@ from models import (
 
 
 def own_requests_filter(user):
-    # Returns None for non-client_user so callers can skip the filter
-    # without branching.
     if user.role == UserRole.client_user:
         return QuoteRequest.user_id == user.id
     return None
 
 
 def get_company_request(request_id, user, *, for_update: bool = False):
-    # for_update=True acquires a row-level lock — use on status-gated
-    # mutations to close the read-then-write race against admin actions.
     db = get_db()
     stmt = select(QuoteRequest).where(
         QuoteRequest.id == request_id,
@@ -46,8 +38,6 @@ def get_company_request(request_id, user, *, for_update: bool = False):
 
 
 def get_company_order(order_id, user, *, options=None):
-    # Scoped via the underlying QuoteRequest so client_user only sees
-    # orders flowing from their own demands.
     db = get_db()
     stmt = (
         select(Order)

@@ -14,7 +14,6 @@ from services.email import render_and_send_async
 
 
 def _hash_token(raw: str) -> str:
-    # Only the digest lives in the DB; a DB leak doesn't yield reusable tokens.
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -22,12 +21,10 @@ RESET_TOKEN_TTL = datetime.timedelta(hours=1)
 
 
 class ResetTokenInvalid(Exception):
-    """One opaque exception for unknown / used / expired so handlers
-    can't accidentally distinguish them to a brute-forcer."""
+    pass
 
 
 def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
-    # Callers MUST use raw_token in the link, never row.token (digest).
     raw = secrets.token_urlsafe(32)
     row = PasswordResetToken(
         user_id=user.id,
@@ -61,7 +58,6 @@ def revoke_all_sessions(db: Session, user: User) -> None:
 def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     if not raw_token:
         raise ResetTokenInvalid
-    # FOR UPDATE serializes concurrent redemption attempts.
     row = db.scalar(
         select(PasswordResetToken)
         .where(PasswordResetToken.token == _hash_token(raw_token))
@@ -91,7 +87,6 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     user.password_hash = bcrypt.hashpw(
         new_password.encode("utf-8"), bcrypt.gensalt()
     ).decode("utf-8")
-    # Bumping invalidates every existing session (see load_current_user).
     user.sessions_invalidated_at = now
     _invalidate_outstanding_tokens(db, user_id=user.id, now=now)
     db.flush()
@@ -99,9 +94,6 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
 
 
 def kick_off_reset(db: Session, *, email: str) -> None:
-    # Always returns None and the caller renders the same success page so
-    # account existence isn't leaked. Dummy bcrypt on the no-match path
-    # tracks the timing of the real path.
     user = db.scalar(select(User).where(User.email == (email or "").lower().strip()))
     blocked_membership = user is not None and user.membership_status in (
         MembershipStatus.pending,

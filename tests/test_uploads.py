@@ -117,7 +117,6 @@ def test_save_upload_local_success(upload_dir):
     assert url is not None
     assert url.startswith("/static/uploads/test/")
     assert url.endswith("_logo.png")
-    # Verify file actually written
     saved = list((upload_dir / "test").iterdir())
     assert len(saved) == 1
 

@@ -33,10 +33,10 @@ def _reset_password(email, plain="testpass"):
 @pytest.mark.parametrize(
     "user_email",
     [
-        "alice@test.local",  # client_admin
-        "bob@test.local",  # client_user
-        "cook@test.local",  # caterer
-        "admin@test.local",  # super_admin
+        "alice@test.local",
+        "bob@test.local",
+        "cook@test.local",
+        "admin@test.local",
     ],
 )
 def test_change_password_works_for_every_role(client, login, user_email):

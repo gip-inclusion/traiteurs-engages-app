@@ -26,8 +26,6 @@ ORDER_STATUS_TABS = {
 }
 
 
-# "invoiced" merges `invoicing` (Stripe in flight) + `invoiced` (issued);
-# the caterer experiences both as the same stage.
 _TAB_TO_STATUSES = {
     "upcoming": (OrderStatus.confirmed,),
     "delivered": (OrderStatus.delivered,),
@@ -117,9 +115,6 @@ def register(bp):
         try:
             order = workflow.mark_delivered(db, order_id=order_id, caterer=caterer)
         except workflow.OrderNotFound:
-            # OrderNotFound covers two cases: genuinely missing → 404, or
-            # already-past-confirmed replays (double-click, back+resubmit)
-            # → flash + redirect, not an error.
             existing = db.scalar(
                 select(Order)
                 .join(Quote, Order.quote_id == Quote.id)
@@ -130,9 +125,6 @@ def register(bp):
             flash("Cette commande a deja ete marquee comme livree.", "info")
             return redirect(url_for("caterer.order_detail", order_id=order_id))
 
-        # billing_enabled OFF = facturation manuelle pilotée par l'admin
-        # (/admin/orders/<id>/transition) ; aucune facture Stripe ne part
-        # même si le traiteur est onboardé sur Connect.
         if (
             settings.billing_enabled
             and caterer.stripe_account_id

@@ -108,7 +108,6 @@ def test_404_renders_french_template(client):
 def test_logout_clears_session(client, login):
     login("alice@test.local")
     assert client.get("/client/dashboard").status_code == 200
-    # VULN-18: logout is POST-only (CSRF + no remote logout via <img>).
     client.post("/logout")
     assert client.get("/client/dashboard", follow_redirects=False).status_code == 302
 

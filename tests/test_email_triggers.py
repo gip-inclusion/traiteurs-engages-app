@@ -51,8 +51,6 @@ def test_welcome_signup_client(app, session, captured_emails):
     assert call["to"] == alice.email
     assert "Bienvenue" in call["subject"]
     assert "/client/settings" in call["html"]
-    # Plaintext alt body must mention either the demande/devis context
-    # so a non-HTML mail client conveys the same intent.
     assert "devis" in call["text"].lower()
 
 
@@ -77,11 +75,7 @@ def test_welcome_signup_swallows_render_error(app, session, captured_emails):
 
     alice = _alice(session)
     with app.app_context():
-        # Pass an unknown role_kind — the template still renders (it
-        # falls through the elif chain to the generic CTA branch).
         email_triggers.welcome_signup(alice, role_kind="totally-bogus", cta_path="/x")
-    # Either the template handled it (1 captured) or the @_safe ate
-    # an exception (0 captured). Both outcomes must NOT raise here.
     assert len(captured_emails) in (0, 1)
 
 
@@ -177,7 +171,7 @@ def test_quote_received_skips_when_qrc_not_transmitted(app, session, captured_em
             QuoteRequestCaterer.caterer_id == caterer.id,
         )
     )
-    qrc.status = QRCStatus.responded  # not transmitted
+    qrc.status = QRCStatus.responded
     session.flush()
 
     with app.app_context():
@@ -268,7 +262,6 @@ def test_order_confirmed_emails_each_caterer_user(app, session, captured_emails)
     call = captured_emails[0]
     assert call["to"] == cat_user.email
     assert "accepté" in call["subject"] or "accepte" in call["subject"]
-    # Company name + reference visible in the body.
     assert "ACME Test" in call["html"]
     assert "/caterer/orders/" in call["html"]
 

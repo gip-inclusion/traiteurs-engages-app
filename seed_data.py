@@ -32,16 +32,12 @@ from models import (
     UserRole,
 )
 
-# Audit C-3: seeder fail-closes unless an explicit dev opt-in is present,
-# so a stray `scalingo run python seed_data.py` can't repopulate prod.
 _DEV_OPT_IN_MARKERS = ("FLASK_DEBUG", "SEED_FIXTURES_ALLOW")
 
 PASSWORD_HASH = bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode()
 
 
 def _refuse_in_production():
-    # Called first thing in seed() so importing this module stays side-effect
-    # free for tests.
     enabled = any(
         os.getenv(m, "").strip().lower() in ("1", "true", "yes")
         for m in _DEV_OPT_IN_MARKERS
@@ -56,9 +52,6 @@ def _refuse_in_production():
 
 
 def _ensure_admin_employee_rows(db):
-    # Idempotent backfill so client_admin / client_user accounts always have
-    # a matching CompanyEmployee row visible in /client/team — runs even on
-    # the heavy-seed early-return path so legacy DBs eventually heal.
     rows = db.scalars(
         select(User).where(
             User.role.in_([UserRole.client_admin, UserRole.client_user]),
@@ -77,7 +70,6 @@ def _ensure_admin_employee_rows(db):
             )
         )
         if existing:
-            # Link rows pre-created by the admin (same email) to the user.
             if existing.user_id != u.id:
                 existing.user_id = u.id
             continue

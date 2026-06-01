@@ -7,14 +7,12 @@ from models import Quote, QuoteLine
 
 CENT = Decimal("0.01")
 
-# Audit #10: legal FR VAT rates — anything else is a typo or ledger tampering.
 LEGAL_TVA_RATES: frozenset[Decimal] = frozenset(
     {Decimal("0"), Decimal("2.1"), Decimal("5.5"), Decimal("10"), Decimal("20")}
 )
 MAX_QUANTITY = Decimal("10000")
 MAX_UNIT_PRICE_HT = Decimal("100000")
 MAX_LINE_TOTAL_HT = Decimal("10000000")
-# Cap so the PDF renderer can't be fed a multi-MB description.
 MAX_DESCRIPTION_LEN = 1000
 
 
@@ -29,7 +27,6 @@ def _parse_finite_decimal(raw, field: str) -> Decimal:
 
 
 def lines_from_dicts(line_dicts: list[dict]) -> list[QuoteLine]:
-    # Callers catch ValueError and surface a form error.
     result: list[QuoteLine] = []
     for i, d in enumerate(line_dicts):
         quantity = _parse_finite_decimal(d.get("quantity", 0), f"line {i} quantity")
@@ -78,7 +75,6 @@ def line_to_dict(line: QuoteLine) -> dict:
 
 
 def generate_quote_reference(session, caterer):
-    # DEVIS-{prefix}-YYYY-NNN, sequential per caterer per year.
     year = datetime.date.today().year
     count = session.scalar(
         select(func.count(Quote.id))
@@ -93,7 +89,6 @@ def derive_invoice_reference(quote_reference):
 
 
 def build_pdf_preview(quote, qr, caterer) -> dict:
-    # Shared by the in-app modal and the PDF download so they stay aligned.
     line_dicts = [ln.as_dict() for ln in quote.lines]
     totals = calculate_quote_totals(
         line_dicts,
@@ -113,8 +108,6 @@ DEFAULT_COMMISSION_RATE = Decimal("0.05")
 
 
 def calculate_quote_totals(details, guest_count, commission_rate=None):
-    # VULN-44: pass caterer.commission_rate so per-caterer overrides take
-    # effect; 5% fallback covers tests and Caterer-less callers.
     if commission_rate is None:
         commission_rate = DEFAULT_COMMISSION_RATE
     else:
@@ -148,8 +141,6 @@ def calculate_quote_totals(details, guest_count, commission_rate=None):
 
     total_ttc = total_ht + total_tva
 
-    # Platform isn't a VAT collector yet — _tva keys stay in the return
-    # shape for downstream compatibility but are zero.
     platform_fee_ht = total_ht * commission_rate
     platform_fee_tva = Decimal("0")
     platform_fee_ttc = platform_fee_ht + platform_fee_tva

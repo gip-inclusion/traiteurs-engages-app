@@ -1,6 +1,3 @@
-# Audit C-3 follow-up: read-only check listing demo-seed accounts that
-# linger in the DB with the shared `password123` hash. Exit 0 = clean,
-# 1 = remediate (rotate or disable).
 from __future__ import annotations
 
 import re
@@ -16,7 +13,6 @@ _SEED_FILE = Path(__file__).resolve().parent.parent / "seed_data.py"
 
 
 def _seeded_emails() -> list[str]:
-    # Parse the seeder directly so the canonical list never drifts.
     source = _SEED_FILE.read_text(encoding="utf-8")
     return sorted(set(re.findall(r'email="([^"]+@[^"]+)"', source)))
 
