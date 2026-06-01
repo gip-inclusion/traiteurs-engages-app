@@ -209,7 +209,15 @@ def register(bp):
             return redirect(url_for("client.team"))
         employee.first_name = form.first_name.data.strip()
         employee.last_name = form.last_name.data.strip()
-        employee.email = form.email.data.strip().lower()
+        new_email = form.email.data.strip().lower()
+        # A pending invite is bound to the email at the moment the admin
+        # generated it. Letting the admin re-aim the link at a different
+        # address after the fact would silently rebind the (future) account
+        # to a different recipient — force a fresh /invite click instead.
+        if employee.user_id is None and new_email != (employee.email or "").lower():
+            employee.invite_token = None
+            employee.invited_at = None
+        employee.email = new_email
         employee.position = (form.position.data or "").strip() or None
         employee.service_id = own_service_id(db, user, form.service_id.data)
         db.commit()
