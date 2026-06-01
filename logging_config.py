@@ -181,10 +181,14 @@ LOGGING_CONFIG: dict = {
     "formatters": {
         "json": {
             "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": (
-                "%(asctime)s %(levelname)s %(name)s "
-                "%(trace_id)s %(span_id)s %(message)s"
-            ),
+            # trace_id / span_id / request_id are stamped on the record by
+            # ContextFilter and emitted via python-json-logger's extras path
+            # (merge_record_extra). We don't list them in the format string:
+            # the required-fields path inside python-json-logger 4.1 was
+            # observed to silently drop these specific keys in production
+            # (only the alias `request_id` from the extras path survived).
+            # Keeping the format string minimal sidesteps the issue.
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
             "rename_fields": {
                 "asctime": "ts",
                 "levelname": "level",
