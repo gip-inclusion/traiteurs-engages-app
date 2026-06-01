@@ -525,14 +525,16 @@ def signup_invite(token: str):
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
-    user = g.get("current_user")
-    if user is not None:
-        logger.info(
-            "logout", extra={"event": "logout", "user_id": str(user.id)}
-        )
+    user_id = session.get("user_id")
+    if user_id:
         db = get_db()
-        revoke_all_sessions(db, user)
-        db.commit()
+        user = db.scalar(select(User).where(User.id == user_id))
+        if user is not None:
+            logger.info(
+                "logout", extra={"event": "logout", "user_id": str(user.id)}
+            )
+            revoke_all_sessions(db, user)
+            db.commit()
     session.clear()
     return redirect(url_for("auth.login"))
 
