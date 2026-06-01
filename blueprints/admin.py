@@ -48,6 +48,7 @@ from services.notifications import (
     company_admin_user_ids,
     notify_users,
 )
+from services.password_reset import revoke_all_sessions
 from services.quotes import build_pdf_preview
 from blueprints._notifications import register as _register_notifications
 
@@ -346,6 +347,13 @@ def caterer_invalidate(caterer_id):
     if not caterer:
         abort(404)
     caterer.is_validated = False
+    # validated_caterer_required gates the business routes but profile /
+    # account / Stripe onboarding aren't gated by it. Force-logout staff so
+    # they can't keep mutating public content or Stripe state from a stale
+    # cookie after an admin decides they shouldn't operate anymore.
+    staff = db.scalars(select(User).where(User.caterer_id == caterer_id)).all()
+    for member in staff:
+        revoke_all_sessions(db, member)
     log_admin_action(
         db,
         g.current_user,
