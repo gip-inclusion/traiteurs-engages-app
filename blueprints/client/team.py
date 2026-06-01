@@ -18,6 +18,7 @@ from extensions import limiter
 from forms.client import EmployeeForm, ServiceForm
 from models import Company, CompanyEmployee, CompanyService, MembershipStatus, User
 from services.notifications import notify
+from services.password_reset import revoke_all_sessions
 
 # Invite expires this many days after invited_at; rejected on redemption.
 INVITE_TOKEN_TTL_DAYS = 7
@@ -227,6 +228,15 @@ def register(bp):
         if employee.user_id == user.id:
             flash("Vous ne pouvez pas vous retirer vous-même des effectifs.", "error")
             return redirect(url_for("client.team"))
+        # YWH-PGM43799-1: deleting the CompanyEmployee row alone leaves
+        # the linked User active, still rattached to the company, with
+        # live sessions and an open reset window. Detach + revoke first.
+        if employee.user_id:
+            target = db.get(User, employee.user_id)
+            if target is not None and target.company_id == user.company_id:
+                target.membership_status = MembershipStatus.rejected
+                target.company_id = None
+                revoke_all_sessions(db, target)
         db.delete(employee)
         db.commit()
         flash("Employe supprime.", "success")
