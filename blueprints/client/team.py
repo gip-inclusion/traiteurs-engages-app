@@ -351,6 +351,10 @@ def register(bp):
         db = get_db()
         target_user = get_pending_user(user_id, admin.company_id)
         target_user.membership_status = MembershipStatus.rejected
+        # rejected accounts can't /login anymore (auth gate), but an
+        # outstanding /forgot-password link or an open browser tab would
+        # still ride through — bump + invalidate to close both.
+        revoke_all_sessions(db, target_user)
         db.commit()
         flash("Membre rejete.", "info")
         return redirect(url_for("client.team"))
