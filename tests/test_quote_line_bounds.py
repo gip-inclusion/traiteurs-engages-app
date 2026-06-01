@@ -1,17 +1,3 @@
-"""Audit finding #10: quote line inputs must be bounded.
-
-`services/quotes.py::lines_from_dicts` runs every value through
-`Decimal(str(...))` with no bounds. Callers (notably the caterer quote
-editor) can pass:
-    - negative unit_price_ht           → Stripe will reject at invoice time
-    - quantity outside plausible range → silent data corruption
-    - tva_rate that is not a legal FR rate
-    - fields that are not numeric at all (NaN/inf)
-
-This test locks in the rule: such inputs must ValueError at parse time
-rather than silently flowing into the DB or Stripe.
-"""
-
 from decimal import Decimal
 
 import pytest
@@ -109,8 +95,6 @@ def test_valid_line_still_parses():
 
 
 def test_overlong_description_is_rejected():
-    """A multi-MB description would slow PDF rendering disproportionately
-    (audit M3) — bound the size at the parse layer."""
     from services.quotes import MAX_DESCRIPTION_LEN, lines_from_dicts
 
     with pytest.raises(ValueError):

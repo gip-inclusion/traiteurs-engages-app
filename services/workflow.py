@@ -1,6 +1,3 @@
-# Convention: `db` first, everything else kwargs. Aucune fonction ne
-# commit. Rejet métier = exception typée (sous-classe de WorkflowError).
-# Pas d'import Flask pour rester testable hors contexte HTTP.
 from __future__ import annotations
 
 import datetime
@@ -52,12 +49,11 @@ class QuoteExpired(WorkflowError):
 
 
 class QuoteRequestClosed(WorkflowError):
-    """3-first-responders rule a fermé ce traiteur (QRC closed)."""
+    pass
 
 
 class QuoteRequestNotOpen(WorkflowError):
-    """La demande elle-même est sortie de `sent_to_caterers` (distinct
-    de QuoteRequestClosed pour différencier le message utilisateur)."""
+    pass
 
 
 class OrderNotFound(WorkflowError):
@@ -72,7 +68,6 @@ def refuse_quote(
     user: User,
     reason: str | None,
 ) -> None:
-    # Si plus aucun devis n'est en `sent`, la demande passe en `quotes_refused`.
     qr = db.execute(
         select(QuoteRequest).where(
             QuoteRequest.id == request_id,
@@ -137,9 +132,6 @@ def accept_quote(
     quote_id: uuid.UUID,
     user: User,
 ) -> Order:
-    # Audit #5 garde-fous: only a `sent` non-expired quote can be accepted.
-    # VULN-41: FOR UPDATE serializes concurrent accept_quote so two clicks
-    # can't both create an Order; Order.quote_id UNIQUE is a backstop.
     qr = db.execute(
         select(QuoteRequest)
         .where(
@@ -151,8 +143,6 @@ def accept_quote(
     if not qr:
         raise RequestNotFound
 
-    # VULN-32: only qualified requests can be acted on; a draft with stray
-    # `sent` quotes would otherwise bypass approve_quote_request.
     if qr.status != QuoteRequestStatus.sent_to_caterers:
         raise QuoteNotAvailable
 
@@ -198,8 +188,6 @@ def accept_quote(
 
     qr.status = QuoteRequestStatus.completed
 
-    # Close losing QRCs so the UI shows « Clôturée » and submit_quote
-    # refuses late entries. `rejected` / `closed` are terminal — skip.
     losing_qrcs = (
         db.execute(
             select(QuoteRequestCaterer).where(
@@ -216,8 +204,6 @@ def accept_quote(
     for losing_qrc in losing_qrcs:
         losing_qrc.status = QRCStatus.closed
 
-    # Only notify the winner; "un autre traiteur a été choisi" mails to
-    # losers would be spammy and not critical for V1.
     notify_users(
         db,
         caterer_user_ids(db, accepted.caterer_id),
@@ -247,8 +233,6 @@ def approve_quote_request(
     *,
     request_id: uuid.UUID,
 ) -> list[QuoteRequestCaterer]:
-    # Fan-out to every is_validated caterer. Empty catalogue ⇒ stays
-    # pending_review (admin handler flashes a warning).
     qr = db.get(QuoteRequest, request_id)
     if not qr:
         raise RequestNotFound
@@ -270,8 +254,6 @@ def approve_quote_request(
     if targets:
         qr.status = QuoteRequestStatus.sent_to_caterers
 
-        # Group users by caterer_id in one query — avoids N+1 caterer_user_ids
-        # calls on each admin approval.
         target_ids = [c.id for c in targets]
         users_by_caterer: dict = {}
         for uid, cid in db.execute(
@@ -359,9 +341,6 @@ def submit_quote(
     quote_id: uuid.UUID,
     caterer: Caterer,
 ) -> Quote:
-    # Règle des 3 premiers répondants : rang 1/2/3 transmis ; le 3e ferme
-    # les QRC en `selected` ; la 4e soumission lève QuoteRequestClosed.
-    # FOR UPDATE sur la QR sérialise les répondants concurrents.
     qr = db.scalar(
         select(QuoteRequest).where(QuoteRequest.id == request_id).with_for_update()
     )
@@ -399,8 +378,6 @@ def submit_quote(
         .where(QuoteRequestCaterer.status == QRCStatus.transmitted_to_client)
     )
     if transmitted >= 3:
-        # Self-heal: caller is expected to db.commit() on QuoteRequestClosed
-        # so the state stays coherent for the next view.
         qrc.status = QRCStatus.closed
         raise QuoteRequestClosed
 
@@ -418,7 +395,6 @@ def submit_quote(
         for r in remaining:
             r.status = QRCStatus.closed
 
-    # Notify the requester for every transmission, not just the third.
     if qr.user_id is not None:
         notify(
             db,
@@ -452,7 +428,6 @@ def mark_delivered(
     order_id: uuid.UUID,
     caterer: Caterer,
 ) -> Order:
-    # Stripe invoicing trigger reste côté handler pour cette itération.
     order = db.scalar(
         select(Order)
         .join(Quote, Order.quote_id == Quote.id)

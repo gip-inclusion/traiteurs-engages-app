@@ -153,8 +153,6 @@ def test_submit_review_blocks_non_requester(session):
     from sqlalchemy import select
 
     order_id, _, alice = _seed_paid_order(session)
-    # Spawn a same-company colleague — alice's company is acme; reusing
-    # the seed lookup keeps this test orthogonal to conftest specifics.
     acme = session.scalar(select(Company).where(Company.siret == "12345678901234"))
     colleague = User(
         email=f"colleague-{uuid.uuid4()}@test.local",
@@ -218,16 +216,11 @@ def test_aggregate_for_caterer_with_no_reviews_returns_zero(session):
 def test_aggregate_averages_and_rounds_to_one_decimal(session):
     order_id, caterer, alice = _seed_paid_order(session)
 
-    # First review on the existing paid order.
     reviews_service.submit_review(
         session, order_id=order_id, viewer=alice, rating_raw="5", comment_raw=None
     )
-    # Spawn two more (caterer_id, order_id, requester) tuples — re-use
-    # the seed helper to keep the fixtures aligned.
     extra1, _, alice2 = _seed_paid_order(session)
     extra2, _, alice3 = _seed_paid_order(session)
-    # Force these new orders to point to the same caterer so the
-    # aggregate covers all three.
     from sqlalchemy import select
 
     for oid in (extra1, extra2):
@@ -245,7 +238,6 @@ def test_aggregate_averages_and_rounds_to_one_decimal(session):
 
     agg = reviews_service.aggregate_for_caterer(session, caterer.id)
     assert agg.count == 3
-    # (5 + 3 + 4) / 3 = 4.0
     assert float(agg.avg) == 4.0
 
 

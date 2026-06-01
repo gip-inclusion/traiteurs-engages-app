@@ -128,7 +128,6 @@ def test_compute_social_impact_only_paid_orders_count(session):
 
     impact = compute_social_impact(session, company_id=company.id)
 
-    # Seul le 400€ payé compte ; les autres statuts sont exclus.
     assert impact.total_ht == Decimal("400")
     assert impact.siae_ht == Decimal("400")
     assert impact.stpa_ht == Decimal("0")
@@ -167,15 +166,10 @@ def test_compute_social_impact_hours_use_lemarche_ratio(session):
     company = session.scalar(select(Company).where(Company.siret == "12345678901234"))
     caterer = _make_caterer(session, CatererStructureType.EI)
 
-    # 1000€ → round(1000/26) = 38, exactement ce que la plateforme
-    # affiche pour amount=1000 (cf. docstring du service).
     _seed_paid_order(session, caterer=caterer, amount_ht=Decimal("1000"))
     impact = compute_social_impact(session, company_id=company.id)
     assert impact.hours_financed == 38
 
-    # 500€ → round(500/26) = 19 (idem cas de référence du calculateur).
-    # On démarre une nouvelle agrégation côté DB : on retire l'order
-    # précédente pour ne pas additionner.
     session.execute(Order.__table__.delete())
     session.execute(Quote.__table__.delete())
     session.execute(QuoteRequest.__table__.delete())
@@ -207,24 +201,19 @@ def test_compute_social_impact_scopes_to_requester_when_set(session):
         requester_email="bob@test.local",
     )
 
-    # Sans scope (vue admin) : on voit les deux → 400.
     full = compute_social_impact(session, company_id=company.id)
     assert full.total_ht == Decimal("400")
 
-    # Scopé à Bob : seules ses 300 remontent.
     bob_only = compute_social_impact(
         session, company_id=company.id, requester_user_id=bob.id
     )
     assert bob_only.total_ht == Decimal("300")
 
-    # Scopé à Alice : seules ses 100 remontent.
     alice_only = compute_social_impact(
         session, company_id=company.id, requester_user_id=alice.id
     )
     assert alice_only.total_ht == Decimal("100")
 
-    # Garde-fou : Bob et Alice sont bien deux users distincts de la
-    # même entreprise — sinon le test ci-dessus serait trivialement vrai.
     assert alice.id != bob.id
     assert alice.company_id == bob.company_id == company.id
 
@@ -240,7 +229,6 @@ def test_client_dashboard_renders_impact_block(client, login):
     assert "structures d'insertion (SIAE)" in body
     assert "secteur prot" in body and "STPA" in body
     assert "Nombre d'heures financ" in body
-    # Mention obligatoire reproduite à l'identique depuis la consigne.
     assert (
         "Il s'agit d'une estimation bas" in body
         and "non repr" in body

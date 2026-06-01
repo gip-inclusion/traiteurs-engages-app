@@ -44,8 +44,6 @@ from services.quotes import (
 
 logger = logging.getLogger(__name__)
 
-# WeasyPrint is CPU-bound on layout; cap so a pathological quote can't
-# starve a worker. Typical quotes have 5–30 lines.
 _MAX_PDF_LINES = 500
 
 
@@ -64,10 +62,6 @@ def _parse_line_dicts(raw: str) -> list[dict]:
 
 
 def _derive_qrc_display_status(qr, caterer_id):
-    # Returns one of: new, sent, quotes_refused, quote_accepted, closed.
-    # `closed` comes from the QRC (3-first-responders rule in
-    # services.workflow.submit_quote); the other states come from the
-    # caterer's own Quote.
     qrc = next(
         (link for link in qr.caterers if link.caterer_id == caterer_id),
         None,
@@ -88,8 +82,6 @@ def _derive_qrc_display_status(qr, caterer_id):
     return "sent"
 
 
-# Tab keys mirror the codes _derive_qrc_display_status returns so the
-# handler can filter by equality (plus "all").
 REQUEST_STATUS_TABS = {
     "all": "Toutes",
     "new": "Nouvelles",
@@ -121,9 +113,6 @@ def register(bp):
             qr = qrc.quote_request
             _ = qr.company
             qrc.display_status = _derive_qrc_display_status(qr, caterer.id)
-        # Filter on the derived status (matches the visible badges), not
-        # on QRCStatus. Python-side filtering is fine — one caterer's QRC
-        # list stays small.
         if status_filter != "all":
             qrcs = [q for q in qrcs if q.display_status == status_filter]
         return render_template(
@@ -152,7 +141,6 @@ def register(bp):
             .where(Quote.caterer_id == caterer.id)
         )
         qrc.display_status = _derive_qrc_display_status(qr, caterer.id)
-        # Powers the "Historique avec ce client" card.
         previous_orders = db.scalars(
             select(Order)
             .join(Quote, Order.quote_id == Quote.id)
@@ -182,8 +170,6 @@ def register(bp):
     @role_required("caterer")
     @validated_caterer_required
     def request_reject(qr_id):
-        # Refused once the quote leaves draft — at that point the workflow
-        # is the client's call.
         caterer = g.current_user.caterer
         db = get_db()
         qrc = get_caterer_qrc(qr_id, caterer.id)
@@ -210,8 +196,6 @@ def register(bp):
         qrc = get_caterer_qrc(qr_id, caterer.id)
         qr = qrc.quote_request
         _ = qr.company
-        # Check QR status first so an awarded request shows the right
-        # message instead of the 3-responders one.
         if qr.status != QuoteRequestStatus.sent_to_caterers:
             flash(
                 "Cette demande est cloturee : elle n'accepte plus de devis.",
@@ -225,7 +209,6 @@ def register(bp):
                 "info",
             )
             return redirect(url_for("caterer.request_detail", qr_id=qr_id))
-        # Informational only — POST regenerates the real reference.
         preview_reference = generate_quote_reference(db, caterer)
         return render_template(
             "caterer/quotes/editor.html",
@@ -247,9 +230,6 @@ def register(bp):
         db = get_db()
         qrc = get_caterer_qrc(qr_id, caterer.id)
         qr = qrc.quote_request
-        # Redirect to edit instead of minting a parallel draft — previous
-        # shape silently created a second Quote per POST, polluting
-        # qr.quotes counters and confusing _derive_qrc_display_status.
         existing_draft = db.scalar(
             select(Quote).where(
                 Quote.quote_request_id == qr_id,
@@ -319,7 +299,6 @@ def register(bp):
             except workflow.QuoteNotFound:
                 abort(404)
             except workflow.QuoteRequestClosed:
-                # Persist the workflow's defensive qrc.status self-heal.
                 db.commit()
                 flash(
                     "Devis enregistre en brouillon. La demande a ete cloturee "
@@ -431,7 +410,6 @@ def register(bp):
             except workflow.QuoteNotFound:
                 abort(404)
             except workflow.QuoteRequestClosed:
-                # Persist the workflow's defensive qrc.status self-heal.
                 db.commit()
                 flash(
                     "Devis mis a jour en brouillon. La demande a ete cloturee "
@@ -463,7 +441,6 @@ def register(bp):
     @validated_caterer_required
     @limiter.limit("20 per minute")
     def quote_pdf(qr_id, q_id):
-        # Lazy: WeasyPrint pulls Cairo/Pango at import.
         from services.quote_pdf import render_quote_pdf
 
         caterer = g.current_user.caterer
@@ -519,8 +496,6 @@ def register(bp):
         except workflow.QuoteNotFound:
             abort(404)
         except workflow.QuoteRequestClosed:
-            # Persist the workflow's defensive self-heal of qrc.status
-            # if any (no-op when the function raised before mutating).
             db.commit()
             flash(
                 "La demande a ete cloturee : trois autres traiteurs ont deja "

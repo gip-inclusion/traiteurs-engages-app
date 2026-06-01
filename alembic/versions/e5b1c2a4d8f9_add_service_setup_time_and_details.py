@@ -1,26 +1,3 @@
-"""add_setup_time_details_and_nappes_livraison_flags
-
-Revision ID: e5b1c2a4d8f9
-Revises: d2e3f4a5b6c7
-Create Date: 2026-05-03 10:10:00.000000
-
-Step 6 of the wizard ("Services complémentaires") was reorganised in
-3 groups (Personnel / Matériel / Installation et mise en place) and
-two prestations were promoted from ghost-checkboxes (visible in the
-template, ignored by the form) to real persisted fields:
-  - `wants_nappes`      — BOOLEAN
-  - `wants_livraison`   — BOOLEAN
-
-Same migration also adds the install/setup details captured when the
-client ticks "Installation / mise en place" :
-  - `service_setup_time`    — TIME (UI-required when wants_setup is True,
-                              nullable in DB to keep legacy rows valid)
-  - `service_setup_details` — TEXT (optional précisions)
-
-Stacks on the local merge migration `d2e3f4a5b6c7` so it lives on the
-same chain as caterer_reviews / password_reset / event_times.
-"""
-
 from typing import Sequence, Union
 
 from alembic import op
@@ -28,11 +5,6 @@ import sqlalchemy as sa
 
 
 revision: str = "e5b1c2a4d8f9"
-# Originally parented d2e3f4a5b6c7 (the local-features merge migration).
-# That merge migration was dropped in the pr/* rebuild because its
-# forks are now individual migrations on main; repointing to
-# ff23d8dac807 (the event_times migration that lands just above it
-# in the linear chain).
 down_revision: Union[str, Sequence[str], None] = "ff23d8dac807"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

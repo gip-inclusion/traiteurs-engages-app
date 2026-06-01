@@ -1,19 +1,3 @@
-"""Tests pour `/admin/users` — gestion des comptes côté super_admin.
-
-UI = page liste unique, avec :
-* recherche libre `?q=` (email/prénom/nom)
-* sélecteur de rôle inline (POST `/users/<id>/role-change`)
-* bouton corbeille (POST `/users/<id>/delete`)
-
-Pas de page de détail dédiée — les actions destructrices se déclenchent
-directement depuis la table.
-
-Stratégie d'isolation : chaque test crée ses users via
-`_create_throwaway_user` (email suffixé d'un UUID) et nettoie en
-`finally`. Les 4 users seedés par `conftest._seed_users` restent
-intacts.
-"""
-
 from __future__ import annotations
 
 import datetime as _dt
@@ -48,8 +32,6 @@ def _create_throwaway_user(role, *, company_id=None, caterer_id=None):
 
 
 def _create_throwaway_caterer_user():
-    """Crée une Caterer + un User caterer rattaché. Retourne
-    (user_id, caterer_id) pour le cleanup."""
     from database import session_factory
     from models import Caterer, CatererStructureType, User, UserRole
 
@@ -81,10 +63,6 @@ def _create_throwaway_caterer_user():
 
 
 def _create_client_admin_with_company_and_self_employee():
-    """Reproduit le cas réel : un client_admin avec sa propre Company ET
-    un row CompanyEmployee qui le représente (créé à l'inscription).
-    C'est exactement la config qui bloquait la conversion à tort.
-    Retourne (user_id, company_id, employee_id)."""
     from database import session_factory
     from models import Company, CompanyEmployee, User, UserRole
 
@@ -210,11 +188,6 @@ def _random_prefix() -> str:
     return f"T{uuid.uuid4().hex[:5]}".upper()
 
 
-# ---------------------------------------------------------------------------
-# Role gate
-# ---------------------------------------------------------------------------
-
-
 def test_super_admin_can_list_users(client, login):
     login("admin@test.local")
     r = client.get("/admin/users")
@@ -236,11 +209,6 @@ def test_anonymous_is_bounced(client):
     assert r.status_code in (302, 401, 403)
 
 
-# ---------------------------------------------------------------------------
-# Liste — recherche
-# ---------------------------------------------------------------------------
-
-
 def test_list_search_by_email_substring(client, login):
     login("admin@test.local")
     r = client.get("/admin/users?q=alice")
@@ -250,24 +218,11 @@ def test_list_search_by_email_substring(client, login):
 
 
 def test_list_renders_select_for_mutable_users_and_badge_for_super_admin(client, login):
-    """La liste doit afficher un `<select name="role">` pour les
-    utilisateurs modifiables et un simple badge pour le super_admin
-    (rôle immuable)."""
     login("admin@test.local")
     r = client.get("/admin/users")
     assert r.status_code == 200
-    # alice (client_admin) doit avoir un sélecteur
     assert b'data-action="role-select"' in r.data
-    # admin (super_admin) doit avoir un badge texte, pas de sélecteur
-    # qui le ciblerait — pour aller vite on vérifie juste qu'au moins
-    # une option super_admin n'apparaît PAS dans le markup de la liste
-    # (cohérent avec l'absence d'option côté template).
     assert b'value="super_admin"' not in r.data
-
-
-# ---------------------------------------------------------------------------
-# Suppression
-# ---------------------------------------------------------------------------
 
 
 def test_delete_vierge_user_succeeds(client, login):
@@ -407,18 +362,7 @@ def test_delete_audit_logged(client, login):
             _cleanup_user(user_id)
 
 
-# ---------------------------------------------------------------------------
-# Tests unitaires du service (couvre les branches difficiles via HTTP)
-# ---------------------------------------------------------------------------
-
-
 def test_can_delete_blocks_user_with_orders(monkeypatch):
-    """Order.client_admin_id is a NOT NULL FK; without this guard the
-    HTTP route would crash with IntegrityError when deleting a
-    client_admin that has any order on file. Building a real Order chain
-    (Quote → QuoteRequest → Company …) is heavy, so we stub the metrics
-    instead — the test locks in that 'orders > 0' surfaces as business
-    history."""
     from database import session_factory
     from models import User
     from services import user_admin
@@ -462,14 +406,7 @@ def test_can_delete_last_super_admin_is_blocked():
         s.close()
 
 
-# ---------------------------------------------------------------------------
-# Changement de rôle — bascules sans infos supplémentaires
-# ---------------------------------------------------------------------------
-
-
 def test_role_change_client_admin_to_client_user_inline(client, login):
-    """Bascule entre 2 rôles de la même nature (client_*) : un simple
-    POST avec `role` suffit, pas besoin d'infos extra."""
     from database import session_factory
     from models import Company, UserRole
 
@@ -490,14 +427,9 @@ def test_role_change_client_admin_to_client_user_inline(client, login):
         assert r.status_code == 302, r.data
         u = _get_user(user_id)
         assert u.role == UserRole.client_user
-        assert u.company_id == company_id  # rattachement conservé
+        assert u.company_id == company_id
     finally:
         _cleanup_user(user_id)
-
-
-# ---------------------------------------------------------------------------
-# Changement de rôle — bascules avec création Caterer
-# ---------------------------------------------------------------------------
 
 
 def test_role_change_client_to_caterer_creates_caterer(client, login):
@@ -542,11 +474,6 @@ def test_role_change_client_to_caterer_creates_caterer(client, login):
 
 
 def test_role_change_client_admin_with_self_employee_to_caterer(client, login):
-    """Cas réel (« Marine ») : un client_admin avec sa Company et son
-    propre row CompanyEmployee. Avant le fix, le self-employee comptait
-    comme historique métier et bloquait la conversion. Désormais elle
-    doit réussir, et la Company orpheline + son row employé doivent être
-    nettoyés (sinon FK violation au delete de la Company)."""
     from models import UserRole
 
     user_id, company_id, employee_id = (
@@ -571,7 +498,6 @@ def test_role_change_client_admin_with_self_employee_to_caterer(client, login):
         assert u.caterer_id is not None
         assert u.company_id is None
         caterer_id_to_cleanup = u.caterer_id
-        # Company orpheline + row employé nettoyés
         assert not _company_exists(company_id)
         assert not _employee_exists(employee_id)
     finally:
@@ -581,9 +507,6 @@ def test_role_change_client_admin_with_self_employee_to_caterer(client, login):
 
 
 def test_delete_client_with_only_self_employee_succeeds(client, login):
-    """Un client dont le seul « historique » est son propre row employé
-    doit pouvoir être supprimé (avant le fix : bloqué à tort). La Company
-    orpheline et le row employé partent avec."""
     user_id, company_id, employee_id = (
         _create_client_admin_with_company_and_self_employee()
     )
@@ -607,11 +530,11 @@ def test_role_change_to_caterer_requires_inputs(client, login):
         login("admin@test.local")
         r = client.post(
             f"/admin/users/{user_id}/role-change",
-            data={"role": "caterer"},  # sans aucun input caterer
+            data={"role": "caterer"},
         )
         assert r.status_code == 302
         u = _get_user(user_id)
-        assert u.role == UserRole.client_user  # pas de bascule
+        assert u.role == UserRole.client_user
         assert u.caterer_id is None
     finally:
         _cleanup_user(user_id)
@@ -640,15 +563,7 @@ def test_role_change_to_caterer_rejects_bad_siret(client, login):
         _cleanup_user(user_id)
 
 
-# ---------------------------------------------------------------------------
-# Changement de rôle — bascule depuis caterer (création Company)
-# ---------------------------------------------------------------------------
-
-
 def test_role_change_caterer_to_client_rejects_duplicate_siret(client, login):
-    """Company.siret has unique=True. Without the pre-check the route
-    would 500 on db.commit() — the test locks in the friendly flash +
-    redirect instead, and asserts no partial mutation."""
     from models import UserRole
 
     user_id, caterer_id = _create_throwaway_caterer_user()
@@ -659,13 +574,12 @@ def test_role_change_caterer_to_client_rejects_duplicate_siret(client, login):
             data={
                 "role": "client_admin",
                 "company_name": "Doublon",
-                # Acme's SIRET — seeded in conftest, guaranteed to collide.
                 "company_siret": "12345678901234",
             },
         )
         assert r.status_code == 302
         u = _get_user(user_id)
-        assert u.role == UserRole.caterer  # bascule refused, state intact
+        assert u.role == UserRole.caterer
         assert u.caterer_id == caterer_id
         assert u.company_id is None
     finally:
@@ -709,13 +623,7 @@ def test_role_change_caterer_to_client_admin_creates_company(client, login):
         _cleanup_caterer(caterer_id)
 
 
-# ---------------------------------------------------------------------------
-# Garde-fous communs
-# ---------------------------------------------------------------------------
-
-
 def test_role_change_refuses_self(client, login):
-    """Le super_admin ne peut pas modifier son propre rôle."""
     from database import session_factory
     from models import User
 
@@ -734,11 +642,10 @@ def test_role_change_refuses_self(client, login):
     u = _get_user(admin_id)
     from models import UserRole
 
-    assert u.role == UserRole.super_admin  # immuable
+    assert u.role == UserRole.super_admin
 
 
 def test_role_change_refuses_super_admin_target(client, login):
-    """Un super_admin (autre que soi) ne peut pas voir son rôle changé."""
     from models import UserRole
 
     other_admin_id, _ = _create_throwaway_user(UserRole.super_admin)
@@ -757,9 +664,6 @@ def test_role_change_refuses_super_admin_target(client, login):
 
 
 def test_role_change_refuses_to_super_admin(client, login):
-    """Le sélecteur ne propose pas `super_admin` mais un attaquant
-    forgé pourrait POST `role=super_admin` directement. La route doit
-    refuser."""
     from models import UserRole
 
     user_id, _ = _create_throwaway_user(UserRole.client_user)
@@ -771,14 +675,12 @@ def test_role_change_refuses_to_super_admin(client, login):
         )
         assert r.status_code == 302
         u = _get_user(user_id)
-        assert u.role == UserRole.client_user  # pas de promotion
+        assert u.role == UserRole.client_user
     finally:
         _cleanup_user(user_id)
 
 
 def test_role_change_refuses_business_history_on_nature_change(client, login):
-    """Un user avec une QR ne peut pas voir son rôle basculer vers
-    `caterer` (laisserait la QR pointer sur un user sans Company)."""
     from database import session_factory
     from models import (
         Company,
@@ -825,7 +727,7 @@ def test_role_change_refuses_business_history_on_nature_change(client, login):
         )
         assert r.status_code == 302
         u = _get_user(user_id)
-        assert u.role == UserRole.client_user  # pas de bascule
+        assert u.role == UserRole.client_user
     finally:
         s = session_factory()
         try:

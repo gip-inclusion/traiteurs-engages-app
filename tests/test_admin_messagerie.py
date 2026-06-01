@@ -228,11 +228,6 @@ def test_admin_message_to_inactive_recipient_is_rejected(client, login):
 def test_participant_can_reply_to_an_admin_initiated_conversation(
     client, login, replier_email
 ):
-    """A client or caterer must be able to answer the platform admin.
-    The business-relationship gate (VULN-04) is skipped when the
-    recipient is a super_admin — otherwise the reply 403s with
-    'Destinataire non autorisé', since the admin belongs to no company
-    and no caterer."""
     from sqlalchemy import select
 
     from database import session_factory
@@ -242,8 +237,6 @@ def test_participant_can_reply_to_an_admin_initiated_conversation(
     try:
         admin_id = _user_id(s, "admin@test.local")
         replier_id = _user_id(s, replier_email)
-        # The admin opens the conversation; its first message carries no
-        # client-side order / quote-request context.
         tid = _seed_message(
             s,
             sender_id=admin_id,
@@ -261,7 +254,6 @@ def test_participant_can_reply_to_an_admin_initiated_conversation(
             json={"recipient_id": str(admin_id), "body": "Bonjour, oui ?"},
         )
         assert r.status_code == 201, r.data
-        # The reply must land in the SAME thread, not spawn a new one.
         assert r.get_json()["thread_id"] == str(tid)
 
         s = session_factory()
@@ -378,10 +370,6 @@ def test_admin_cannot_read_a_thread_it_does_not_participate_in_via_json_api(
 
 
 def test_client_cannot_address_a_non_support_super_admin(client, login):
-    """When `SUPPORT_USER_EMAILS` is set, only the listed admin inboxes
-    bypass the VULN-04 business-relationship gate. A second super_admin
-    that isn't on the list must still 403 if the sender has no order/QR
-    binding them — otherwise the env-level allowlist would be cosmetic."""
     import config
     from database import session_factory
     from models import User, UserRole
@@ -401,8 +389,6 @@ def test_client_cannot_address_a_non_support_super_admin(client, login):
     finally:
         s.close()
 
-    # Lock the allowlist to a single inbox that isn't the spare admin —
-    # mirrors a prod where `SUPPORT_USER_EMAILS=support@…` is set.
     original = config.SUPPORT_USER_EMAILS
     config.SUPPORT_USER_EMAILS = frozenset({"support@test.local"})
     try:

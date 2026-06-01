@@ -57,13 +57,10 @@ logger = logging.getLogger(__name__)
 
 
 def _no_store(response):
-    # Evicts the wizard response from bfcache so "back + resubmit" doesn't
-    # replay a stale form with checkboxes whose state was DOM-only.
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-# Default icon: `utensils`.
 _MEAL_TYPE_ICONS: dict[str, str] = {
     "petit_dejeuner": "coffee",
     "pause_gourmande": "cookie",
@@ -75,8 +72,6 @@ _MEAL_TYPE_ICONS: dict[str, str] = {
 
 
 def _resolve_target_caterer(db, raw_id):
-    # None means "treat as open demand" — only validated caterers can be
-    # targeted (matches the workflow gate).
     raw = (raw_id or "").strip()
     if not raw:
         return None
@@ -90,8 +85,6 @@ def _resolve_target_caterer(db, raw_id):
 
 
 def _caterer_capabilities(caterer):
-    # Wizard step-4 uses this to grey out régimes the caterer can't honor;
-    # None means open demand (no restriction).
     if caterer is None:
         return None
     return {
@@ -127,7 +120,6 @@ REQUEST_STATUS_TABS = {
     "closed": "Clôturées",
 }
 
-# Drafts excluded — the client can't see them.
 _QUOTE_RECEIVED_STATUSES = (
     QuoteStatus.sent,
     QuoteStatus.accepted,
@@ -135,22 +127,10 @@ _QUOTE_RECEIVED_STATUSES = (
     QuoteStatus.expired,
 )
 
-# Mirrors the caterer/requests.py cap; stops a long line list from
-# saturating the WeasyPrint worker.
 _MAX_PDF_LINES = 500
 
 
 def _derive_request_display_status(qr):
-    """Collapse QR.status + quote presence into a single client-facing code.
-
-    Returns one of: 'awaiting_quotes', 'quotes_received', 'completed',
-    'closed' (or 'cancelled', kept distinct so the row badge can stay
-    meaningful even though the "Clôturées" tab buckets them together).
-
-    The status_badge component already handles each of these strings
-    with a label and a colour, so the template can pass the result
-    straight through.
-    """
     if qr.status == QuoteRequestStatus.completed:
         return "completed"
     if qr.status == QuoteRequestStatus.cancelled:
@@ -162,7 +142,6 @@ def _derive_request_display_status(qr):
 
 
 def _request_quote_counts(qr):
-    # received excludes drafts; expected is 1 (targeted) or 3 (compare mode).
     received = sum(1 for q in qr.quotes if q.status in _QUOTE_RECEIVED_STATUSES)
     expected = 1 if not qr.is_compare_mode else 3
     return received, expected
@@ -195,7 +174,6 @@ def register(bp):
             qr.display_status = _derive_request_display_status(qr)
             qr.received_quotes, qr.expected_quotes = _request_quote_counts(qr)
 
-        # "closed" buckets cancelled + closed for the user; rows keep their badge.
         if status_filter == "closed":
             requests = [
                 r for r in requests if r.display_status in ("closed", "cancelled")
@@ -203,7 +181,6 @@ def register(bp):
         elif status_filter != "all":
             requests = [r for r in requests if r.display_status == status_filter]
 
-        # Python-side search — per-company volume is small (< 100 demands).
         if search_q:
 
             def _matches(qr):
@@ -249,12 +226,8 @@ def register(bp):
             .scalars()
             .all()
         )
-        # ?caterer_id=... ships the demand straight to one caterer and
-        # bypasses admin qualification fan-out.
         target_caterer = _resolve_target_caterer(db, request.args.get("caterer_id"))
 
-        # Targeted demand → filter step-1 radios to the caterer's published
-        # service_offerings; open demand → full MEAL_TYPE_LABELS list.
         restrict = (
             set(target_caterer.service_offerings or [])
             if target_caterer is not None
@@ -282,8 +255,6 @@ def register(bp):
         db = get_db()
         form = QuoteRequestForm()
 
-        # Idempotency token from the GET: a back+resubmit short-circuits to
-        # the existing detail page. Scoped to company_id against cross-tenant clash.
         form_token = (request.form.get("form_token") or "").strip()
         if form_token:
             try:
@@ -303,8 +274,6 @@ def register(bp):
                     url_for("client.request_detail", request_id=existing.id)
                 )
 
-        # Resolve before validate_on_submit so validate_meal_type can gate
-        # a tampered POST that names an offering the caterer doesn't publish.
         target_caterer = _resolve_target_caterer(db, form.target_caterer_id.data)
         if target_caterer is not None:
             form.target_offerings = set(target_caterer.service_offerings or [])
@@ -344,11 +313,9 @@ def register(bp):
         service_id = own_service_id(db, user, form.company_service_id.data)
 
         if target_caterer is not None:
-            # Targeted demand: skip admin review, QRC starts at 'selected'.
             status = QuoteRequestStatus.sent_to_caterers
             is_compare = False
         else:
-            # 3-devis flow: admin curates, status sits in pending_review.
             is_compare = bool(form.is_compare_mode.data)
             status = (
                 QuoteRequestStatus.pending_review
@@ -365,13 +332,11 @@ def register(bp):
         )
         apply_quote_request_form(qr, form)
         apply_drinks(qr, request.form)
-        # Override what apply_quote_request_form wrote — the resolved flow wins.
         qr.is_compare_mode = is_compare
         db.add(qr)
         try:
             db.flush()
         except IntegrityError:
-            # Race: a concurrent POST grabbed the same token first.
             db.rollback()
             existing = db.scalar(
                 select(QuoteRequest).where(
@@ -392,8 +357,6 @@ def register(bp):
                     status=QRCStatus.selected,
                 )
             )
-            # The 3-devis flow notifies via workflow.approve_quote_request;
-            # targeted demands skip that path, so notify the caterer here.
             notify_users(
                 db,
                 caterer_user_ids(db, target_caterer.id),
@@ -405,7 +368,6 @@ def register(bp):
                 related_entity_id=qr.id,
             )
         elif qr.status == QuoteRequestStatus.pending_review:
-            # Demande arrive en file de qualification — alerter les super_admins.
             notify_users(
                 db,
                 super_admin_user_ids(db),
@@ -431,7 +393,6 @@ def register(bp):
         db = get_db()
         qr = get_company_request(request_id, user)
 
-        # Order by id so qrcs[0] is deterministic (no created_at column).
         qrcs = (
             db.execute(
                 select(QuoteRequestCaterer)
@@ -442,8 +403,6 @@ def register(bp):
             .all()
         )
 
-        # Allow-list (not `!= draft`) so a future status doesn't leak by
-        # default — drafts are caterer-only WIP and leak pricing if shown.
         quotes = (
             db.execute(
                 select(Quote)
@@ -455,17 +414,13 @@ def register(bp):
             .all()
         )
 
-        # Mirror the list page so header and rows share the same badge.
         qr.display_status = _derive_request_display_status(qr)
 
-        # Pre-resolve `caterer.users[0]` once per quote/qrc so the template
-        # doesn't repeat it across button + modal loops.
         for quote in quotes:
             quote.caterer_user = quote.caterer.users[0] if quote.caterer.users else None
         for qrc in qrcs:
             qrc.caterer_user = qrc.caterer.users[0] if qrc.caterer.users else None
 
-        # pdf_preview stays None for empty quotes (modal opener checks).
         for quote in quotes:
             if quote.lines:
                 line_dicts = [ln.as_dict() for ln in quote.lines]
@@ -512,8 +467,6 @@ def register(bp):
     @bp.route("/requests/<uuid:request_id>/accept-quote", methods=["POST"])
     @limiter.limit("10 per minute")
     @login_required
-    # Any company member can accept; cross-company access is blocked by
-    # the company_id scope inside workflow.accept_quote.
     @role_required("client_admin", "client_user")
     def accept_quote(request_id):
         form = QuoteAcceptForm()
@@ -582,13 +535,10 @@ def register(bp):
     @role_required("client_admin", "client_user")
     @limiter.limit("20 per minute")
     def quote_pdf(request_id, q_id):
-        # Lazy: WeasyPrint pulls Cairo/Pango at import.
         from services.quote_pdf import render_quote_pdf
 
         user = g.current_user
         db = get_db()
-        # get_company_request applies company_id + own_requests_filter
-        # so a client_user can't fetch a colleague's QR.
         qr = get_company_request(request_id, user)
         quote = db.scalar(
             select(Quote)
@@ -602,7 +552,6 @@ def register(bp):
             )
             .where(Quote.id == q_id)
             .where(Quote.quote_request_id == qr.id)
-            # Allow-list (drafts are caterer-only WIP).
             .where(Quote.status.in_(_QUOTE_RECEIVED_STATUSES))
         )
         if not quote:
@@ -669,8 +618,6 @@ def register(bp):
         user = g.current_user
 
         db = get_db()
-        # Row-level lock against an admin Approve racing this edit and
-        # fanning out QRCs on the OLD payload.
         qr = get_company_request(request_id, user, for_update=True)
         if qr.status not in (
             QuoteRequestStatus.draft,
@@ -709,8 +656,6 @@ def register(bp):
         apply_quote_request_form(qr, form)
         apply_drinks(qr, request.form)
 
-        # VULN-36: editing a request that is already awaiting admin qualification
-        # MUST keep it in pending_review.
         if qr.status == QuoteRequestStatus.pending_review:
             qr.status = QuoteRequestStatus.pending_review
         else:
@@ -728,13 +673,9 @@ def register(bp):
     @bp.route("/search")
     @limiter.limit("60 per minute")
     def search():
-        # Public catalogue (no @login_required). Per-IP rate limit because
-        # the per-blueprint default only catches POSTs — 60/min throttles
-        # bulk scrapers without slowing paginated browsing.
         page = request.args.get("page", 1, type=int)
         q = request.args.get("q", "").strip()
         location = request.args.get("location", "").strip()
-        # Legacy single-value `structure_type` kept for query-string compat.
         structure_groups = request.args.getlist("structure_type_multi")
         structure_type = request.args.get("structure_type", "")
         dietary = request.args.getlist("dietary")
@@ -773,7 +714,6 @@ def register(bp):
             )
 
         if location:
-            # Loose match: typing "75" finds Paris, "Paris" finds the city.
             loc_pattern = f"%{location}%"
             stmt = stmt.where(
                 or_(
@@ -782,16 +722,12 @@ def register(bp):
                 )
             )
 
-        # JSON-array-contains via LIKE on the encoded text stays portable
-        # across Postgres and SQLite. Quote the slug so "petit_dejeuner"
-        # doesn't match a hypothetical "petit_dejeuner_xyz".
         for slug in service_offerings:
             if slug in SERVICE_OFFERING_LABELS:
                 stmt = stmt.where(
                     cast(Caterer.service_offerings, String).ilike(f'%"{slug}"%')
                 )
 
-        # Per-band OR — caterer [min, max] must overlap the band's bounds.
         if budget_bands:
             band_clauses = []
             for band in budget_bands:
@@ -835,7 +771,6 @@ def register(bp):
             .limit(ITEMS_PER_PAGE)
         ).all()
 
-        # Single-query hydration for the row badges ("★ 4.3 · 12 avis").
         from services.reviews import (
             ReviewAggregate,
             aggregates_for_caterers,
@@ -871,8 +806,6 @@ def register(bp):
     @bp.route("/caterers/<uuid:caterer_id>")
     @limiter.limit("60 per minute")
     def caterer_detail(caterer_id):
-        # Public fiche (no @login_required). Per-IP rate limit because
-        # the per-blueprint default only catches POSTs.
         db = get_db()
         caterer = db.get(Caterer, caterer_id)
         if not caterer or not caterer.is_validated:

@@ -28,7 +28,6 @@ def _to_cents(amount: Decimal) -> int:
 
 @dataclass(frozen=True)
 class InvoiceAmounts:
-    # Invariant: amount_to_caterer_cents + application_fee_cents == invoice_total_cents.
     invoice_total_cents: int
     application_fee_cents: int
     amount_to_caterer_cents: int
@@ -40,9 +39,6 @@ def split_invoice_amounts(
     fee_ht: Decimal,
     fee_tva: Decimal,
 ) -> InvoiceAmounts:
-    # Audit #7: invoice_total = total_ttc + fee_ttc; transfer to the caterer
-    # is invoice_total − application_fee = total_ttc. The prior shape
-    # recorded total_ttc − fee_ttc, double-deducting the fee.
     fee_ttc_cents = _to_cents(fee_ht) + _to_cents(fee_tva)
     total_ttc_cents = _to_cents(total_ttc)
     invoice_total_cents = total_ttc_cents + fee_ttc_cents
@@ -53,7 +49,6 @@ def split_invoice_amounts(
     )
 
 
-# Pinned: bump deliberately after testing each Stripe API release.
 STRIPE_API_VERSION = "2024-12-18.acacia"
 
 if config.STRIPE_SECRET_KEY:
@@ -90,8 +85,6 @@ def create_account_link(account_id: str, refresh_url: str, return_url: str) -> s
 
 
 def get_account(account_id: str) -> dict[str, bool]:
-    # StripeObject overrides __getattr__, so `.get(...)` raises; use
-    # attribute access with getattr fallback instead.
     account = stripe.Account.retrieve(account_id)
     return {
         "charges_enabled": bool(getattr(account, "charges_enabled", False)),
@@ -114,8 +107,6 @@ def get_or_create_customer(session, user) -> str:
 
 
 def _create_or_get_tax_rate(percentage: Decimal, description: str) -> str:
-    # Query Stripe instead of an in-process cache; the previous cache
-    # produced duplicate TaxRates on every worker restart.
     pct_str = str(percentage)
     existing = stripe.TaxRate.list(active=True, limit=100)
     for rate in existing.auto_paging_iter():
@@ -242,8 +233,6 @@ def create_invoice_for_order(session, order: Order) -> dict[str, Any]:
 
     total_ht = totals["total_ht"]
     total_tva = totals["total_tva"]
-    # Single-rate weighted average; None on zero base. Mixed-rate quotes
-    # need a richer model later.
     avg_tva_rate = (
         (total_tva / total_ht).quantize(Decimal("0.0001")) if total_ht else None
     )
@@ -261,7 +250,6 @@ def create_invoice_for_order(session, order: Order) -> dict[str, Any]:
     )
     session.add(invoice_record)
 
-    # invoice_number from Postgres SEQUENCE, no app-side max()+1 race.
     commission_client = CommissionInvoice(
         order_id=order.id,
         party="client",
@@ -298,8 +286,6 @@ def create_invoice_for_order(session, order: Order) -> dict[str, Any]:
 
 
 def verify_webhook_signature(payload: bytes | str, sig_header: str, secret: str):
-    # Audit Vuln 5: SDK enforces a 300s timestamp tolerance, closing the
-    # replay-window the hand-rolled HMAC parser lacked.
     try:
         return stripe.Webhook.construct_event(payload, sig_header, secret)
     except stripe.error.SignatureVerificationError as exc:

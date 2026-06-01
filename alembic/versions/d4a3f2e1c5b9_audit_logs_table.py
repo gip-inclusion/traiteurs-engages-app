@@ -1,14 +1,3 @@
-"""audit_logs table
-
-Revision ID: d4a3f2e1c5b9
-Revises: c0ffee0fea7
-Create Date: 2026-04-28
-
-Append-only journal of sensitive admin actions (caterer validation,
-quote-request qualification, etc.). Written by services.audit.log_admin_action.
-Application code never updates or deletes rows in this table.
-"""
-
 from typing import Sequence, Union
 
 import sqlalchemy as sa

@@ -10,9 +10,6 @@ from services.password_reset import revoke_all_sessions
 
 
 def apply_profile_form(db, user, form) -> str | None:
-    # Retourne un message d'erreur à flasher ou None. Le caller commit.
-    # Changer l'email exige `current_password` correct (re-auth contre un
-    # vol de session) et l'absence de collision avec un autre compte.
     first_name = (form.first_name.data or "").strip()
     last_name = (form.last_name.data or "").strip()
     new_email = (form.email.data or "").strip().lower()
@@ -22,8 +19,6 @@ def apply_profile_form(db, user, form) -> str | None:
     user.first_name = first_name
     user.last_name = last_name
 
-    # Casse-insensible : un email historique en casse mixte ne doit pas
-    # déclencher une re-auth fantôme + un audit log parasite.
     if new_email == (user.email or "").lower():
         return None
 
@@ -39,17 +34,12 @@ def apply_profile_form(db, user, form) -> str | None:
             "e-mail nécessite une ré-authentification."
         )
 
-    # Pré-check : évite l'IntegrityError → 500 ; message neutre pour ne
-    # pas laisser un attaquant itérer sur des adresses cibles.
     collision = db.scalar(
         select(User.id).where(User.email == new_email, User.id != user.id)
     )
     if collision:
         return "Cette adresse e-mail ne peut pas être utilisée pour ce compte."
 
-    # Audit sans snapshoter l'email : éviterait une zone d'effacement
-    # parallèle pour le RGPD ; actor_id + actor_email + target_id + IP/UA
-    # suffisent pour la forensique.
     user.email = new_email
     revoke_all_sessions(db, user)
     log_admin_action(

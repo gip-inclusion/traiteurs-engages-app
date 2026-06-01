@@ -1,19 +1,7 @@
-"""Tests for the dev-only account switcher.
-
-The conftest sets up the app with whatever ENABLE_DEMO_SEED is in the
-container env. In docker compose dev, that's "1", so the blueprint is
-registered. We assert two contracts:
-
-  1. The endpoint is gated by an email allowlist — even when registered,
-     it must refuse arbitrary emails (audit defence in depth).
-  2. The endpoint requires POST + CSRF (handled at the framework level).
-"""
-
 import os
 import pytest
 
 
-# Skip the whole module if the flag isn't set — we can't test what isn't there.
 pytestmark = pytest.mark.skipif(
     os.getenv("ENABLE_DEMO_SEED") != "1",
     reason="dev switcher only registered when ENABLE_DEMO_SEED=1",

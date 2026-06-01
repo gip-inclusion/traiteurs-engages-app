@@ -1,21 +1,3 @@
-"""Audit finding #4: pending-membership client_users must not access
-role-protected pages until an admin approves them.
-
-Background:
-    auth.py signup: when a user signs up with the SIRET of an existing
-    company, a `client_user` is created with membership_status=pending.
-    No session is issued at signup time, and /login refuses pending
-    users upfront. Defense in depth: app.py.load_current_user wipes
-    g.current_user for any session pointing at a pending/rejected user
-    so a stale cookie can't bypass the login check.
-
-    Without this gate, a pending user could read /client/dashboard,
-    /client/orders, /client/messages, etc — leaking the company's
-    quote requests, orders, internal DMs and budget figures to anyone
-    who can sign up with the company's (public) SIRET.
-"""
-
-
 def _seed_pending_user():
     import bcrypt
     from sqlalchemy import select
@@ -62,8 +44,6 @@ def test_pending_user_login_refused(client):
 def test_pending_user_cannot_access_client_dashboard(client):
     email, password = _seed_pending_user()
 
-    # The login attempt above should not have persisted a session, but we
-    # follow it through to be sure protected pages still bounce.
     client.post("/login", data={"email": email, "password": password})
 
     resp = client.get("/client/dashboard", follow_redirects=False)

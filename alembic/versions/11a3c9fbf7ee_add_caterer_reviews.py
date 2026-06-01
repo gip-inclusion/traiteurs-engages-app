@@ -1,35 +1,16 @@
-"""add_caterer_reviews
-
-Revision ID: 11a3c9fbf7ee
-Revises: a1f3e9c2b4d6
-Create Date: 2026-05-02 11:26:22.980689
-
-"""
-
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
 revision: str = "11a3c9fbf7ee"
-# Originally created against a4d62b15c899; repointed to the now-current
-# head a1f3e9c2b4d6 (users.password_changed_at, merged via
-# feat/email-infra-brevo) to keep the alembic chain linear.
 down_revision: Union[str, Sequence[str], None] = "a1f3e9c2b4d6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create the `caterer_reviews` table.
-
-    Constraints :
-      * UNIQUE on order_id — one review per paid order.
-      * CHECK rating BETWEEN 1 AND 5 — DB-level guard so even direct
-        SQL writes can't poison the average.
-    """
     op.create_table(
         "caterer_reviews",
         sa.Column("id", sa.Uuid(), primary_key=True),

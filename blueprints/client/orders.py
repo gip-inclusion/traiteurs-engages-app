@@ -29,9 +29,6 @@ ORDER_STATUS_TABS = {
 
 
 def _derive_order_display_status(order):
-    # Returns upcoming / to_pay / paid. confirmed/delivered/invoicing/
-    # disputed all surface as "à venir" — nothing actionable until the
-    # invoice is ready.
     if order.status == OrderStatus.paid:
         return "paid"
     if order.status == OrderStatus.invoiced:
@@ -129,7 +126,6 @@ def register(bp):
     @login_required
     @role_required("client_admin", "client_user")
     def order_review(order_id):
-        # Eligibility gate lives in services.reviews.submit_review.
         user = g.current_user
         db = get_db()
         try:
@@ -144,7 +140,6 @@ def register(bp):
             flash("Merci de selectionner une note entre 1 et 5 etoiles.", "error")
             return redirect(url_for("client.order_detail", order_id=order_id))
         except reviews_service.OrderNotReviewable:
-            # Don't leak which gate failed — just 404.
             abort(404)
         db.commit()
         flash("Merci, votre avis a bien ete enregistre.", "success")

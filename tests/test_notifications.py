@@ -43,7 +43,6 @@ def _seed_pending_qr(s, *, n_validated_caterers=2):
         )
         s.add(c)
         s.flush()
-        # Each caterer has one user, so notifications can land somewhere.
         s.add(
             User(
                 email=f"caterer-{c.id.hex[:8]}@test.local",
@@ -71,7 +70,6 @@ def _seed_pending_qr(s, *, n_validated_caterers=2):
     return qr.id, [c.id for c in caterers]
 
 
-# Late import of UserRole to keep the helper above readable.
 from models import UserRole  # noqa: E402
 
 
@@ -100,24 +98,16 @@ def test_notifications_modal_escapes_body_against_xss(client, login):
 
     try:
         login("alice@test.local")
-        # The bell modal is injected on every authenticated page via the
-        # `_inject_notifications` context processor — any page works.
         r = client.get("/client/dashboard", follow_redirects=False)
         assert r.status_code == 200
         body = r.data.decode("utf-8", errors="replace")
-        # Raw script tag must NOT appear unescaped.
         assert payload not in body, (
             "XSS regression: <script> rendered as raw HTML in the bell modal"
         )
-        # The escaped form (or some character entity equivalent) MUST appear,
-        # proving the body went through the template at all.
         assert "&lt;script&gt;" in body or "&lt;/script&gt;" in body, (
             "expected the notification body to render escaped"
         )
     finally:
-        # Clean up: the notification we created persists across tests in
-        # this DB session. Drop it so /client/dashboard requests in later
-        # tests don't render an unexpected extra row.
         s = session_factory()
         try:
             s.execute(
@@ -150,8 +140,6 @@ def seed_alice_unread():
         s = session_factory()
         try:
             alice = s.scalar(select(User).where(User.email == "alice@test.local"))
-            # Wipe first so the badge count reflects exactly `n`, not
-            # whatever leaked from prior tests sharing the DB.
             s.execute(
                 Notification.__table__.delete().where(Notification.user_id == alice.id)
             )
@@ -190,14 +178,8 @@ def seed_alice_unread():
 @pytest.mark.parametrize(
     "n, expect_hidden, expect_text",
     [
-        # Zero unread: badge present in HTML but carries `hidden` —
-        # the previous shape left this to a JS fetch, so a single
-        # fetch hiccup blinded users to fresh notifs.
         (0, True, "0"),
-        # Typical case: badge visible with the literal count.
         (3, False, "3"),
-        # Clamp: past 99 we collapse to "99+" so the pill width stays
-        # bounded on a 36px button. `data-count` keeps the truth.
         (120, False, "99+"),
     ],
     ids=["zero", "three", "clamped"],
@@ -230,8 +212,6 @@ def test_approve_notifies_every_validated_caterer(session):
     from services import workflow
 
     qr_id, my_caterer_ids = _seed_pending_qr(session, n_validated_caterers=3)
-    # The conftest also seeds a Test Caterer that's already validated;
-    # the fallback set is "every validated caterer", so include those.
     all_validated_ids = set(
         session.scalars(select(Caterer.id).where(Caterer.is_validated.is_(True)))
     )
@@ -250,9 +230,6 @@ def test_approve_notifies_every_validated_caterer(session):
             )
         )
     )
-    # My seeded caterers must be in the notified set. The full equality
-    # check covers any other validated caterers that might have leaked
-    # from prior tests in the run.
     for cid in my_caterer_ids:
         assert cid in all_validated_ids
     assert notified_caterer_user_ids == expected_user_ids, (
@@ -296,8 +273,6 @@ def test_approve_skips_notifications_when_no_validated_caterer(session):
     from models import Caterer, Notification, QuoteRequest, QuoteRequestStatus
     from services import workflow
 
-    # Invalidate every existing validated caterer so the fallback set is
-    # also empty.
     for c in session.scalars(
         select(Caterer).where(Caterer.is_validated.is_(True))
     ).all():
@@ -551,8 +526,6 @@ def test_visiting_request_detail_also_clears_child_quote_notifs(client, login):
         qr_id = _seed_qr_for_alice(s)
         alice = s.scalar(select(User).where(User.email == "alice@test.local"))
         caterer = s.scalar(select(Caterer).where(Caterer.siret == "98765432109876"))
-        # A quote needs a parent QRC row (QuoteRequestCaterer) for the
-        # request_detail page to render its listing block.
         qrc = QuoteRequestCaterer(
             quote_request_id=qr_id,
             caterer_id=caterer.id,
@@ -645,9 +618,6 @@ def test_post_to_detail_does_not_mark_read(client, login):
 
     try:
         login("alice@test.local")
-        # POST to a non-existent endpoint just to assert the hook's
-        # GET-only contract — we only care that the notif stays unread,
-        # not what the POST returns.
         client.post(f"/client/requests/{qr_id}", data={})
 
         s = session_factory()

@@ -1,5 +1,3 @@
-# Schema migrations are owned by Alembic; this only bootstraps the first
-# super-admin and is a no-op when ADMIN_INITIAL_PASSWORD is unset.
 import datetime
 
 import bcrypt

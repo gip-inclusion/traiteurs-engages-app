@@ -75,10 +75,6 @@ def register(bp):
                 db.add(caterer)
                 caterer.stripe_charges_enabled = status["charges_enabled"]
                 caterer.stripe_payouts_enabled = status["payouts_enabled"]
-                # Only consider the onboarding "completed" the first time
-                # both flags flip true — re-visits to /stripe/complete are
-                # idempotent in DB, and logging only on the transition
-                # avoids one event per refresh.
                 first_completion = (
                     status["charges_enabled"]
                     and status["payouts_enabled"]

@@ -102,10 +102,8 @@ def test_unknown_status_falls_back_to_all(client, login):
         qr_id = _seed_request(QuoteRequestStatus.pending_review)
         created.add(qr_id)
         login("admin@test.local")
-        # Garbage value that's nowhere near any status enum.
         r = client.get("/admin/requests?status=' OR 1=1")
         assert r.status_code == 200, r.data
-        # The seeded pending row should be visible under the fallback "all".
         assert str(qr_id)[:8].encode() in r.data or b"pending" in r.data.lower(), (
             "fallback to 'all' should still surface every status"
         )
@@ -114,7 +112,6 @@ def test_unknown_status_falls_back_to_all(client, login):
 
 
 def test_approved_tab_is_addressable(client, login):
-    """Audit follow-up: `approved` used to be missing from the tabs."""
     from models import QuoteRequestStatus
 
     created: set[uuid.UUID] = set()
@@ -135,12 +132,9 @@ def test_pagination_caps_each_page_at_25_rows(client, login):
     from models import QuoteRequestStatus
 
     baseline = _count_by_status(QuoteRequestStatus.completed)
-    # Seed enough so that baseline+seeded > 25 even if other tests
-    # left some rows behind. 30 is the original review request and
-    # also generous against drift.
     seeded = 30
     total = baseline + seeded
-    expected_pages = (total + 24) // 25  # ceil(total / 25)
+    expected_pages = (total + 24) // 25
     created: set[uuid.UUID] = set()
     try:
         for _ in range(seeded):
@@ -149,7 +143,6 @@ def test_pagination_caps_each_page_at_25_rows(client, login):
         login("admin@test.local")
         r = client.get("/admin/requests?status=completed")
         assert r.status_code == 200, r.data
-        # Header announces "<total> demandes · page 1 / <expected_pages>".
         assert f"{total} demande".encode() in r.data, (
             f"header must announce the actual completed count "
             f"({total}); body excerpt={r.data[:400]!r}"
@@ -171,7 +164,6 @@ def test_page_out_of_range_clamps_to_last(client, login):
         login("admin@test.local")
         r = client.get("/admin/requests?status=completed&page=99")
         assert r.status_code == 200, r.data
-        # The "Aucune demande" empty state must NOT show — the row exists.
         assert b"Aucune demande" not in r.data, (
             "out-of-range page should clamp to the last page, not render empty"
         )

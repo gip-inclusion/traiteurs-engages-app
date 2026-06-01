@@ -255,7 +255,6 @@ def test_accept_quote_closes_losing_caterers_qrc(session):
     qr_id, caterers, quote_ids = _seed_qr_with_qrcs_and_drafts(
         session, n_caterers=3, prior_transmitted=1
     )
-    # caterer[0] is the only one who submitted — make its quote acceptable.
     winning_quote = session.scalar(select(Quote).where(Quote.id == quote_ids[0]))
     winning_quote.status = QuoteStatus.sent
     winning_quote.valid_until = _dt.date.today() + _dt.timedelta(days=7)
@@ -441,7 +440,6 @@ def test_submit_quote_third_responder_closes_others(session):
         n_caterers=4,
         prior_transmitted=2,
     )
-    # Le 3e caterer (index 2) est encore en `selected` ; il soumet.
     workflow.submit_quote(
         session, request_id=qr_id, quote_id=qids[2], caterer=caterers[2]
     )
@@ -483,7 +481,6 @@ def test_submit_quote_when_qrc_closed_raises(session):
     qr_id, caterers, qids = _seed_qr_with_qrcs_and_drafts(
         session, n_caterers=4, prior_transmitted=2
     )
-    # Le 3e soumet, ce qui ferme automatiquement le 4e.
     workflow.submit_quote(
         session, request_id=qr_id, quote_id=qids[2], caterer=caterers[2]
     )
@@ -594,7 +591,6 @@ def test_concurrent_submit_only_one_becomes_rank_3(app):
         finally:
             check.close()
     finally:
-        # Cleanup : ce test commit, donc on doit nettoyer manuellement.
         cleanup = session_factory()
         try:
             cleanup.execute(delete(Quote).where(Quote.quote_request_id == qr_id))

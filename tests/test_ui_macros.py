@@ -23,7 +23,7 @@ def test_back_button_with_href(app):
     )
     assert 'href="/admin/dashboard"' in out
     assert "Tableau de bord" in out
-    assert "history-back" not in out  # uses <a> not <button>
+    assert "history-back" not in out
 
 
 def test_info_chip_with_label(app):
@@ -44,7 +44,6 @@ def test_info_chip_without_label(app):
         '{{ info_chip(icon="calendar", value="12 mars") }}',
     )
     assert "12 mars" in out
-    # Label paragraph should not be rendered when label arg is None
     assert "font-size:10px" not in out
 
 
@@ -60,9 +59,9 @@ def test_contact_card_caterer_full(app):
     assert "TRAITEUR" in out
     assert "ESAT Saveurs" in out
     assert "Jean Dupont" in out
-    assert "JD" in out  # initials
+    assert "JD" in out
     assert 'href="/client/messages"' in out
-    assert "chef-hat" in out  # fallback icon variant
+    assert "chef-hat" in out
 
 
 def test_contact_card_client_no_logo(app):
@@ -74,8 +73,7 @@ def test_contact_card_client_no_logo(app):
     )
     assert "CLIENT" in out
     assert "Acme Solutions" in out
-    assert "building-2" in out  # client fallback icon
-    # No message button when contact_user_id is None
+    assert "building-2" in out
     assert "Envoyer un message" not in out
 
 
@@ -99,7 +97,7 @@ def test_confirm_dialog_default_variant(app):
         'message="Cette action est definitive.", action_url="/x") }}',
     )
     assert 'id="del-modal"' in out
-    assert "help-circle" in out  # default variant icon
+    assert "help-circle" in out
     assert "csrf_token" in out
     assert 'action="/x"' in out
 
@@ -111,5 +109,5 @@ def test_confirm_dialog_destructive_variant(app):
         '{{ confirm_dialog(id="dz", title="Supprimer ?", message="...", '
         'action_url="/x", destructive=True) }}',
     )
-    assert "alert-triangle" in out  # danger variant icon
-    assert "#DC2626" in out  # danger color tokens inline
+    assert "alert-triangle" in out
+    assert "#DC2626" in out

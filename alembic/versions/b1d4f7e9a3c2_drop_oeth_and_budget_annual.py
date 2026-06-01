@@ -1,10 +1,3 @@
-"""drop oeth_eligible and budget_annual from companies
-
-Revision ID: b1d4f7e9a3c2
-Revises: e5b1c2a4d8f9
-Create Date: 2026-05-07
-"""
-
 from typing import Sequence, Union
 
 import sqlalchemy as sa

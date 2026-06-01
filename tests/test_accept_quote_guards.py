@@ -1,16 +1,3 @@
-"""Audit finding #5: accept_quote must refuse draft/refused/expired quotes.
-
-Background:
-    POST /client/requests/<id>/accept-quote only scopes by company_id and
-    by the quote belonging to the request. It does NOT enforce
-        Quote.status == sent
-    nor
-        Quote.valid_until >= today
-    So a client (or a pending attacker pre-fix #4) could "accept" a
-    caterer's draft, refused, or long-expired quote — creating an Order
-    the caterer never committed to.
-"""
-
 import datetime as _dt
 
 

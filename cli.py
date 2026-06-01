@@ -50,8 +50,6 @@ def create_admin(email: str, first_name: str, last_name: str):
 
         password = _read_password_twice()
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        # Stamp so the session-invalidation tripwire (load_current_user) has
-        # a snapshot to compare against on the first password rotation.
         now = datetime.datetime.utcnow()
 
         session.add(
@@ -165,9 +163,6 @@ def _legacy_url_to_paths(url: str) -> tuple[str, str, str]:
     help="Print every file processed (default: only summary + errors).",
 )
 def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
-    # Idempotent: scans Caterer.logo_url + Caterer.photos, uploads any
-    # remaining /static/uploads/* to S3, rewrites the URL, and prunes dead
-    # filesystem refs. Lazy import: boto3 is heavy.
     from botocore.exceptions import BotoCoreError, ClientError
 
     from config import settings

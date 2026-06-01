@@ -42,8 +42,6 @@ def test_cli_reset_password_bumps_session_revocation_epoch(app):
     )
 
     runner = app.test_cli_runner()
-    # `_read_password_twice` prompts twice + validates policy; supply a
-    # policy-compliant value on both lines.
     new_pw = "ReplacedNow1234!"
     result = runner.invoke(reset_password, [email], input=f"{new_pw}\n{new_pw}\n")
     assert result.exit_code == 0, f"CLI failed: {result.output}\n{result.exception}"
@@ -65,7 +63,6 @@ def test_cli_create_admin_stamps_session_revocation_epoch(app):
     from models import User
 
     email = "h5-fresh@test.local"
-    # Wipe any leftover from a prior run.
     s = session_factory()
     try:
         existing = s.scalar(select(User).where(User.email == email))
@@ -160,9 +157,6 @@ def test_logout_invalidates_replayed_cookie_server_side(app):
             s.close()
 
 
-# H-2 — the three inactive-account flashes must collapse to one
-
-
 def _seed_user_in_state(*, email: str, is_active: bool, membership):
     import bcrypt
     from sqlalchemy import select
@@ -215,9 +209,6 @@ def _extract_flash_block(html: str) -> str:
 
 
 def test_login_flash_identical_for_all_inactive_states(client):
-    """Three independently-inactive accounts (disabled / pending /
-    rejected) must produce the same flash markup at login time. The
-    audit's CWE-204 oracle is exactly this difference being readable."""
     from models import MembershipStatus
 
     cases = [
@@ -244,8 +235,6 @@ def test_login_flash_identical_for_all_inactive_states(client):
                 _extract_flash_block(r.data.decode("utf-8", errors="replace"))
             )
 
-        # All three must be byte-identical. If a future refactor reintroduces
-        # any state-specific copy this assertion goes red.
         assert flashes[0] == flashes[1] == flashes[2], (
             "login flash MUST be identical across inactive states; got distinct "
             "payloads:\n - disabled:\n"

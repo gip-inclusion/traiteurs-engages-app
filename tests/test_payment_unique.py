@@ -1,14 +1,3 @@
-"""Audit finding #6: Payment.stripe_invoice_id must be UNIQUE.
-
-Without this constraint, concurrent order_deliver requests can both pass
-the `status==confirmed` gate and each insert a Payment row pointing at
-the same Stripe invoice — the webhook handler then mutates only one of
-them, leaving the other stuck at `pending` forever.
-
-This test exercises the DB-level constraint directly: a second insert
-with the same stripe_invoice_id must raise IntegrityError.
-"""
-
 import pytest
 
 

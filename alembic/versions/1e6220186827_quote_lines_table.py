@@ -1,10 +1,3 @@
-"""quote_lines table + backfill from Quote.details.lines
-
-Revision ID: 1e6220186827
-Revises: 8b9c44e016c3
-Create Date: 2026-04-24 14:18:23
-"""
-
 import uuid
 from decimal import Decimal
 from typing import Sequence, Union
@@ -35,7 +28,6 @@ def upgrade() -> None:
         sa.Index("ix_quote_lines_quote_id", "quote_id"),
     )
 
-    # Backfill: each existing Quote with details.lines becomes quote_lines rows.
     bind = op.get_bind()
     quotes = bind.execute(
         sa.text("SELECT id, details FROM quotes WHERE details IS NOT NULL")

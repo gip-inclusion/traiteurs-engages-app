@@ -1,10 +1,3 @@
-"""drop valorisable_agefiph from quotes and invoices
-
-Revision ID: c9e8d7a4f1b2
-Revises: b1d4f7e9a3c2
-Create Date: 2026-05-07
-"""
-
 from typing import Sequence, Union
 
 import sqlalchemy as sa

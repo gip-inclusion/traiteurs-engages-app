@@ -1,15 +1,3 @@
-"""add invite_token to company_employees
-
-Stores the single-use signup token an admin generates for a collaborator
-via /client/team. The collaborator then redeems it on /signup/invite/<token>
-to attach to the company without going through the SIRET pending-approval
-flow. Token expires 7 days after invited_at; cleared on redemption.
-
-Revision ID: b3e84f217a5d
-Revises: a4d62b15c899
-Create Date: 2026-05-01
-"""
-
 from typing import Sequence, Union
 
 import sqlalchemy as sa
