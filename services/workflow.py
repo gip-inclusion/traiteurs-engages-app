@@ -12,6 +12,7 @@ from models import (
     OrderStatus,
     QRCStatus,
     Quote,
+    QuoteLine,
     QuoteRequest,
     QuoteRequestCaterer,
     QuoteRequestStatus,
@@ -369,6 +370,27 @@ def submit_quote(
     if not qrc:
         raise QuoteNotFound
 
+    if quote.supersedes_id is not None:
+        old = db.get(Quote, quote.supersedes_id)
+
+        if old is None or old.status != QuoteStatus.sent:
+            raise QuoteNotAvailable
+        old.status = QuoteStatus.superseded
+        quote.status = QuoteStatus.sent
+        qrc.responded_at = datetime.datetime.utcnow()
+        if qr.user_id is not None:
+            notify(
+                db,
+                user_id=qr.user_id,
+                type="quote_received",
+                title="Devis révisé reçu",
+                body=f"{caterer.name} vient de vous envoyer un devis révisé.",
+                related_entity_type="quote",
+                related_entity_id=quote.id,
+            )
+        db.flush()
+        return quote
+
     if qrc.status == QRCStatus.closed:
         raise QuoteRequestClosed
 
@@ -420,6 +442,73 @@ def submit_quote(
         },
     )
     return quote
+
+
+def start_quote_revision(
+    db,
+    *,
+    request_id: uuid.UUID,
+    quote_id: uuid.UUID,
+    caterer: Caterer,
+) -> Quote:
+    qr = db.scalar(
+        select(QuoteRequest).where(QuoteRequest.id == request_id).with_for_update()
+    )
+    if qr is None:
+        raise RequestNotFound
+    if qr.status != QuoteRequestStatus.sent_to_caterers:
+        raise QuoteRequestNotOpen
+
+    source = db.scalar(
+        select(Quote).where(
+            Quote.id == quote_id,
+            Quote.caterer_id == caterer.id,
+            Quote.quote_request_id == request_id,
+            Quote.status == QuoteStatus.sent,
+        )
+    )
+    if source is None:
+        raise QuoteNotFound
+
+    existing = db.scalar(
+        select(Quote).where(
+            Quote.supersedes_id == source.id,
+            Quote.status == QuoteStatus.draft,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    from services.quotes import revision_reference
+
+    revision = Quote(
+        quote_request_id=source.quote_request_id,
+        caterer_id=source.caterer_id,
+        reference=revision_reference(source.reference, source.version + 1),
+        total_amount_ht=source.total_amount_ht,
+        amount_per_person=source.amount_per_person,
+        notes=source.notes,
+        valid_until=source.valid_until,
+        status=QuoteStatus.draft,
+        version=source.version + 1,
+        supersedes_id=source.id,
+    )
+    db.add(revision)
+    db.flush()
+    for line in source.lines:
+        db.add(
+            QuoteLine(
+                quote_id=revision.id,
+                position=line.position,
+                section=line.section,
+                description=line.description,
+                quantity=line.quantity,
+                unit_price_ht=line.unit_price_ht,
+                tva_rate=line.tva_rate,
+            )
+        )
+    db.flush()
+    return revision
 
 
 def mark_delivered(

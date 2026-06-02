@@ -330,6 +330,20 @@
           </button>
         </div>
 
+        {# « Modifier mon devis » : uniquement sur un devis ENVOYÉ (pas
+           encore accepté ni refusé). Ouvre un brouillon de révision
+           pré-rempli (DEVIS-…-V2) via caterer.quote_revise. #}
+        {% if qrc.display_status == 'sent' %}
+        <form method="POST" action="{{ url_for('caterer.quote_revise', qr_id=qr.id, q_id=existing_quote.id) }}" class="mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+                  class="flex items-center justify-center gap-2 w-full rounded-full text-sm font-bold px-4 py-3 bg-white border-2 border-navy text-navy hover:opacity-80 transition-opacity">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
+            Modifier mon devis
+          </button>
+        </form>
+        {% endif %}
+
         {% if qrc.display_status == 'quotes_refused' and existing_quote.refusal_reason %}
         <div class="p-4 rounded-lg" style="background-color:var(--c-danger-soft);">
           <p class="text-sm font-bold mb-1" style="color:var(--c-danger);">Motif du refus</p>

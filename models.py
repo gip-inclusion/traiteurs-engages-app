@@ -83,6 +83,8 @@ class QuoteStatus(str, Enum):
     refused = "refused"
     expired = "expired"
 
+    superseded = "superseded"
+
 
 class OrderStatus(str, Enum):
     confirmed = "confirmed"
@@ -421,6 +423,11 @@ class Quote(Base):
     valid_until: Mapped[datetime.date | None] = mapped_column(Date)
     status: Mapped[QuoteStatus] = mapped_column(String(20), default=QuoteStatus.draft)
     refusal_reason: Mapped[str | None] = mapped_column(Text)
+
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("quotes.id"), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
@@ -431,6 +438,9 @@ class Quote(Base):
     quote_request: Mapped[QuoteRequest] = relationship(back_populates="quotes")
     caterer: Mapped[Caterer] = relationship(back_populates="quotes")
     order: Mapped["Order | None"] = relationship(back_populates="quote")
+    supersedes: Mapped["Quote | None"] = relationship(
+        remote_side="Quote.id", foreign_keys=[supersedes_id]
+    )
     lines: Mapped[list["QuoteLine"]] = relationship(
         back_populates="quote",
         cascade="all, delete-orphan",

@@ -9,6 +9,11 @@
 
 <div class="text-right mb-6">
   <h3 class="font-display font-bold text-lg text-text">DEVIS N° {{ quote.reference }}</h3>
+  {% if quote.supersedes %}
+  <p class="text-xs italic text-mute mt-1">
+    Ce devis annule et remplace le devis n°{{ quote.supersedes.reference }} du {{ quote.supersedes.created_at.strftime('%d/%m/%Y') }}.
+  </p>
+  {% endif %}
 </div>
 
 

@@ -1,4 +1,5 @@
 import datetime
+import re
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import extract, func, select
@@ -80,8 +81,14 @@ def generate_quote_reference(session, caterer):
         select(func.count(Quote.id))
         .where(Quote.caterer_id == caterer.id)
         .where(extract("year", Quote.created_at) == year)
+        .where(Quote.version == 1)
     )
     return f"DEVIS-{caterer.invoice_prefix}-{year}-{count + 1:03d}"
+
+
+def revision_reference(base_reference: str, version: int) -> str:
+    base = re.sub(r"-V\d+$", "", base_reference)
+    return f"{base}-V{version}"
 
 
 def derive_invoice_reference(quote_reference):
