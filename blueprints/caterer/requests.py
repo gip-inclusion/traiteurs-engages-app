@@ -466,6 +466,14 @@ def register(bp):
                     "info",
                 )
                 return redirect(url_for("caterer.request_detail", qr_id=qr_id))
+            except workflow.QuoteNotAvailable:
+                db.commit()
+                flash(
+                    "Revision impossible : le devis initial a ete refuse "
+                    "par le client entre temps. Vous ne pouvez plus l'envoyer.",
+                    "info",
+                )
+                return redirect(url_for("caterer.request_detail", qr_id=qr_id))
             from services import email_triggers
 
             email_triggers.quote_received(db, quote=quote, caterer=caterer)

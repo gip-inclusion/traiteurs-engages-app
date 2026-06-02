@@ -353,8 +353,13 @@ def submit_quote(
     # l'ancien devis `superseded` et on notifie le client de la révision.
     if quote.supersedes_id is not None:
         old = db.get(Quote, quote.supersedes_id)
-        if old is not None and old.status == QuoteStatus.sent:
-            old.status = QuoteStatus.superseded
+        # Le devis source doit toujours être `sent`. S'il a été refusé
+        # (ou accepté, etc.) entre l'ouverture du brouillon et la
+        # soumission, on bloque : pas d'envoi d'une révision sur un
+        # devis refusé (décision produit, évite des A/R de statuts).
+        if old is None or old.status != QuoteStatus.sent:
+            raise QuoteNotAvailable
+        old.status = QuoteStatus.superseded
         quote.status = QuoteStatus.sent
         qrc.responded_at = datetime.datetime.utcnow()
         if qr.user_id is not None:

@@ -245,6 +245,28 @@ def test_superseded_quote_not_revisable_but_active_version_is(session):
     assert v3.supersedes_id == v2.id
 
 
+def test_submitting_revision_refuses_when_source_was_refused(session):
+    """Race : le client refuse V1 pendant que le traiteur prépare V2.
+    À l'envoi, on bloque (décision produit) — pas d'A/R de statuts."""
+    qr_id, caterer, v1_id = _seed_sent_quote(session)
+    v2 = workflow.start_quote_revision(
+        session, request_id=qr_id, quote_id=v1_id, caterer=caterer
+    )
+    session.flush()
+    v1 = session.get(Quote, v1_id)
+    v1.status = QuoteStatus.refused
+    session.flush()
+
+    with pytest.raises(workflow.QuoteNotAvailable):
+        workflow.submit_quote(
+            session, request_id=qr_id, quote_id=v2.id, caterer=caterer
+        )
+    session.refresh(v1)
+    session.refresh(v2)
+    assert v1.status == QuoteStatus.refused
+    assert v2.status == QuoteStatus.draft
+
+
 def test_revision_allowed_even_when_three_already_transmitted(session):
     """Le traiteur qui révise fait partie des 3 répondants : la règle
     des 3 ne doit PAS le bloquer (pas de QuoteRequestClosed) et son QRC
