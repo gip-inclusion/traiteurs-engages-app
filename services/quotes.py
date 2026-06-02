@@ -87,12 +87,6 @@ def generate_quote_reference(session, caterer):
 
 
 def revision_reference(base_reference: str, version: int) -> str:
-    """Référence d'une révision : on repart de la base (en retirant un
-    éventuel suffixe `-V{n}` déjà présent) et on ajoute `-V{version}`.
-
-    `DEVIS-X-2026-014`     + v2 → `DEVIS-X-2026-014-V2`
-    `DEVIS-X-2026-014-V2`  + v3 → `DEVIS-X-2026-014-V3`
-    """
     base = re.sub(r"-V\d+$", "", base_reference)
     return f"{base}-V{version}"
 

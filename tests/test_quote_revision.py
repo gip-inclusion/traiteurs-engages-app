@@ -1,12 +1,3 @@
-"""Tests de la révision de devis (« DEVIS-…-V2 »).
-
-Flux : un traiteur a un devis ENVOYÉ (`sent`) ; il le révise. Une copie
-brouillon est créée (`start_quote_revision`), éditée puis envoyée
-(`submit_quote`, qui détecte `supersedes_id`). L'ancien devis bascule
-`superseded`, la révision devient `sent`, et le traiteur conserve son
-slot (la règle des 3 répondants n'est pas réappliquée).
-"""
-
 import datetime as _dt
 import uuid
 from decimal import Decimal
@@ -44,13 +35,6 @@ def session(app):
 
 
 def _seed_sent_quote(s, *, prior_transmitted: int = 1):
-    """QR ouverte + un traiteur « à nous » dont le QRC est
-    `transmitted_to_client` et le devis `sent` (avec 1 ligne).
-
-    `prior_transmitted` = nombre TOTAL de traiteurs ayant transmis, le
-    nôtre compris. À 3, on est en pleine règle des 3 répondants —
-    pratique pour vérifier que la révision n'est pas bloquée.
-    Retourne (qr_id, notre_caterer, notre_quote_id)."""
     acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
     alice = s.scalar(select(User).where(User.email == "alice@test.local"))
     qr = QuoteRequest(
@@ -66,7 +50,6 @@ def _seed_sent_quote(s, *, prior_transmitted: int = 1):
     s.add(qr)
     s.flush()
 
-    # Traiteurs "remplisseurs" déjà transmis (pour saturer la règle des 3).
     for i in range(max(0, prior_transmitted - 1)):
         c = Caterer(
             name=f"Filler {i} {uuid.uuid4().hex[:6]}",
@@ -141,22 +124,12 @@ def _seed_sent_quote(s, *, prior_transmitted: int = 1):
     return qr.id, caterer, quote.id
 
 
-# ---------------------------------------------------------------------------
-# Helper de référence
-# ---------------------------------------------------------------------------
-
-
 def test_revision_reference_appends_version():
     assert revision_reference("DEVIS-X-2026-014", 2) == "DEVIS-X-2026-014-V2"
 
 
 def test_revision_reference_replaces_existing_suffix():
     assert revision_reference("DEVIS-X-2026-014-V2", 3) == "DEVIS-X-2026-014-V3"
-
-
-# ---------------------------------------------------------------------------
-# start_quote_revision
-# ---------------------------------------------------------------------------
 
 
 def test_start_revision_creates_prefilled_draft(session):
@@ -168,7 +141,7 @@ def test_start_revision_creates_prefilled_draft(session):
     assert rev.version == 2
     assert rev.supersedes_id == quote_id
     assert rev.reference.endswith("-V2")
-    # Champs copiés depuis l'original
+
     assert rev.notes == "Devis initial"
     assert rev.total_amount_ht == Decimal("250")
     assert len(rev.lines) == 1
@@ -176,7 +149,6 @@ def test_start_revision_creates_prefilled_draft(session):
 
 
 def test_start_revision_is_idempotent(session):
-    """Deux clics « Modifier mon devis » ne créent qu'un brouillon."""
     qr_id, caterer, quote_id = _seed_sent_quote(session)
     rev1 = workflow.start_quote_revision(
         session, request_id=qr_id, quote_id=quote_id, caterer=caterer
@@ -189,7 +161,6 @@ def test_start_revision_is_idempotent(session):
 
 
 def test_start_revision_refuses_non_sent_quote(session):
-    """On ne révise qu'un devis ENVOYÉ — un brouillon n'est pas révisable."""
     qr_id, caterer, quote_id = _seed_sent_quote(session)
     q = session.get(Quote, quote_id)
     q.status = QuoteStatus.draft
@@ -198,11 +169,6 @@ def test_start_revision_refuses_non_sent_quote(session):
         workflow.start_quote_revision(
             session, request_id=qr_id, quote_id=quote_id, caterer=caterer
         )
-
-
-# ---------------------------------------------------------------------------
-# submit_quote sur une révision
-# ---------------------------------------------------------------------------
 
 
 def test_submitting_revision_supersedes_old_quote(session):
@@ -220,10 +186,6 @@ def test_submitting_revision_supersedes_old_quote(session):
 
 
 def test_superseded_quote_not_revisable_but_active_version_is(session):
-    """Après une 1re révision (V1→V2 envoyée), V1 est `superseded` et ne
-    doit plus être révisable (sinon le bouton « Modifier » qui pointe
-    dessus renvoyait un 404). La version active (V2) reste révisable
-    → V3. Capture le bug de sélection du devis côté détail traiteur."""
     qr_id, caterer, v1_id = _seed_sent_quote(session)
     v2 = workflow.start_quote_revision(
         session, request_id=qr_id, quote_id=v1_id, caterer=caterer
@@ -246,8 +208,6 @@ def test_superseded_quote_not_revisable_but_active_version_is(session):
 
 
 def test_submitting_revision_refuses_when_source_was_refused(session):
-    """Race : le client refuse V1 pendant que le traiteur prépare V2.
-    À l'envoi, on bloque (décision produit) — pas d'A/R de statuts."""
     qr_id, caterer, v1_id = _seed_sent_quote(session)
     v2 = workflow.start_quote_revision(
         session, request_id=qr_id, quote_id=v1_id, caterer=caterer
@@ -268,15 +228,12 @@ def test_submitting_revision_refuses_when_source_was_refused(session):
 
 
 def test_revision_allowed_even_when_three_already_transmitted(session):
-    """Le traiteur qui révise fait partie des 3 répondants : la règle
-    des 3 ne doit PAS le bloquer (pas de QuoteRequestClosed) et son QRC
-    reste `transmitted_to_client`."""
     qr_id, caterer, quote_id = _seed_sent_quote(session, prior_transmitted=3)
     rev = workflow.start_quote_revision(
         session, request_id=qr_id, quote_id=quote_id, caterer=caterer
     )
     session.flush()
-    # Ne doit pas lever QuoteRequestClosed
+
     workflow.submit_quote(session, request_id=qr_id, quote_id=rev.id, caterer=caterer)
     qrc = session.scalar(
         select(QuoteRequestCaterer).where(

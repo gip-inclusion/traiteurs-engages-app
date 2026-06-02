@@ -82,9 +82,7 @@ class QuoteStatus(str, Enum):
     accepted = "accepted"
     refused = "refused"
     expired = "expired"
-    # Devis remplacé par une version révisée (cf. Quote.supersedes_id).
-    # L'ancien devis garde sa trace mais n'est plus actionnable côté
-    # client (« annule et remplace »).
+
     superseded = "superseded"
 
 
@@ -425,10 +423,7 @@ class Quote(Base):
     valid_until: Mapped[datetime.date | None] = mapped_column(Date)
     status: Mapped[QuoteStatus] = mapped_column(String(20), default=QuoteStatus.draft)
     refusal_reason: Mapped[str | None] = mapped_column(Text)
-    # Versioning des devis révisés. `version` = 1 pour un devis initial,
-    # 2+ pour les révisions successives (« DEVIS-…-V2 »). `supersedes_id`
-    # pointe sur le devis directement remplacé (chaîne V3→V2→V1), ce qui
-    # permet d'afficher « annule et remplace le devis n°… du … ».
+
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("quotes.id"), nullable=True

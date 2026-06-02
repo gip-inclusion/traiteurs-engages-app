@@ -66,11 +66,7 @@ def _derive_qrc_display_status(qr, caterer_id):
         (link for link in qr.caterers if link.caterer_id == caterer_id),
         None,
     )
-    # Devis « actif » du traiteur : on ignore les versions remplacées
-    # (`superseded`) et les brouillons de révision (draft + supersedes_id),
-    # puis on prend la version la plus haute. Sans ça, avec plusieurs
-    # devis (V1 remplacée + V2 envoyée), `next(...)` renvoyait un devis
-    # arbitraire et le statut affiché était faux.
+
     candidate_quotes = [
         q
         for q in qr.quotes
@@ -144,11 +140,7 @@ def register(bp):
         qr = qrc.quote_request
         _ = qr.company
         _ = qr.user
-        # Devis « actif » : on écarte les versions remplacées
-        # (`superseded`) et les brouillons de révision (draft +
-        # supersedes_id) pour afficher la dernière version officielle.
-        # Sinon le bouton « Modifier mon devis » pointait sur un devis
-        # remplacé → 404, et l'aperçu montrait l'ancienne version.
+
         existing_quote = db.scalar(
             select(Quote)
             .where(Quote.quote_request_id == qr_id)
@@ -467,11 +459,6 @@ def register(bp):
     @role_required("caterer")
     @validated_caterer_required
     def quote_revise(qr_id, q_id):
-        """« Modifier mon devis » sur un devis déjà envoyé : crée (ou
-        réutilise) un brouillon de révision pré-rempli puis renvoie vers
-        l'éditeur. L'envoi de la révision passe ensuite par le flux normal
-        (`quote_update` → `submit_quote`), qui bascule l'ancien devis en
-        `superseded`."""
         caterer = g.current_user.caterer
         db = get_db()
         try:

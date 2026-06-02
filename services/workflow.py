@@ -370,17 +370,9 @@ def submit_quote(
     if not qrc:
         raise QuoteNotFound
 
-    # Cas révision : le brouillon remplace un devis déjà transmis. Le
-    # traiteur occupe déjà son slot (QRC `transmitted_to_client`), donc
-    # on NE réapplique PAS la règle des 3 (sinon un 3e répondant ne
-    # pourrait jamais réviser) et on ne re-rank pas. On marque seulement
-    # l'ancien devis `superseded` et on notifie le client de la révision.
     if quote.supersedes_id is not None:
         old = db.get(Quote, quote.supersedes_id)
-        # Le devis source doit toujours être `sent`. S'il a été refusé
-        # (ou accepté, etc.) entre l'ouverture du brouillon et la
-        # soumission, on bloque : pas d'envoi d'une révision sur un
-        # devis refusé (décision produit, évite des A/R de statuts).
+
         if old is None or old.status != QuoteStatus.sent:
             raise QuoteNotAvailable
         old.status = QuoteStatus.superseded
@@ -459,20 +451,6 @@ def start_quote_revision(
     quote_id: uuid.UUID,
     caterer: Caterer,
 ) -> Quote:
-    """Crée (ou réutilise) un brouillon de révision pour un devis déjà
-    envoyé, copié à l'identique pour que le traiteur n'ait qu'à ajuster.
-
-    Garde-fous :
-      * la demande doit être encore ouverte (`sent_to_caterers`) ;
-      * le devis source doit appartenir au traiteur et être au statut
-        `sent` (déclencheur = « devis envoyé » uniquement) ;
-      * si un brouillon de révision existe déjà pour ce devis, on le
-        renvoie au lieu d'en empiler un second.
-
-    Ne soumet pas : le brouillon repart dans l'éditeur, l'envoi passe
-    par `submit_quote` (qui détecte `supersedes_id` et bascule l'ancien
-    en `superseded`). Le caller commit.
-    """
     qr = db.scalar(
         select(QuoteRequest).where(QuoteRequest.id == request_id).with_for_update()
     )
@@ -492,8 +470,6 @@ def start_quote_revision(
     if source is None:
         raise QuoteNotFound
 
-    # Idempotence : un brouillon de révision déjà ouvert pour ce devis
-    # est réutilisé (évite d'empiler plusieurs V(n) draft concurrents).
     existing = db.scalar(
         select(Quote).where(
             Quote.supersedes_id == source.id,
@@ -518,7 +494,7 @@ def start_quote_revision(
         supersedes_id=source.id,
     )
     db.add(revision)
-    db.flush()  # obtenir revision.id avant de rattacher les lignes
+    db.flush()
     for line in source.lines:
         db.add(
             QuoteLine(
