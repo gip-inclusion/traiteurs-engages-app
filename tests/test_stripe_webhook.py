@@ -1,17 +1,3 @@
-"""Stripe webhook security tests — real signatures, real DB, no mocks.
-
-Covers audit findings (2026-04-24):
-    #1 — empty STRIPE_WEBHOOK_SECRET must not act as a valid key
-    #2 — the handler must process a legitimately-signed invoice.paid event
-    #3 — event.id replays must be idempotent; invoice.payment_failed must
-         not downgrade an already-succeeded payment
-
-NOTE: no top-level imports of `config`, `database`, or `models`. The
-conftest `_required_env` fixture rewrites `DATABASE_URL` at session start,
-and `database.engine` binds at module import — so we must defer these
-imports until inside test functions, after the fixture has run.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -48,9 +34,6 @@ def _event(
     return json.dumps(ev, separators=(",", ":"))
 
 
-# #1 — empty secret must never act as a valid key
-
-
 TEST_SECRET = "whsec_test_" + "a" * 32
 
 
@@ -67,7 +50,6 @@ def test_empty_webhook_secret_rejects_forged_event(client, monkeypatch):
         data=payload,
         headers={"Content-Type": "application/json", "Stripe-Signature": header},
     )
-    # The point is: never 2xx. 503 (misconfigured) or 400 are both acceptable.
     assert resp.status_code >= 400, (
         f"empty-secret webhook should be rejected, got {resp.status_code}"
     )
@@ -197,9 +179,6 @@ def test_signed_invoice_paid_marks_payment_succeeded(client, monkeypatch):
 
 
 def test_payment_failed_after_paid_does_not_downgrade(client, monkeypatch):
-    """A stale invoice.payment_failed must never flip a succeeded payment
-    back to failed. Stripe sends events out of order; we must not trust
-    ordering. Audit finding #3."""
     import config
 
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", TEST_SECRET)
@@ -227,7 +206,6 @@ def test_payment_failed_after_paid_does_not_downgrade(client, monkeypatch):
             "Stripe-Signature": _sign(failed_payload, TEST_SECRET),
         },
     )
-    # Handler must still 200 (so Stripe stops retrying) but NOT downgrade.
     assert resp.status_code == 200
 
     from models import PaymentStatus
@@ -241,18 +219,6 @@ def test_payment_failed_after_paid_does_not_downgrade(client, monkeypatch):
 def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
     client, monkeypatch
 ):
-    """Audit C-1/C-2 (2026-05-13). When the body raises mid-processing,
-    the handler must roll back EVERYTHING including the StripeEvent
-    dedup row — otherwise Stripe's retry hits the surviving row, the
-    handler returns 200 'duplicate', and the payment is permanently lost.
-
-    We force `notify_review_invite` to raise, then check:
-        (1) the first call returns 500 (not 200),
-        (2) the payment is still in `pending` (no half-applied mutation),
-        (3) NO StripeEvent row was persisted for this event.id,
-        (4) a clean retry of the exact same event.id processes normally
-            and the payment becomes succeeded.
-    """
     import config
 
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", TEST_SECRET)
@@ -268,10 +234,6 @@ def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
     )
     header = _sign(payload, TEST_SECRET)
 
-    # Force the very last side-effect of the `invoice.paid` branch to
-    # explode. Anything between the dedup INSERT and the final commit()
-    # raising would trigger the same regression — review_invite is just
-    # the rightmost, easiest hook to monkeypatch.
     import services.reviews as reviews_module
 
     def _boom(*_args, **_kwargs):
@@ -279,7 +241,6 @@ def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
 
     monkeypatch.setattr(reviews_module, "notify_review_invite", _boom)
 
-    # (1) first delivery: must NOT 200. Stripe needs a non-2xx to retry.
     resp = client.post(
         "/api/webhooks/stripe",
         data=payload,
@@ -292,7 +253,6 @@ def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
     assert resp.is_json, "non-JSON 500 leaks an HTML page into Stripe's dashboard"
     assert resp.get_json().get("event_id") == event_id
 
-    # (2) payment must remain pending — partial mutations are unacceptable.
     from models import PaymentStatus
 
     after_fault = _load_payment(payment_id)
@@ -300,7 +260,6 @@ def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
         f"payment must NOT be half-applied; got {after_fault.status}"
     )
 
-    # (3) StripeEvent row must NOT survive. If it did, retry would 200-dedup.
     from sqlalchemy import select
 
     from database import session_factory
@@ -315,9 +274,6 @@ def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
     finally:
         s.close()
 
-    # (4) clear the fault and retry the same event.id. The handler must
-    #     now process it cleanly (this is exactly what Stripe does on its
-    #     exponential-backoff retry schedule).
     monkeypatch.undo()
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", TEST_SECRET)
 
@@ -334,11 +290,6 @@ def test_business_failure_rolls_back_dedup_row_so_retry_can_succeed(
 
 
 def test_duplicate_event_id_is_idempotent(client, monkeypatch):
-    """Replaying the exact same event.id a second time must be a no-op.
-
-    Reproduces the attack where an attacker captures a signed body+sig and
-    replays it within the 300s tolerance window — or Stripe re-delivers the
-    same event. Audit finding #3."""
     import config
 
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", TEST_SECRET)
@@ -367,8 +318,6 @@ def test_duplicate_event_id_is_idempotent(client, monkeypatch):
     assert first.status == PaymentStatus.succeeded
     assert first.stripe_charge_id == "ch_first"
 
-    # Now flip status manually in the DB. If the replay were NOT idempotent,
-    # processing the same event again would overwrite our change.
     from database import session_factory
     from models import Payment, PaymentStatus as PS
 
@@ -381,7 +330,6 @@ def test_duplicate_event_id_is_idempotent(client, monkeypatch):
     finally:
         s.close()
 
-    # Replay the exact same signed event.
     r2 = client.post(
         "/api/webhooks/stripe",
         data=payload,

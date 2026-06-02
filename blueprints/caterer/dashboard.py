@@ -90,8 +90,6 @@ def register(bp):
             or 0
         )
 
-        # Mirror /caterer/requests so the dashboard rows show the same
-        # display_status badge as the list page.
         from blueprints.caterer.requests import _derive_qrc_display_status
 
         new_requests = (

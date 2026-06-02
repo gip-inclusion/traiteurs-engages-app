@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from models import Caterer, MembershipStatus, Notification, User, UserRole
+
+_notif_logger = logging.getLogger("app.notifications")
 
 
 def create_notification(
@@ -25,12 +29,24 @@ def create_notification(
     return notification
 
 
-notify = create_notification
+def notify(session: Session, **kwargs):
+    note = create_notification(session, **kwargs)
+    uid = kwargs.get("user_id")
+    rid = kwargs.get("related_entity_id")
+    _notif_logger.info(
+        "notification_created",
+        extra={
+            "event": "notification_created",
+            "notification_type": kwargs.get("type"),
+            "recipient_id": str(uid) if uid else None,
+            "related_entity_type": kwargs.get("related_entity_type"),
+            "related_entity_id": str(rid) if rid else None,
+        },
+    )
+    return note
 
 
 def notify_users(session: Session, user_ids, **kwargs):
-    # Tolerates duplicates and None in user_ids so callers can pass the
-    # raw result of a recipient-resolver helper.
     seen = set()
     out = []
     for uid in user_ids:
@@ -38,6 +54,17 @@ def notify_users(session: Session, user_ids, **kwargs):
             continue
         seen.add(uid)
         out.append(create_notification(session, user_id=uid, **kwargs))
+    rid = kwargs.get("related_entity_id")
+    _notif_logger.info(
+        "notifications_dispatched",
+        extra={
+            "event": "notifications_dispatched",
+            "notification_type": kwargs.get("type"),
+            "recipient_count": len(out),
+            "related_entity_type": kwargs.get("related_entity_type"),
+            "related_entity_id": str(rid) if rid else None,
+        },
+    )
     return out
 
 
@@ -86,13 +113,10 @@ def super_admin_user_ids(session: Session):
     )
 
 
-# Anchor the Caterer import (referenced only in caterer_user_ids_for's
-# docstring previously) for the linter.
 _ = Caterer
 
 
 def notification_target_url(note, role):
-    # Lazy url_for import so this module stays usable outside Flask.
     from flask import url_for
 
     et = note.related_entity_type
@@ -119,7 +143,6 @@ def notification_target_url(note, role):
         return None
 
     if et == "quote":
-        # No client-side quote URL; bounce to the parent request page.
         from database import get_db
         from models import Quote
 
@@ -153,7 +176,6 @@ def notification_target_url(note, role):
         if role == "caterer":
             return url_for("caterer.message_thread", thread_id=msg.thread_id)
         if role == "super_admin":
-            # No admin thread route yet — fall back to the inbox.
             return url_for("admin.messages")
 
     return None
@@ -176,8 +198,6 @@ def mark_as_read(session: Session, notification_id):
 
 
 def mark_read_for_entity(session: Session, user_id, entity_type, entity_id):
-    # Called from app.py's after_request so the bell-dropdown clears
-    # entries the user has already opened by any path.
     if not user_id or not entity_type or not entity_id:
         return 0
     result = session.execute(
@@ -194,7 +214,6 @@ def mark_read_for_entity(session: Session, user_id, entity_type, entity_id):
 
 
 def mark_read_by_type(session: Session, user_id, entity_type):
-    # Used by list pages whose URL has no entity_id (e.g. /client/team).
     if not user_id or not entity_type:
         return 0
     result = session.execute(

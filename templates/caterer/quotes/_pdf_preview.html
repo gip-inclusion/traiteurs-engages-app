@@ -43,8 +43,11 @@
   {% if qr.user %}
   <p class="text-text">{{ qr.user.first_name }} {{ qr.user.last_name }}</p>
   {% endif %}
-  {% if qr.event_city %}
-  <p class="text-text">{{ qr.event_city }}</p>
+  {% if qr.company.address %}
+  <p class="text-text">{{ qr.company.address }}</p>
+  {% endif %}
+  {% if qr.company.zip_code or qr.company.city %}
+  <p class="text-text">{{ qr.company.zip_code or '' }} {{ qr.company.city or '' }}</p>
   {% endif %}
   {% if qr.company.siret %}
   <p class="mt-1 text-mute">SIRET : {{ qr.company.siret }}</p>

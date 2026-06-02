@@ -1,5 +1,3 @@
-# Schema migrations are owned by Alembic; this only bootstraps the first
-# super-admin and is a no-op when ADMIN_INITIAL_PASSWORD is unset.
 import datetime
 
 import bcrypt
@@ -33,9 +31,7 @@ def create_default_admin():
             last_name="Plateforme",
             role=UserRole.super_admin,
             is_active=True,
-            # Audit H-5: stamp so the first password rotation invalidates
-            # active sessions (see cli.py:create_admin).
-            password_changed_at=datetime.datetime.utcnow(),
+            sessions_invalidated_at=datetime.datetime.utcnow(),
         )
         session.add(admin)
         print(f"Default super admin created: {settings.admin_email}")

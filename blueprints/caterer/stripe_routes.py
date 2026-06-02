@@ -47,6 +47,14 @@ def register(bp):
         if not caterer.stripe_account_id:
             result = create_connect_account(caterer)
             caterer.stripe_account_id = result["id"]
+            logger.info(
+                "stripe_account_created",
+                extra={
+                    "event": "stripe_account_created",
+                    "caterer_id": str(caterer.id),
+                    "stripe_account_id": caterer.stripe_account_id,
+                },
+            )
         refresh_url = url_for("caterer.stripe_status", _external=True)
         return_url = url_for("caterer.stripe_complete", _external=True)
         link_url = create_account_link(
@@ -67,6 +75,11 @@ def register(bp):
                 db.add(caterer)
                 caterer.stripe_charges_enabled = status["charges_enabled"]
                 caterer.stripe_payouts_enabled = status["payouts_enabled"]
+                first_completion = (
+                    status["charges_enabled"]
+                    and status["payouts_enabled"]
+                    and caterer.stripe_onboarded_at is None
+                )
                 if status["charges_enabled"] and status["payouts_enabled"]:
                     caterer.stripe_onboarded_at = datetime.utcnow()
                     flash("Compte Stripe connecte avec succes.", "success")
@@ -76,6 +89,15 @@ def register(bp):
                         "warning",
                     )
                 db.commit()
+                if first_completion:
+                    logger.info(
+                        "stripe_onboarding_completed",
+                        extra={
+                            "event": "stripe_onboarding_completed",
+                            "caterer_id": str(caterer.id),
+                            "stripe_account_id": caterer.stripe_account_id,
+                        },
+                    )
             except stripe.StripeError:
                 logger.exception("Failed to verify Stripe account on completion")
                 flash("Erreur lors de la verification du compte Stripe.", "error")

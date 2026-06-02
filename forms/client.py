@@ -26,8 +26,6 @@ MEAL_TYPES = [(m.value, label) for m, label in MEAL_TYPE_LABELS.items()]
 
 
 class QuoteRequestForm(FlaskForm):
-    # Set by the route before validate_on_submit so validate_meal_type can
-    # gate; None means no restriction (open demand or edit path).
     target_offerings: set | None = None
 
     company_service_id = StringField(validators=[Optional(), Length(max=36)])
@@ -67,8 +65,6 @@ class QuoteRequestForm(FlaskForm):
         validators=[Optional(), NumberRange(min=0, max=10000)]
     )
 
-    # drinks_alcohol is derived server-side in apply_drinks; drinks list
-    # is the source of truth and isn't bound through WTForms.
     drinks_details = TextAreaField(validators=[Optional(), Length(max=5000)])
 
     wants_waitstaff = BooleanField()
@@ -78,21 +74,15 @@ class QuoteRequestForm(FlaskForm):
     wants_nappes = BooleanField()
     wants_livraison = BooleanField()
     wants_setup = BooleanField()
-    # Optional côté serveur pour rester compatible avec les anciennes
-    # demandes lors d'une ré-édition.
     service_setup_time = TimeField(format="%H:%M", validators=[Optional()])
     service_setup_details = TextAreaField(validators=[Optional(), Length(max=5000)])
     wants_cleanup = BooleanField()
 
     is_compare_mode = BooleanField()
     message_to_caterer = TextAreaField(validators=[Optional(), Length(max=5000)])
-    # Targeted demand: set from /caterers/<id> "Demander un devis" to skip
-    # admin qualification fan-out.
     target_caterer_id = StringField(validators=[Optional(), Length(max=36)])
 
     def validate_meal_type(self, field):
-        # Closes the tampered-POST gap: UI filters step-1 to the caterer's
-        # offerings, but the server must verify.
         if self.target_offerings is None or not field.data:
             return
         if field.data not in self.target_offerings:
@@ -116,8 +106,6 @@ class EmployeeForm(FlaskForm):
 
 
 class UserProfileForm(FlaskForm):
-    # Pas de validateur Email() : la syntaxe est vérifiée dans
-    # services.account.apply_profile_form uniquement quand la valeur change.
     first_name = StringField(validators=[Optional(), Length(max=255)])
     last_name = StringField(validators=[Optional(), Length(max=255)])
     email = StringField(validators=[Optional(), Length(max=255)])

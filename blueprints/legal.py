@@ -9,8 +9,6 @@ from services.terms import current_terms_version
 legal_bp = Blueprint("legal", __name__)
 
 
-# Mirror of inclusion.gouv.fr/.well-known/security.txt (same operator).
-# Renew `Expires` < 1 year before the deadline, in sync with inclusion.gouv.fr.
 _SECURITY_TXT = (
     "Contact: mailto:security@inclusion.gouv.fr\n"
     "Policy: https://inclusion.gouv.fr/.well-known/security-policy.txt\n"
@@ -31,8 +29,6 @@ def security_txt():
 
 @legal_bp.route("/cgs")
 def cgs_current():
-    # 302 (not a direct render) so URLs stay version-stable: a link saved
-    # today as /cgs/v1 still resolves to v1 after /cgs/v2 ships.
     db = get_db()
     return redirect(url_for("legal.cgs_by_slug", slug=current_terms_version(db).slug))
 

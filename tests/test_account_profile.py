@@ -2,7 +2,6 @@ import pytest
 from sqlalchemy import select
 
 
-# Mapping rôle → (email seedé, URL POST, URL GET de redirection attendue)
 _ROUTES = {
     "client_admin": ("alice@test.local", "/client/profile", "/client/profile"),
     "client_user": ("bob@test.local", "/client/profile", "/client/profile"),
@@ -51,7 +50,7 @@ def test_name_only_update_works_for_every_role(client, login, role):
             data={
                 "first_name": "Nouveau",
                 "last_name": "Nom",
-                "email": email,  # unchanged
+                "email": email,
                 "current_password": "",
             },
         )
@@ -85,7 +84,6 @@ def test_email_change_with_valid_password_works(client, login, role):
         u = _get_user(new_email)
         assert u is not None, "the new email must exist in the DB"
         assert u.email == new_email
-        # Old email is gone.
         assert _get_user(email) is None
     finally:
         _reset_user(email, new_email, original_first, original_last)
@@ -104,11 +102,10 @@ def test_email_change_without_password_is_rejected(client, login, role):
                 "first_name": original_first,
                 "last_name": original_last,
                 "email": f"sneaky-{role}@example.com",
-                "current_password": "",  # missing
+                "current_password": "",
             },
         )
         assert r.status_code == 400, r.data
-        # Email untouched.
         assert _get_user(email) is not None
         assert _get_user(f"sneaky-{role}@example.com") is None
     finally:
@@ -141,8 +138,6 @@ def test_email_change_wrong_password_is_rejected(client, login, role):
 @pytest.mark.parametrize("role", list(_ROUTES.keys()))
 def test_email_change_collision_is_rejected(client, login, role):
     email, post_url, _ = _ROUTES[role]
-    # Pick a different seeded email to collide with — any of the other
-    # three seeded accounts works.
     other_email = next(e for e, _, _ in _ROUTES.values() if e != email)
     original = _get_user(email)
     original_first, original_last = original.first_name, original.last_name
@@ -158,7 +153,6 @@ def test_email_change_collision_is_rejected(client, login, role):
             },
         )
         assert r.status_code == 400, r.data
-        # Original email still owns the row.
         u = _get_user(email)
         assert u is not None
         assert u.email == email

@@ -11,8 +11,6 @@ from models import MEAL_TYPE_LABELS
 from services.quotes import build_pdf_preview
 
 
-# SSRF guard: stylesheets are loaded from disk, so any outbound fetch
-# during rendering is a bug or an injection — fail loud.
 _BLOCKED_SCHEMES = ("http://", "https://", "ftp://", "ftps://")
 
 
@@ -24,8 +22,6 @@ def _safe_fetch(url):
 
 @functools.cache
 def _stylesheets() -> tuple[CSS, ...]:
-    # Load from disk, not URL: passing URLs makes WeasyPrint call gunicorn
-    # back inside a request — a deadlock on single-worker dev.
     css_dir = os.path.join(current_app.static_folder, "css")
     return (
         CSS(filename=os.path.join(css_dir, "tailwind.css")),

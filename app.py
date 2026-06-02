@@ -18,9 +18,13 @@ from whitenoise import WhiteNoise
 
 import config
 from config import settings
-from database import ScopedSession, get_db
+from database import ScopedSession, engine, get_db
 from extensions import csrf, limiter
-from logging_config import configure_logging, install_request_id_hooks
+from logging_config import (
+    configure_logging,
+    install_request_id_hooks,
+    install_sql_tracing,
+)
 from models import (
     DRINK_LABELS,
     MembershipStatus,
@@ -33,29 +37,22 @@ from models import (
     UserRole,
 )
 
-# Audit finding #4: defense in depth so a stale session for a pending or
-# rejected user never reaches a view, even if login somehow let it through.
 _BLOCKED_MEMBERSHIP_STATUSES = {MembershipStatus.pending, MembershipStatus.rejected}
 
 configure_logging()
+install_sql_tracing(engine)
 
 
 CSP = (
     "default-src 'self'; "
-    # VULN-105: lucide + chart.js bundled in static/js/vendor/, no CDN.
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
-    # `blob:` required by caterer-profile.js for URL.createObjectURL previews.
     "img-src 'self' data: blob:; "
-    # api-adresse.data.gouv.fr = BAN public endpoint used by address autocomplete.
     "connect-src 'self' https://api-adresse.data.gouv.fr; "
     "object-src 'none'; "
     "frame-ancestors 'none'; "
     "base-uri 'self'; "
-    # Audit M-12: prevents a stray HTML injection from posting credentials off-origin.
-    # connect.stripe.com whitelisted because form-action is re-checked after each
-    # redirect; without it the 302 from /caterer/stripe/onboard is blocked.
     "form-action 'self' https://connect.stripe.com"
 )
 
@@ -64,11 +61,6 @@ def create_app():
     app = Flask(__name__)
     app.secret_key = config.SECRET_KEY
 
-    # Whitenoise short-circuits /static/* before Flask routing. On Scalingo it
-    # keeps static traffic off the gunicorn workers (no Caddy in front of the
-    # dyno); self-hosted deploys have Caddy serving /static/* upstream so this
-    # sits dormant. max_age=3600 (not `immutable`) because filenames aren't
-    # content-hashed — longer caching would strand stale assets after a deploy.
     app.wsgi_app = WhiteNoise(
         app.wsgi_app,
         root=os.path.join(os.path.dirname(__file__), "static"),
@@ -86,12 +78,7 @@ def create_app():
         SESSION_COOKIE_SECURE=settings.secure_cookies,
         PERMANENT_SESSION_LIFETIME=timedelta(days=7),
         WTF_CSRF_TIME_LIMIT=None,
-        # P2 #2: cap body size to defuse trivial DoS via huge uploads. 16 MB
-        # covers logos/profile pictures/screenshots; bump if invoice PDFs ever
-        # land here.
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,
-        # Docker Desktop Windows bind mounts drop mtime updates, so Jinja's
-        # mtime-based cache serves stale templates. Opt-in via env for dev only.
         TEMPLATES_AUTO_RELOAD=os.getenv("TEMPLATES_AUTO_RELOAD") == "1",
     )
 
@@ -139,8 +126,6 @@ def create_app():
     limiter.limit("30 per minute", per_method=True, methods=["POST"])(caterer_bp)
     limiter.limit("20 per minute", per_method=True, methods=["POST"])(admin_bp)
 
-    # Devtools blueprint is gated on the demo-seed flag so production (flag
-    # unset) never registers the route. See blueprints/devtools.py for rationale.
     demo_mode = os.getenv("ENABLE_DEMO_SEED") == "1"
     if demo_mode:
         from blueprints.devtools import devtools_bp, DEMO_ACCOUNTS
@@ -180,7 +165,6 @@ def create_app():
             .order_by(_Notification.created_at.desc())
             .limit(10)
         ).all()
-        # Skip the extra COUNT when we're below the cap — the list length is exact.
         unread_total = (
             len(recent) if len(recent) < 10 else get_unread_count(db, g.current_user.id)
         )
@@ -198,8 +182,6 @@ def create_app():
     @app.before_request
     def load_current_user():
         g.current_user = None
-        # `auth_bp` regroupe surtout des routes anonymes ; seule
-        # `auth.change_password` a besoin de g.current_user.
         if request.endpoint and (
             request.endpoint in ("static", "health", "legal.security_txt")
             or (
@@ -214,19 +196,15 @@ def create_app():
             user = db.execute(
                 select(User).where(User.id == user_id)
             ).scalar_one_or_none()
-            # Refuse stale sessions for pending/rejected members (audit #4).
             if user and user.membership_status in _BLOCKED_MEMBERSHIP_STATUSES:
                 user = None
             if user and not user.is_active:
                 session.clear()
                 user = None
             if user:
-                # Invalidate sessions whose password_changed_at snapshot is
-                # stale (reset happened elsewhere). Scalar query bypasses
-                # the identity map so a parallel commit is visible here.
-                stamped = session.get("pwd_changed_at")
+                stamped = session.get("session_epoch")
                 live_at = db.scalar(
-                    select(User.password_changed_at).where(User.id == user_id)
+                    select(User.sessions_invalidated_at).where(User.id == user_id)
                 )
                 live = live_at.isoformat() if live_at else None
                 if stamped != live:
@@ -236,10 +214,6 @@ def create_app():
 
     @app.after_request
     def mark_notifications_read_on_entity_view(response):
-        # Runs after the route handler so a 403/404 doesn't flip is_read; only
-        # 2xx GETs count as the user actually seeing the entity. Commits on its
-        # own because detail handlers are reads, and swallows DB failures so a
-        # marking-read hiccup can't 500 the main request.
         if request.method != "GET":
             return response
         if not (200 <= response.status_code < 300):
@@ -273,8 +247,6 @@ def create_app():
                     touched |= bool(
                         mark_read_for_entity(db, user_id, "quote_request", rid)
                     )
-                    # Quote notifs bounce to the parent request URL (see
-                    # services.notifications.notification_target_url).
                     from models import Quote
 
                     quote_ids = list(
@@ -315,15 +287,11 @@ def create_app():
                             mark_read_for_entities(db, user_id, "message", msg_ids)
                         )
             elif endpoint == "client.dashboard":
-                # Membership-approval notifs (entity_type="company") land on
-                # the dashboard; scope to the user's own company.
                 if user.company_id:
                     touched |= bool(
                         mark_read_for_entity(db, user_id, "company", user.company_id)
                     )
             elif endpoint == "client.team":
-                # Pending-membership notifs surface here for client_admins only;
-                # URL has no entity_id so sweep by type.
                 if user.role == UserRole.client_admin:
                     touched |= bool(mark_read_by_type(db, user_id, "user"))
 
@@ -346,15 +314,10 @@ def create_app():
             "geolocation=(), microphone=(), camera=(), payment=()"
         )
         response.headers["Content-Security-Policy"] = CSP
-        # Audit H-13: emit HSTS whenever TLS is actually present, not just
-        # when secure_cookies is set, so a misconfigured self-host doesn't
-        # lose HSTS along with the Secure cookie flag.
         if request.is_secure or settings.secure_cookies:
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
             )
-        # Authenticated responses carry per-user data; force shared caches to
-        # skip them. setdefault so views with their own Cache-Control win.
         if getattr(g, "current_user", None) is not None:
             response.headers.setdefault("Cache-Control", "private, no-store")
         return response
@@ -365,8 +328,6 @@ def create_app():
 
     @app.errorhandler(500)
     def _server_error(_e):
-        # Reset the session so a PendingRollbackError doesn't crash the
-        # error template when base.html dereferences g.current_user.
         try:
             ScopedSession.rollback()
         except SQLAlchemyError:
@@ -375,8 +336,6 @@ def create_app():
 
     @app.errorhandler(ValueError)
     def _bad_value(e):
-        # Defence in depth (VULN-47, audit #11): catch any escapee from
-        # WTForms/try-except boundaries and return 400 instead of 500.
         if request.path.startswith("/api/"):
             return jsonify({"error": "Donnee invalide."}), 400
         return render_template("errors/400.html"), 400
@@ -422,7 +381,5 @@ def create_app():
 
 
 if __name__ == "__main__":
-    # VULN-17 / Bandit B201: debug only via explicit env opt-in; the Werkzeug
-    # debugger exposes a remote code execution console.
     debug_flag = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
     create_app().run(debug=debug_flag, port=8000)

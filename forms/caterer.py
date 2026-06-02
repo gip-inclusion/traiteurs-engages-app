@@ -24,14 +24,11 @@ class CatererProfileForm(FlaskForm):
     dietary_gluten_free = BooleanField()
     dietary_lactose_free = BooleanField()
     service_config = TextAreaField(validators=[Optional(), Length(max=10000)])
-    # photos and per-offering specs handled outside WTForms (dynamic shapes
-    # don't map to a clean primitive).
 
 
 class QuoteForm(FlaskForm):
     notes = TextAreaField(validators=[Optional(), Length(max=10000)])
     valid_until = DateField(format="%Y-%m-%d", validators=[Optional()])
-    # `details` is opaque JSON, validated in the handler.
     details = StringField(validators=[Optional(), Length(max=200000)])
 
 

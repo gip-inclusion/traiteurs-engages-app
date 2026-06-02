@@ -1,6 +1,3 @@
-# Brevo API: https://developers.brevo.com/reference/sendtransacemail
-# Without BREVO_API_KEY the payload is logged instead of sent so flows
-# like password reset stay testable end-to-end without a real account.
 from __future__ import annotations
 
 import json
@@ -13,7 +10,6 @@ import dramatiq
 
 import config
 
-# Piggy-back on billing_tasks' broker bootstrap (Redis / stub).
 from services import billing_tasks  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -23,8 +19,7 @@ _BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email"
 
 
 class EmailSendError(Exception):
-    """Retryable Brevo failure (5xx, 429, network). 4xx other than 429 are
-    swallowed because retrying won't help."""
+    pass
 
 
 def _normalise_recipients(to) -> list[dict]:
@@ -57,6 +52,14 @@ def _post_to_brevo(payload: dict, api_key: str, *, timeout: float = 10.0) -> Non
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if 200 <= resp.status < 300:
+                logger.info(
+                    "email_sent",
+                    extra={
+                        "event": "email_sent",
+                        "recipient_count": len(payload.get("to", [])),
+                        "brevo_status": resp.status,
+                    },
+                )
                 return
             raise EmailSendError(f"unexpected Brevo status {resp.status}")
     except urllib.error.HTTPError as exc:
@@ -67,7 +70,6 @@ def _post_to_brevo(payload: dict, api_key: str, *, timeout: float = 10.0) -> Non
             pass
         if exc.code == 429 or 500 <= exc.code < 600:
             raise EmailSendError(f"Brevo HTTP {exc.code}: {body_excerpt}") from exc
-        # 4xx other than 429 is permanent; don't flood the DLQ.
         logger.error(
             "Brevo rejected email (status=%s, body=%s, subject=%s, to=%s)",
             exc.code,
@@ -106,7 +108,6 @@ def send_email_sync(
 
     api_key = config.BREVO_API_KEY
     if not api_key:
-        # 500 chars covers a full reset URL (token ≈ 43 chars base64).
         logger.info(
             "BREVO_API_KEY unset; would have sent email "
             "(subject=%r, to=%s, body_excerpt=%r)",
@@ -128,7 +129,6 @@ def _html_to_text(html: str) -> str:
 
 @dramatiq.actor(
     max_retries=5,
-    # 30s, 1m, 2m, 4m, 8m, then DLQ — same curve as billing_tasks.
     min_backoff=30_000,
     max_backoff=8 * 60_000,
     throws=(),
@@ -144,7 +144,6 @@ def send_email_async(
     reply_to: str | None = None,
 ) -> None:
     if os.getenv("DRAMATIQ_TESTING") == "1":
-        # Forward to sync so unit tests don't need a stub-broker worker.
         send_email_sync(
             to=to,
             subject=subject,
@@ -174,8 +173,6 @@ def render_and_send_async(
     template_name: str,
     **context,
 ) -> None:
-    # Render in the caller's app/request context so the worker doesn't
-    # need its own; the rendered strings travel through the dramatiq msg.
     from flask import render_template
 
     html = render_template(f"emails/{template_name}.html", **context)

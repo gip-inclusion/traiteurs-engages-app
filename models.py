@@ -23,8 +23,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# French tax law requires strictly sequential, no-gap commission invoice
-# numbers — Postgres SEQUENCE owns the counter.
 commission_invoice_seq = Sequence("commission_invoice_number_seq", start=1)
 
 
@@ -93,8 +91,6 @@ class QuoteStatus(str, Enum):
 class OrderStatus(str, Enum):
     confirmed = "confirmed"
     delivered = "delivered"
-    # `invoicing` = dramatiq job enqueued; promoted to `invoiced` on success,
-    # left here on failure so the retry CLI can pick it up (P3.4).
     invoicing = "invoicing"
     invoiced = "invoiced"
     paid = "paid"
@@ -102,8 +98,6 @@ class OrderStatus(str, Enum):
 
 
 class MealType(str, Enum):
-    # Must stay aligned with the caterer's "Catalogue & tarifs" slugs so
-    # the client filter and caterer publication describe the same thing.
     petit_dejeuner = "petit_dejeuner"
     pause_gourmande = "pause_gourmande"
     plateaux_repas = "plateaux_repas"
@@ -112,8 +106,6 @@ class MealType(str, Enum):
     aperitif = "aperitif"
 
 
-# Order defines the rendering order of radios/checkboxes everywhere the
-# prestation list appears (wizard, caterer profile, catalog filter).
 MEAL_TYPE_LABELS: dict[MealType, str] = {
     MealType.petit_dejeuner: "Petit-déjeuner",
     MealType.pause_gourmande: "Pause gourmande",
@@ -124,15 +116,11 @@ MEAL_TYPE_LABELS: dict[MealType, str] = {
 }
 
 
-# Slug→label view of MEAL_TYPE_LABELS for call sites that handle the slug
-# as a string (e.g. Caterer.service_offerings JSON column).
 SERVICE_OFFERING_LABELS: dict[str, str] = {
     m.value: label for m, label in MEAL_TYPE_LABELS.items()
 }
 
 
-# Slug also doubles as the wizard checkbox `name` (e.g. drinks_eau_plate)
-# and as an entry in QuoteRequest.drinks when ticked.
 DRINK_LABELS: dict[str, str] = {
     "drinks_eau_plate": "Eau plate",
     "drinks_eau_gazeuse": "Eau gazeuse",
@@ -143,15 +131,11 @@ DRINK_LABELS: dict[str, str] = {
     "drinks_boissons_chaudes": "Boissons chaudes",
 }
 
-# Drives the derived `drinks_alcohol` flag — any new alcoholic entry added
-# to DRINK_LABELS MUST be mirrored here or the flag will silently miss it.
 ALCOHOLIC_DRINKS: frozenset[str] = frozenset(
     {"drinks_bieres", "drinks_vins", "drinks_champagne"}
 )
 
 
-# Per-person price bands in EUR. A caterer matches when its range overlaps
-# with [min, max].
 PRICE_BAND_BOUNDS: dict[str, tuple[Decimal | None, Decimal | None]] = {
     "lt15": (None, Decimal("15")),
     "15_30": (Decimal("15"), Decimal("30")),
@@ -215,9 +199,6 @@ class Caterer(DietaryMixin, Base):
     delivery_radius_km: Mapped[int | None] = mapped_column(Integer)
     service_config: Mapped[dict | None] = mapped_column(JSON)
     service_offerings: Mapped[list | None] = mapped_column(JSON)
-    # {slug: {capacity_min, capacity_max, price_per_person_min, total_min,
-    # min_advance_days}}. Global capacity/price/advance columns are derived
-    # from this dict on save and read by matching/search.
     service_offering_specs: Mapped[dict | None] = mapped_column(JSON)
     price_per_person_min: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     price_per_person_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
@@ -244,9 +225,6 @@ class Caterer(DietaryMixin, Base):
 
 
 class TermsVersion(Base):
-    # CGS text itself lives in templates/legal/cgs_<slug>.html so the
-    # version history stays in git; this row carries only the metadata
-    # Flask needs at runtime.
     __tablename__ = "terms_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -277,11 +255,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     membership_status: Mapped[MembershipStatus | None] = mapped_column(String(20))
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255))
-    # Bumped on every password rotation; load_current_user rejects sessions
-    # whose snapshot mismatches. NULL for users issued before the column
-    # existed so the deploy doesn't force-logout anyone.
-    password_changed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
-    # Nullable: pre-CGS-gate users stay untouched; new signups must fill both.
+    sessions_invalidated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
     terms_accepted_version_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("terms_versions.id")
     )
@@ -339,8 +313,6 @@ class CompanyEmployee(Base):
     email: Mapped[str] = mapped_column(String(255))
     position: Mapped[str | None] = mapped_column(String(255))
     invited_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
-    # Single-use signup token generated via /client/team, redeemed on
-    # /signup/invite/<token>; expires INVITE_TOKEN_TTL_DAYS after invited_at.
     invite_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
@@ -365,12 +337,8 @@ class QuoteRequest(DietaryMixin, Base):
     status: Mapped[QuoteRequestStatus] = mapped_column(
         String(30), default=QuoteRequestStatus.draft
     )
-    # Idempotency token: UNIQUE so a double-submit lands on the existing row
-    # (POST handler catches IntegrityError and redirects to the original).
     submission_token: Mapped[str | None] = mapped_column(String(36), unique=True)
     service_type: Mapped[str | None] = mapped_column(String(100))
-    # 40 chars fits the longest slug `cocktail_dejeunatoire` (21) plus
-    # headroom for future offerings without another migration.
     meal_type: Mapped[MealType | None] = mapped_column(String(40))
     event_date: Mapped[datetime.date | None] = mapped_column(Date)
     event_start_time: Mapped[datetime.time | None] = mapped_column(Time)
@@ -388,9 +356,6 @@ class QuoteRequest(DietaryMixin, Base):
     halal_count: Mapped[int | None] = mapped_column(Integer)
     gluten_free_count: Mapped[int | None] = mapped_column(Integer)
     lactose_free_count: Mapped[int | None] = mapped_column(Integer)
-    # `drinks_alcohol` is a derived shortcut kept for legacy callers; the
-    # canonical state of what the client ticked is `drinks` (JSON list of
-    # DRINK_LABELS slugs, fed by the 7 step-5 wizard checkboxes).
     drinks_alcohol: Mapped[bool] = mapped_column(Boolean, default=False)
     drinks: Mapped[list | None] = mapped_column(JSON)
     drinks_details: Mapped[str | None] = mapped_column(Text)
@@ -401,8 +366,6 @@ class QuoteRequest(DietaryMixin, Base):
     wants_nappes: Mapped[bool] = mapped_column(Boolean, default=False)
     wants_livraison: Mapped[bool] = mapped_column(Boolean, default=False)
     wants_setup: Mapped[bool] = mapped_column(Boolean, default=False)
-    # service_setup_time est obligatoire côté UI quand wants_setup est coché,
-    # mais nullable en DB pour ne pas casser les anciennes demandes.
     service_setup_time: Mapped[datetime.time | None] = mapped_column(Time)
     service_setup_details: Mapped[str | None] = mapped_column(Text)
     wants_cleanup: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -577,8 +540,6 @@ class CommissionInvoice(Base):
     __tablename__ = "commission_invoices"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    # French fiscal compliance: numbering owned by Postgres sequence so
-    # callers never set invoice_number explicitly.
     invoice_number: Mapped[int] = mapped_column(
         Integer,
         commission_invoice_seq,
@@ -609,8 +570,6 @@ class Payment(Base):
     )
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255))
     stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(255))
-    # Audit #6: UNIQUE so a race on POST /caterer/orders/<id>/deliver can't
-    # create duplicate Payment rows that the webhook only updates one of.
     stripe_invoice_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     stripe_charge_id: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[PaymentStatus] = mapped_column(
@@ -649,9 +608,6 @@ class Notification(Base):
 
 
 class AuditLog(Base):
-    # Append-only by convention (no UPDATE/DELETE from app code). actor_email
-    # is snapshotted alongside actor_id so deleting a user doesn't erase the
-    # audit trail. Written by services.audit.log_admin_action().
     __tablename__ = "audit_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -671,9 +627,6 @@ class AuditLog(Base):
 
 
 class StripeEvent(Base):
-    # Audit #3: dedup Stripe webhook events. PK = Stripe's evt_..., so
-    # inserting inside the handler gives atomic dedup against replays
-    # within the 300s signature window and re-deliveries.
     __tablename__ = "stripe_events"
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
@@ -715,9 +668,6 @@ class Message(Base):
 
 
 class PasswordResetToken(Base):
-    # One-shot: verifier refuses tokens with used_at set or expires_at < now.
-    # Never edited/extended; old rows kept for audit and for telling users
-    # with a stale bookmarked link that the link is dead.
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -733,17 +683,12 @@ class PasswordResetToken(Base):
 
 
 class CatererReview(Base):
-    # One review per Order (UNIQUE on order_id) and rating ∈ [1, 5] enforced
-    # in the DB; the reviewer/status gate runs in services.reviews. Public
-    # author display reduced via services.reviews.format_author.
     __tablename__ = "caterer_reviews"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     caterer_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("caterers.id"), index=True
     )
-    # Uniqueness is declared via the named UniqueConstraint in __table_args__
-    # below; adding unique=True here would create a second unnamed index.
     order_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("orders.id"))
     reviewer_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), index=True

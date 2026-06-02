@@ -35,24 +35,20 @@ from services.notifications import (
     notify_users,
     super_admin_user_ids,
 )
+from services.password_reset import revoke_all_sessions
 from services.slugs import generate_invoice_prefix
 from services.terms import current_terms_version, is_terms_accepted
 
 logger = logging.getLogger(__name__)
 
 
-# Duplicated from the team handler so /signup/invite/<token> can reject
-# stale links without importing from blueprints/client (circular import).
 INVITE_TOKEN_TTL_DAYS = 7
 
 auth_bp = Blueprint("auth", __name__)
 
 LOGIN_LIMIT = "10 per minute"
-# Override via env for local iteration so test loops don't wedge for an hour.
 SIGNUP_LIMIT = os.environ.get("SIGNUP_LIMIT", "5 per hour")
 
-# VULN-14: length >= 12 + ≥3 character classes + not in the top-passwords
-# blocklist below. Plug in zxcvbn / HIBP later for a stronger check.
 PASSWORD_MIN_LENGTH = 12
 PASSWORD_BLOCKLIST = {
     "password",
@@ -87,8 +83,6 @@ PASSWORD_BLOCKLIST = {
     "test1234",
 }
 
-# VULN-102: always pay bcrypt's cost so /login response time is constant
-# whether the email exists or not (~250 ms vs ~10 ms otherwise).
 _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"timing-safe-dummy", bcrypt.gensalt()).decode()
 
 
@@ -124,11 +118,11 @@ ROLE_DASHBOARDS = {
 
 
 def _stamp_session(user):
-    # Snapshot password_changed_at so load_current_user can invalidate
-    # this session when the column moves forward (force-logout on reset).
     session["user_id"] = str(user.id)
-    session["pwd_changed_at"] = (
-        user.password_changed_at.isoformat() if user.password_changed_at else None
+    session["session_epoch"] = (
+        user.sessions_invalidated_at.isoformat()
+        if user.sessions_invalidated_at
+        else None
     )
 
 
@@ -143,24 +137,20 @@ def login():
             return render_template("auth/login.html")
         db = get_db()
         user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-        # VULN-102: dummy hash when user doesn't exist keeps timing constant.
         hash_to_check = user.password_hash if user else _DUMMY_PASSWORD_HASH
         password_ok = bcrypt.checkpw(password.encode(), hash_to_check.encode())
         if not user or not password_ok:
+            logger.warning(
+                "login_failed",
+                extra={"event": "login_failed", "reason": "bad_credentials"},
+            )
             flash("Email ou mot de passe incorrect.", "error")
             return render_template("auth/login.html")
-        # Audit H-2: one opaque message for every inactive state so an
-        # attacker with a leaked password can't map HR status / confirm
-        # SIRET-membership matches. The real reason still lands in logs.
         inactive_membership = user.membership_status in (
             MembershipStatus.pending,
             MembershipStatus.rejected,
         )
         if not user.is_active or inactive_membership:
-            # membership_status round-trips as str OR MembershipStatus
-            # depending on whether it came from DB or memory; getattr
-            # collapses both to the bare token without leaking
-            # "MembershipStatus.pending" into logs.
             logger.info(
                 "login refused for non-active account",
                 extra={
@@ -178,11 +168,17 @@ def login():
                 "error",
             )
             return render_template("auth/login.html")
-        # Rotate the session on successful auth: drop pre-login state
-        # before issuing the authenticated cookie.
         session.clear()
         _stamp_session(user)
         session.permanent = True
+        logger.info(
+            "login_success",
+            extra={
+                "event": "login_success",
+                "user_id": str(user.id),
+                "role": getattr(user.role, "value", str(user.role)),
+            },
+        )
         endpoint = ROLE_DASHBOARDS.get(UserRole(user.role), "client.dashboard")
         return redirect(url_for(endpoint))
     return render_template("auth/login.html")
@@ -224,12 +220,9 @@ def signup():
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         db = get_db()
-        # Resolve once so every code path records the same id + timestamp.
         active_terms = current_terms_version(db)
         accepted_at = datetime.datetime.utcnow()
 
-        # VULN-28: always run both lookups so timing doesn't disclose
-        # whether email vs SIRET already exists.
         existing_user = db.execute(
             select(User).where(User.email == email)
         ).scalar_one_or_none()
@@ -270,9 +263,6 @@ def signup():
                     related_entity_id=user.id,
                 )
                 db.commit()
-                # VULN-28: never confirm SIRET presence, never issue a session.
-                # A pending user with a session could otherwise read the
-                # company's private demands/orders/messages while waiting.
                 flash(
                     "Votre demande de rattachement a ete enregistree. "
                     "L'administrateur de votre structure a ete informe. "
@@ -282,8 +272,6 @@ def signup():
                 )
                 return redirect(url_for("auth.login"))
 
-            # Company.name is non-nullable; SIRET stands in until the admin
-            # renames it via /client/settings.
             company = Company(name=siret, siret=siret)
             db.add(company)
             db.flush()
@@ -399,7 +387,6 @@ def signup():
 
 
 def _resolve_invite(token: str) -> CompanyEmployee | None:
-    # Column stores SHA-256(token) so a DB leak exposes only digests.
     if not token:
         return None
     db = get_db()
@@ -421,9 +408,6 @@ def _resolve_invite(token: str) -> CompanyEmployee | None:
 @auth_bp.route("/signup/invite/<token>", methods=["GET", "POST"])
 @limiter.limit(SIGNUP_LIMIT, methods=["POST"])
 def signup_invite(token: str):
-    # Bypasses the SIRET pending-approval flow because the token itself
-    # proves an admin already trusts the recipient. Single-use, expires
-    # after INVITE_TOKEN_TTL_DAYS.
     employee = _resolve_invite(token)
     if employee is None:
         return render_template("auth/signup_invite_invalid.html"), 404
@@ -454,9 +438,6 @@ def signup_invite(token: str):
 
         db = get_db()
         active_terms = current_terms_version(db)
-        # Email + name come from the CompanyEmployee row the admin pre-filled,
-        # never from the POST body, so a tampered submission can't smuggle
-        # different values.
         existing_user = db.scalar(select(User).where(User.email == employee.email))
         if existing_user:
             flash(
@@ -485,7 +466,6 @@ def signup_invite(token: str):
             employee.invite_token = None
             db.commit()
         except IntegrityError:
-            # Race against a parallel signup grabbing the same email.
             db.rollback()
             flash(
                 "Un compte existe deja avec cette adresse e-mail. Connectez-vous.",
@@ -509,7 +489,14 @@ def signup_invite(token: str):
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
-    # VULN-18: POST + CSRF so a <img src=".../logout"> can't log the user out.
+    user_id = session.get("user_id")
+    if user_id:
+        db = get_db()
+        user = db.scalar(select(User).where(User.id == user_id))
+        if user is not None:
+            logger.info("logout", extra={"event": "logout", "user_id": str(user.id)})
+            revoke_all_sessions(db, user)
+            db.commit()
     session.clear()
     return redirect(url_for("auth.login"))
 
@@ -530,6 +517,7 @@ def forgot_password():
     db = get_db()
     kick_off_reset(db, email=email)
     db.commit()
+    logger.info("password_reset_requested", extra={"event": "password_reset_requested"})
     return render_template("auth/forgot_password_sent.html", email=email)
 
 
@@ -554,8 +542,12 @@ def reset_password(token):
 
     db = get_db()
     try:
-        consume_token(db, raw_token=token, new_password=new_password)
+        user = consume_token(db, raw_token=token, new_password=new_password)
     except ResetTokenInvalid:
+        logger.warning(
+            "password_reset_invalid_token",
+            extra={"event": "password_reset_invalid_token"},
+        )
         flash(
             "Ce lien de réinitialisation est invalide ou a expiré. "
             "Demandez-en un nouveau.",
@@ -563,6 +555,10 @@ def reset_password(token):
         )
         return redirect(url_for("auth.forgot_password"))
     db.commit()
+    logger.info(
+        "password_reset_completed",
+        extra={"event": "password_reset_completed", "user_id": str(user.id)},
+    )
     flash("Votre mot de passe a été mis à jour. Vous pouvez vous connecter.", "success")
     return redirect(url_for("auth.login"))
 
@@ -605,9 +601,7 @@ def change_password():
     user.password_hash = bcrypt.hashpw(
         new_password.encode("utf-8"), bcrypt.gensalt()
     ).decode()
-    # Audit H-5: bump invalidates the user's OTHER sessions; _stamp_session
-    # below rewrites the current session's snapshot so it doesn't self-evict.
-    user.password_changed_at = datetime.datetime.utcnow()
+    revoke_all_sessions(db, user)
     log_admin_action(
         db,
         user,

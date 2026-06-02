@@ -49,9 +49,6 @@ def test_issue_token_persists_with_ttl_in_future(session):
         select(PasswordResetToken).where(PasswordResetToken.id == row.id)
     )
     assert persisted is not None
-    # The stored column must be the SHA-256 digest of the raw token, not
-    # the raw value itself — the security guarantee of the hash-at-rest
-    # change is that a DB leak should not expose live tokens.
     assert persisted.token == pr._hash_token(raw)
     assert persisted.token != raw
 
@@ -64,7 +61,6 @@ def test_issue_token_returns_unique_strings(session):
     _row_b, b = pr.issue_token(session, user=alice)
     session.flush()
     assert a != b
-    # `token_urlsafe(32)` => 43 chars URL-safe base64.
     assert len(a) >= 32
 
 
@@ -168,7 +164,7 @@ def test_kick_off_reset_known_email_creates_row(session):
             PasswordResetToken.user_id == alice.id
         )
     )
-    pr.kick_off_reset(session, email=alice.email.upper())  # case-insensitive
+    pr.kick_off_reset(session, email=alice.email.upper())
     session.flush()
     after = session.scalar(
         select(func.count(PasswordResetToken.id)).where(
@@ -176,6 +172,39 @@ def test_kick_off_reset_known_email_creates_row(session):
         )
     )
     assert after == before + 1
+
+
+def test_kick_off_reset_rejected_member_creates_no_row(session):
+    from sqlalchemy import func, select
+
+    from models import MembershipStatus, PasswordResetToken
+    from services import password_reset as pr
+
+    alice = _alice(session)
+    original_status = alice.membership_status
+    try:
+        alice.membership_status = MembershipStatus.rejected
+        session.flush()
+        before = session.scalar(
+            select(func.count(PasswordResetToken.id)).where(
+                PasswordResetToken.user_id == alice.id,
+                PasswordResetToken.used_at.is_(None),
+            )
+        )
+        pr.kick_off_reset(session, email=alice.email)
+        session.flush()
+        after = session.scalar(
+            select(func.count(PasswordResetToken.id)).where(
+                PasswordResetToken.user_id == alice.id,
+                PasswordResetToken.used_at.is_(None),
+            )
+        )
+        assert after == before, (
+            "kick_off_reset must not issue a token for a rejected member"
+        )
+    finally:
+        alice.membership_status = original_status
+        session.flush()
 
 
 def test_forgot_password_post_unknown_email_returns_200(client):
@@ -203,18 +232,18 @@ def test_reset_password_get_with_invalid_token_renders_form(client):
     assert r.status_code == 200
 
 
-def test_consume_token_bumps_password_changed_at(session):
+def test_consume_token_bumps_session_revocation_epoch(session):
     from services import password_reset as pr
 
     alice = _alice(session)
-    before = alice.password_changed_at
+    before = alice.sessions_invalidated_at
     _row, raw = pr.issue_token(session, user=alice)
     session.flush()
     pr.consume_token(session, raw_token=raw, new_password="N3w-Strong-Password!")
     session.flush()
 
-    assert alice.password_changed_at is not None
-    assert before is None or alice.password_changed_at > before
+    assert alice.sessions_invalidated_at is not None
+    assert before is None or alice.sessions_invalidated_at > before
 
 
 def test_session_invalidated_after_password_reset(client):
@@ -224,8 +253,6 @@ def test_session_invalidated_after_password_reset(client):
     from services import password_reset as pr
 
     try:
-        # Step 1 : alice logs in. The session is stamped with her current
-        # password_changed_at (None for a freshly seeded user).
         r = client.post(
             "/login",
             data={"email": "alice@test.local", "password": "testpass"},
@@ -235,9 +262,6 @@ def test_session_invalidated_after_password_reset(client):
         r = client.get("/client/dashboard", follow_redirects=False)
         assert r.status_code == 200, "alice should be authenticated post-login"
 
-        # Step 2 : alice's password gets reset out-of-band (simulating a
-        # parallel device hitting /reset-password/<token>). The session
-        # cookie that worked above must now be refused.
         s = session_factory()
         try:
             alice = _alice(s)
@@ -253,17 +277,94 @@ def test_session_invalidated_after_password_reset(client):
             f"stale session must be rejected after password reset; got {r.status_code}"
         )
     finally:
-        # Restore alice to the seeded state regardless of whether the
-        # assertions above passed. Without this, a failure leaves a
-        # rotated password hash behind and every test that logs in as
-        # alice afterwards breaks.
         s = session_factory()
         try:
             alice = _alice(s)
             alice.password_hash = _bcrypt.hashpw(
                 b"testpass", _bcrypt.gensalt()
             ).decode()
-            alice.password_changed_at = None
+            alice.sessions_invalidated_at = None
             s.commit()
         finally:
             s.close()
+
+
+def test_consume_token_rejects_token_issued_before_revocation(session):
+    from services import password_reset as pr
+
+    alice = _alice(session)
+    _row, raw = pr.issue_token(session, user=alice)
+    session.flush()
+    alice.sessions_invalidated_at = _dt.datetime.utcnow() + _dt.timedelta(seconds=1)
+    session.flush()
+
+    with pytest.raises(pr.ResetTokenInvalid):
+        pr.consume_token(session, raw_token=raw, new_password="N3w-Strong-Password!")
+
+
+def test_consume_token_rejects_pending_or_rejected_member(session):
+    from models import MembershipStatus
+    from services import password_reset as pr
+
+    alice = _alice(session)
+    original_status = alice.membership_status
+    try:
+        alice.membership_status = MembershipStatus.rejected
+        _row, raw = pr.issue_token(session, user=alice)
+        session.flush()
+        with pytest.raises(pr.ResetTokenInvalid):
+            pr.consume_token(
+                session, raw_token=raw, new_password="N3w-Strong-Password!"
+            )
+    finally:
+        alice.membership_status = original_status
+        session.flush()
+
+
+def test_revoke_all_sessions_bumps_and_burns_outstanding_tokens(session):
+    from sqlalchemy import select
+
+    from models import PasswordResetToken
+    from services import password_reset as pr
+
+    alice = _alice(session)
+    before = alice.sessions_invalidated_at
+    _row, _raw = pr.issue_token(session, user=alice)
+    session.flush()
+
+    pr.revoke_all_sessions(session, alice)
+    session.flush()
+
+    assert alice.sessions_invalidated_at is not None
+    if before is not None:
+        assert alice.sessions_invalidated_at > before
+
+    outstanding = session.scalars(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == alice.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+    ).all()
+    assert outstanding == []
+
+
+def test_kick_off_reset_burns_previous_token(session):
+    from sqlalchemy import select
+
+    from models import PasswordResetToken
+    from services import password_reset as pr
+
+    alice = _alice(session)
+    first_row, _first_raw = pr.issue_token(session, user=alice)
+    session.flush()
+    assert first_row.used_at is None
+
+    pr.kick_off_reset(session, email=alice.email)
+    session.flush()
+
+    refreshed = session.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.id == first_row.id)
+    )
+    assert refreshed.used_at is not None, (
+        "kick_off_reset must burn previously-emitted links"
+    )

@@ -1,11 +1,9 @@
-# Dev account switcher gated TWICE: blueprint only registered when
-# ENABLE_DEMO_SEED=1, and the email allowlist below restricts impersonation
-# to the seven seeded demo accounts even if the flag ever leaked into prod.
 from __future__ import annotations
 
 from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from sqlalchemy import select
 
+from blueprints.auth import _stamp_session
 from database import get_db
 from extensions import limiter
 from models import User
@@ -62,10 +60,7 @@ def switch_account():
         flash(f"Compte demo introuvable : {email}.", "error")
         return redirect(url_for("auth.login"))
 
-    # Skip session.clear() (unlike /login): rotating the session also rotates
-    # the CSRF token, breaking any tab left open in another dev workflow.
-    # ENABLE_DEMO_SEED gates this so VULN-11 doesn't apply.
-    session["user_id"] = str(user.id)
+    _stamp_session(user)
     session.permanent = True
     flash(f"[DEV] Connecte en tant que {user.email}.", "info")
     return redirect(url_for("landing"))

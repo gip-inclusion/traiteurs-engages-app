@@ -1,24 +1,6 @@
-"""Tests for H-2 (login state oracle) and H-5 (CLI reset-password
-session invalidation) — both from the 2026-05-13 security audit.
-
-H-2: the login flash distinguished `is_active=False` / `pending` /
-     `rejected` with three different copy strings, giving an attacker
-     with a leaked password a side-channel to map HR state and SIRET
-     membership. All three must now produce identical HTML.
-
-H-5: `flask admin reset-password` did not bump `password_changed_at`,
-     so the very command an ops engineer reaches for when a session
-     is compromised left the attacker's session valid. Same gap for
-     `flask admin create` (a fresh admin had `password_changed_at=NULL`
-     which silently disabled the session-invalidation tripwire on the
-     first rotation).
-"""
-
 from __future__ import annotations
 
 from sqlalchemy import select
-
-# H-5 — CLI must bump password_changed_at on every password mutation
 
 
 def _make_super_admin(email: str, password: str = "OldPw!Old!Pw!1234"):
@@ -39,24 +21,15 @@ def _make_super_admin(email: str, password: str = "OldPw!Old!Pw!1234"):
             last_name="Admin",
             role=UserRole.super_admin,
             is_active=True,
-            # NOT setting password_changed_at — that's exactly the legacy
-            # state of accounts in prod before this PR. The test verifies
-            # we go from NULL → non-NULL on reset.
         )
         s.add(user)
         s.commit()
-        return user.id, user.password_changed_at
+        return user.id, user.sessions_invalidated_at
     finally:
         s.close()
 
 
-def test_cli_reset_password_bumps_password_changed_at(app):
-    """The `flask admin reset-password` CLI must update
-    `password_changed_at` so existing sessions are invalidated. The
-    audit PoC: an attacker who's already in must lose their cookie at
-    the next request after ops fires the reset. The session check in
-    `app.load_current_user` compares `session["pwd_changed_at"]` against
-    the live column; if the column is stale, the attacker stays in."""
+def test_cli_reset_password_bumps_session_revocation_epoch(app):
     from cli import reset_password
     from database import session_factory
     from models import User
@@ -64,13 +37,11 @@ def test_cli_reset_password_bumps_password_changed_at(app):
     email = "h5-reset@test.local"
     user_id, before = _make_super_admin(email)
     assert before is None, (
-        "fixture left password_changed_at non-null — the test no longer covers "
-        "the NULL→value transition we care about"
+        "fixture left sessions_invalidated_at non-null — the test no "
+        "longer covers the NULL→value transition we care about"
     )
 
     runner = app.test_cli_runner()
-    # `_read_password_twice` prompts twice + validates policy; supply a
-    # policy-compliant value on both lines.
     new_pw = "ReplacedNow1234!"
     result = runner.invoke(reset_password, [email], input=f"{new_pw}\n{new_pw}\n")
     assert result.exit_code == 0, f"CLI failed: {result.output}\n{result.exception}"
@@ -78,27 +49,20 @@ def test_cli_reset_password_bumps_password_changed_at(app):
     s = session_factory()
     try:
         u = s.get(User, user_id)
-        assert u.password_changed_at is not None, (
-            "reset-password did NOT bump password_changed_at — the regression "
-            "the audit H-5 flagged is still present"
+        assert u.sessions_invalidated_at is not None, (
+            "reset-password did NOT bump sessions_invalidated_at — the "
+            "regression the audit H-5 flagged is still present"
         )
     finally:
         s.close()
 
 
-def test_cli_create_admin_stamps_password_changed_at(app):
-    """A freshly-created super-admin must have `password_changed_at`
-    set so the *first* rotation correctly invalidates that admin's
-    sessions. Leaving it NULL means the comparison
-    `session["pwd_changed_at"] != live` would be `None == None` after
-    the first reset (the field was NULL going in), and the session
-    survives. Audit H-5 secondary recommendation."""
+def test_cli_create_admin_stamps_session_revocation_epoch(app):
     from cli import create_admin
     from database import session_factory
     from models import User
 
     email = "h5-fresh@test.local"
-    # Wipe any leftover from a prior run.
     s = session_factory()
     try:
         existing = s.scalar(select(User).where(User.email == email))
@@ -121,15 +85,76 @@ def test_cli_create_admin_stamps_password_changed_at(app):
     try:
         u = s.scalar(select(User).where(User.email == email))
         assert u is not None
-        assert u.password_changed_at is not None, (
-            "create_admin did NOT stamp password_changed_at — first reset "
-            "would not invalidate sessions"
+        assert u.sessions_invalidated_at is not None, (
+            "create_admin did NOT stamp sessions_invalidated_at — first "
+            "reset would not invalidate sessions"
         )
     finally:
         s.close()
 
 
-# H-2 — the three inactive-account flashes must collapse to one
+def test_logout_invalidates_replayed_cookie_server_side(app):
+    import bcrypt as _bcrypt
+
+    from database import session_factory
+    from models import User
+
+    client = app.test_client()
+
+    try:
+        r = client.post(
+            "/login",
+            data={"email": "alice@test.local", "password": "testpass"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302, f"login should redirect, got {r.status_code}"
+        captured = client.get_cookie("session")
+        assert captured is not None, "login must Set-Cookie a session entry"
+        captured_value = captured.value
+
+        r = client.get("/client/dashboard", follow_redirects=False)
+        assert r.status_code == 200, (
+            "captured cookie must work BEFORE logout — otherwise the test "
+            f"doesn't prove logout closes the window; got {r.status_code}"
+        )
+
+        r = client.post("/logout", follow_redirects=False)
+        assert r.status_code == 302
+
+        replay = app.test_client()
+        replay.set_cookie("session", captured_value)
+        r = replay.get("/client/dashboard", follow_redirects=False)
+        assert r.status_code in (302, 403), (
+            f"captured cookie kept working after legitimate user logged "
+            f"out (got {r.status_code}); session revocation is not "
+            f"enforced server-side"
+        )
+
+        import uuid as _uuid
+
+        r = replay.post(
+            "/api/messages",
+            json={
+                "recipient_id": str(_uuid.uuid4()),
+                "body": "post-logout replay attempt",
+            },
+        )
+        assert r.status_code in (302, 401, 403), (
+            f"POST /api/messages still accepted on a post-logout replayed "
+            f"cookie (got {r.status_code}); the messaging endpoint is "
+            f"the specific symptom the field report described"
+        )
+    finally:
+        s = session_factory()
+        try:
+            alice = s.scalar(select(User).where(User.email == "alice@test.local"))
+            alice.sessions_invalidated_at = None
+            alice.password_hash = _bcrypt.hashpw(
+                b"testpass", _bcrypt.gensalt()
+            ).decode()
+            s.commit()
+        finally:
+            s.close()
 
 
 def _seed_user_in_state(*, email: str, is_active: bool, membership):
@@ -184,9 +209,6 @@ def _extract_flash_block(html: str) -> str:
 
 
 def test_login_flash_identical_for_all_inactive_states(client):
-    """Three independently-inactive accounts (disabled / pending /
-    rejected) must produce the same flash markup at login time. The
-    audit's CWE-204 oracle is exactly this difference being readable."""
     from models import MembershipStatus
 
     cases = [
@@ -213,8 +235,6 @@ def test_login_flash_identical_for_all_inactive_states(client):
                 _extract_flash_block(r.data.decode("utf-8", errors="replace"))
             )
 
-        # All three must be byte-identical. If a future refactor reintroduces
-        # any state-specific copy this assertion goes red.
         assert flashes[0] == flashes[1] == flashes[2], (
             "login flash MUST be identical across inactive states; got distinct "
             "payloads:\n - disabled:\n"

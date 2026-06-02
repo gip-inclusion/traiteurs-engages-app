@@ -29,8 +29,6 @@ def _entity_name(other_user) -> str:
 
 
 def detail_url_for(viewer, other_user) -> str | None:
-    # None hides the "Voir le détail" button (e.g. caterer→client has no
-    # public client profile in V1).
     if other_user is None:
         return None
     if viewer.role == UserRole.super_admin:
@@ -68,8 +66,6 @@ def _summarise_thread(
 
 
 def threads_for_viewer(db: Session, viewer) -> list[dict]:
-    # 3 queries regardless of thread count: latest message per thread
-    # (DISTINCT ON), unread counts (GROUP BY), bulk user fetch.
     last_messages = db.scalars(
         select(Message)
         .where(or_(Message.sender_id == viewer.id, Message.recipient_id == viewer.id))
@@ -79,7 +75,6 @@ def threads_for_viewer(db: Session, viewer) -> list[dict]:
     if not last_messages:
         return []
 
-    # DISTINCT ON forced ordering by thread_id; re-sort for the UI.
     last_messages.sort(key=lambda m: m.created_at, reverse=True)
 
     unread_by_thread = dict(
@@ -118,8 +113,6 @@ def threads_for_viewer(db: Session, viewer) -> list[dict]:
 
 
 def active_thread_context(db: Session, *, thread_id, viewer) -> dict | None:
-    # None ⇒ caller maps to abort(404). super_admin is gated on
-    # participation, not platform-wide visibility.
     first_msg = db.scalar(
         select(Message)
         .where(Message.thread_id == thread_id)

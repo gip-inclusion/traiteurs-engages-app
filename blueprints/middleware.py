@@ -33,9 +33,6 @@ def role_required(*roles):
 
 
 def validated_caterer_required(f):
-    # No-op for non-caterers so it can decorate shared blueprints. On /api
-    # we return JSON 403 instead of a 302 to /caterer/pending — XHR callers
-    # can't usefully follow the redirect.
     @wraps(f)
     def decorated(*args, **kwargs):
         user = g.get("current_user")

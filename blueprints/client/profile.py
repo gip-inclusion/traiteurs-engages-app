@@ -1,5 +1,6 @@
 from flask import flash, g, redirect, render_template, request, url_for
 
+from blueprints.auth import _stamp_session
 from blueprints.middleware import login_required, role_required
 from database import get_db
 from forms.client import CompanySettingsForm, UserProfileForm
@@ -24,6 +25,7 @@ def register(bp):
                 flash(err, "error")
                 return render_template("client/profile.html", user=user), 400
             db.commit()
+            _stamp_session(user)
             flash("Profil mis à jour.", "success")
             return redirect(url_for("client.profile"))
         return render_template("client/profile.html", user=user)

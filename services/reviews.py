@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -18,17 +19,18 @@ from models import (
     User,
 )
 
+_review_logger = logging.getLogger("app.reviews")
+
 
 @dataclass(frozen=True)
 class ReviewAggregate:
-    avg: Decimal | None  # rounded to 1 decimal; None when count == 0
+    avg: Decimal | None
     count: int
 
 
 def aggregates_for_caterers(
     db: Session, caterer_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, ReviewAggregate]:
-    # Caterers without reviews are absent from the dict.
     if not caterer_ids:
         return {}
     rows = db.execute(
@@ -73,9 +75,6 @@ def list_for_caterer(
 
 
 def format_author(reviewer: User | None) -> str:
-    # Full anonymisation — the previous "FirstName L. — CompanyName" shape
-    # let caterers pin reviewers and competitors profile relationships.
-    # The reviewer relationship stays on the row for moderation/audit.
     return "Un client"
 
 
@@ -92,7 +91,6 @@ class InvalidRating(ReviewError):
 
 
 def _coerce_rating(raw) -> int:
-    # int(3.7) silently truncates; str() round-trip rejects floats.
     if raw is None:
         raise InvalidRating
     try:
@@ -105,7 +103,6 @@ def _coerce_rating(raw) -> int:
 
 
 def _load_reviewable_order(db: Session, *, order_id: uuid.UUID, viewer: User) -> Order:
-    # Allowed iff order is paid + viewer is qr.user_id + not already reviewed.
     order = db.get(Order, order_id)
     if order is None or order.status != OrderStatus.paid:
         raise OrderNotReviewable
@@ -131,15 +128,28 @@ def submit_review(
     rating = _coerce_rating(rating_raw)
     order = _load_reviewable_order(db, order_id=order_id, viewer=viewer)
     quote = db.get(Quote, order.quote_id)
+    comment = (comment_raw or "").strip() or None
     review = CatererReview(
         caterer_id=quote.caterer_id,
         order_id=order.id,
         reviewer_user_id=viewer.id,
         rating=rating,
-        comment=(comment_raw or "").strip() or None,
+        comment=comment,
     )
     db.add(review)
     db.flush()
+    _review_logger.info(
+        "review_submitted",
+        extra={
+            "event": "review_submitted",
+            "review_id": str(review.id),
+            "caterer_id": str(quote.caterer_id),
+            "order_id": str(order.id),
+            "reviewer_user_id": str(viewer.id),
+            "rating": rating,
+            "has_comment": bool(comment),
+        },
+    )
     return review
 
 
@@ -152,8 +162,6 @@ def can_review(db: Session, *, order: Order, viewer: User) -> bool:
 
 
 def notify_review_invite(db: Session, *, order: Order) -> Notification | None:
-    # Idempotent: bails out silently on non-paid, already-reviewed, or
-    # already-invited (covers webhook redeliveries of invoice.paid).
     if order.status != OrderStatus.paid:
         return None
 

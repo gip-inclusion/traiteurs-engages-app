@@ -9,12 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
-from models import PasswordResetToken, User
+from models import MembershipStatus, PasswordResetToken, User
 from services.email import render_and_send_async
 
 
 def _hash_token(raw: str) -> str:
-    # Only the digest lives in the DB; a DB leak doesn't yield reusable tokens.
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -22,12 +21,10 @@ RESET_TOKEN_TTL = datetime.timedelta(hours=1)
 
 
 class ResetTokenInvalid(Exception):
-    """One opaque exception for unknown / used / expired so handlers
-    can't accidentally distinguish them to a brute-forcer."""
+    pass
 
 
 def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
-    # Callers MUST use raw_token in the link, never row.token (digest).
     raw = secrets.token_urlsafe(32)
     row = PasswordResetToken(
         user_id=user.id,
@@ -39,10 +36,28 @@ def issue_token(db: Session, *, user: User) -> tuple[PasswordResetToken, str]:
     return row, raw
 
 
+def _invalidate_outstanding_tokens(
+    db: Session, *, user_id, now: datetime.datetime
+) -> None:
+    db.execute(
+        PasswordResetToken.__table__.update()
+        .where(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+
+
+def revoke_all_sessions(db: Session, user: User) -> None:
+    now = datetime.datetime.utcnow()
+    user.sessions_invalidated_at = now
+    _invalidate_outstanding_tokens(db, user_id=user.id, now=now)
+
+
 def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     if not raw_token:
         raise ResetTokenInvalid
-    # FOR UPDATE serializes concurrent redemption attempts.
     row = db.scalar(
         select(PasswordResetToken)
         .where(PasswordResetToken.token == _hash_token(raw_token))
@@ -58,27 +73,37 @@ def consume_token(db: Session, *, raw_token: str, new_password: str) -> User:
     user = db.get(User, row.user_id)
     if user is None or not user.is_active:
         raise ResetTokenInvalid
+    if (
+        user.sessions_invalidated_at is not None
+        and row.created_at is not None
+        and row.created_at < user.sessions_invalidated_at
+    ):
+        raise ResetTokenInvalid
+    if user.membership_status in (MembershipStatus.pending, MembershipStatus.rejected):
+        raise ResetTokenInvalid
 
     now = datetime.datetime.utcnow()
     row.used_at = now
     user.password_hash = bcrypt.hashpw(
         new_password.encode("utf-8"), bcrypt.gensalt()
     ).decode("utf-8")
-    # Bumping invalidates every existing session (see load_current_user).
-    user.password_changed_at = now
+    user.sessions_invalidated_at = now
+    _invalidate_outstanding_tokens(db, user_id=user.id, now=now)
     db.flush()
     return user
 
 
 def kick_off_reset(db: Session, *, email: str) -> None:
-    # Always returns None and the caller renders the same success page so
-    # account existence isn't leaked. Dummy bcrypt on the no-match path
-    # tracks the timing of the real path.
     user = db.scalar(select(User).where(User.email == (email or "").lower().strip()))
-    if user is None or not user.is_active:
+    blocked_membership = user is not None and user.membership_status in (
+        MembershipStatus.pending,
+        MembershipStatus.rejected,
+    )
+    if user is None or not user.is_active or blocked_membership:
         bcrypt.hashpw(b"timing-noise", bcrypt.gensalt())
         return
 
+    _invalidate_outstanding_tokens(db, user_id=user.id, now=datetime.datetime.utcnow())
     _row, raw_token = issue_token(db, user=user)
     reset_url = f"{config.BASE_URL}/reset-password/{raw_token}"
 

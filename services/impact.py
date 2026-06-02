@@ -1,14 +1,3 @@
-# Aggrégations « Impact social » du dashboard client.
-#
-# Seules les commandes `paid` comptent (achat effectivement réalisé).
-# `Quote.total_amount_ht` ne contient pas la commission plateforme : les
-# 5% sont sur un `CommissionInvoice` séparé et ne doivent pas entrer
-# dans le total impact ; à reconsidérer si un futur refactor inline la
-# commission dans Quote.total_amount_ht.
-#
-# SIAE = EI + ACI ; STPA = ESAT + EA (nomenclature lemarche.inclusion.gouv.fr).
-# Ratio heures financées : `round(montant / 26)` reproduit la formule
-# publiée par https://lemarche.inclusion.gouv.fr/calculer-impact-social-achat-inclusif/.
 from __future__ import annotations
 
 import uuid
@@ -26,8 +15,6 @@ from models import (
     QuoteRequest,
 )
 
-# Exposé comme constante pour qu'un test fige la valeur ; un changement
-# silencieux fausserait tous les chiffres.
 HOURS_FINANCED_DIVISOR_EUR: int = 26
 
 SIAE_STRUCTURE_TYPES: frozenset[CatererStructureType] = frozenset(
@@ -52,9 +39,6 @@ def compute_social_impact(
     company_id: uuid.UUID,
     requester_user_id: uuid.UUID | None = None,
 ) -> SocialImpact:
-    # requester_user_id reflète le scoping client_admin / client_user pour
-    # rester cohérent avec le KPI budget rendu sur la même page.
-    # Une seule requête groupée (≤ 4 lignes) au lieu de trois sommes ciblées.
     stmt = (
         select(
             Caterer.structure_type,
@@ -84,8 +68,6 @@ def compute_social_impact(
         elif structure_type in STPA_STRUCTURE_TYPES:
             stpa_ht += bucket
 
-    # round() (banker's) plutôt que int() pour rester proche de la valeur
-    # affichée par la plateforme officielle.
     hours_financed = (
         int(round(total_ht / HOURS_FINANCED_DIVISOR_EUR)) if total_ht > 0 else 0
     )

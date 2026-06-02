@@ -1,5 +1,3 @@
-# Best-effort: every trigger wraps its enqueue in try/except so a Brevo
-# or queue hiccup can't roll back the business write that just committed.
 from __future__ import annotations
 
 import logging
@@ -24,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 def _safe(label: str):
-    # Bare except is deliberate (BLE001): any email-side bug must not
-    # 500 the request that already committed the business write.
     def deco(fn):
         def wrapper(*args, **kwargs):
             try:
@@ -43,7 +39,6 @@ def _safe(label: str):
 
 @_safe("welcome_signup")
 def welcome_signup(user: User, *, role_kind: str, cta_path: str) -> None:
-    # role_kind ∈ {"client", "caterer", "admin"} drives the body.
     render_and_send_async(
         to=user.email,
         subject="Bienvenue chez Les Traiteurs Engagés",
@@ -56,8 +51,6 @@ def welcome_signup(user: User, *, role_kind: str, cta_path: str) -> None:
 
 @_safe("quote_received")
 def quote_received(db: Session, *, quote: Quote, caterer: Caterer) -> None:
-    # No-op unless the QRC is `transmitted_to_client` — defence in depth
-    # so a future caller (CLI, admin resend) can't email on the wrong state.
     qrc = db.scalar(
         select(QuoteRequestCaterer).where(
             QuoteRequestCaterer.quote_request_id == quote.quote_request_id,
@@ -90,8 +83,6 @@ def quote_received(db: Session, *, quote: Quote, caterer: Caterer) -> None:
 
 @_safe("order_confirmed")
 def order_confirmed(db: Session, *, order: Order) -> None:
-    # Per-user enqueue (not a bulk send): the To: array would leak
-    # recipients to each other and lose `{{ user.first_name }}`.
     quote = db.get(Quote, order.quote_id)
     if quote is None:
         return

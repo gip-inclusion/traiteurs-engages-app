@@ -1,10 +1,3 @@
-"""add indexes on frequently queried foreign keys
-
-Revision ID: a7b3c1d2e4f5
-Revises: f3a7b2c1d9e4
-Create Date: 2026-04-30
-"""
-
 from typing import Sequence, Union
 
 from alembic import op
@@ -14,7 +7,6 @@ down_revision: Union[str, Sequence[str], None] = "f3a7b2c1d9e4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# (table, column) pairs that need indexes.
 _INDEXES = [
     ("users", "company_id"),
     ("users", "caterer_id"),
