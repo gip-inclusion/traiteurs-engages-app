@@ -275,3 +275,110 @@ def test_order_confirmed_skips_when_no_active_users(app, session, captured_email
     with app.app_context():
         email_triggers.order_confirmed(session, order=order)
     assert captured_emails == []
+
+
+# ---------------------------------------------------------------------------
+# quote_request_received (P0 #1 du funnel)
+# ---------------------------------------------------------------------------
+
+
+def _seed_qr_for_quote_request_received(session, *, n_users: int = 1):
+    """QR + caterer + N users actifs côté traiteur. Retourne (qr, caterer,
+    users)."""
+    from sqlalchemy import select
+
+    from models import (
+        Caterer,
+        CatererStructureType,
+        Company,
+        QuoteRequest,
+        QuoteRequestStatus,
+        User,
+        UserRole,
+    )
+
+    acme = session.scalar(select(Company).where(Company.siret == "12345678901234"))
+    alice = session.scalar(select(User).where(User.email == "alice@test.local"))
+
+    caterer = Caterer(
+        name=f"Caterer-{uuid.uuid4().hex[:6]}",
+        siret=f"55{uuid.uuid4().hex[:12]}",
+        structure_type=CatererStructureType.ESAT,
+        invoice_prefix=f"Q{uuid.uuid4().hex[:4]}",
+        is_validated=True,
+    )
+    session.add(caterer)
+    session.flush()
+    users = []
+    for i in range(n_users):
+        u = User(
+            email=f"cat-{uuid.uuid4().hex[:6]}@test.local",
+            password_hash="x",
+            first_name=f"Cat{i}",
+            last_name="X",
+            role=UserRole.caterer,
+            caterer_id=caterer.id,
+        )
+        session.add(u)
+        users.append(u)
+    session.flush()
+
+    qr = QuoteRequest(
+        company_id=acme.id,
+        user_id=alice.id,
+        guest_count=18,
+        status=QuoteRequestStatus.sent_to_caterers,
+        event_address="1 rue Test",
+        event_city="Lyon",
+        event_zip_code="69001",
+        event_date=_dt.date.today() + _dt.timedelta(days=14),
+    )
+    session.add(qr)
+    session.flush()
+    return qr, caterer, users
+
+
+def test_quote_request_received_emails_each_active_caterer_user(
+    app, session, captured_emails
+):
+    from services import email_triggers
+
+    qr, caterer, users = _seed_qr_for_quote_request_received(session, n_users=2)
+    with app.app_context():
+        email_triggers.quote_request_received(
+            session, quote_request=qr, caterer=caterer
+        )
+    assert len(captured_emails) == 2
+    addresses = {c["to"] for c in captured_emails}
+    assert addresses == {users[0].email, users[1].email}
+    call = captured_emails[0]
+    assert "demande de devis" in call["subject"].lower()
+    # CTA pointe vers la fiche demande côté traiteur
+    assert f"/caterer/requests/{qr.id}" in call["html"]
+    # Le nom de l'entreprise cliente apparaît
+    assert "ACME Test" in call["html"]
+
+
+def test_quote_request_received_filters_inactive_users(app, session, captured_emails):
+    from services import email_triggers
+
+    qr, caterer, users = _seed_qr_for_quote_request_received(session, n_users=2)
+    users[0].is_active = False
+    session.flush()
+    with app.app_context():
+        email_triggers.quote_request_received(
+            session, quote_request=qr, caterer=caterer
+        )
+    assert len(captured_emails) == 1
+    assert captured_emails[0]["to"] == users[1].email
+
+
+def test_quote_request_received_skips_when_no_users(app, session, captured_emails):
+    from services import email_triggers
+
+    qr, caterer, _users = _seed_qr_for_quote_request_received(session, n_users=0)
+    with app.app_context():
+        email_triggers.quote_request_received(
+            session, quote_request=qr, caterer=caterer
+        )
+    assert captured_emails == []

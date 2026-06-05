@@ -114,3 +114,50 @@ def order_confirmed(db: Session, *, order: Order) -> None:
             total_amount_ht=quote.total_amount_ht,
             cta_url=cta_url,
         )
+
+
+# --- E1 — Quote request received (caterer side) --------------------------
+#
+# Audit emails : P0 #1. Sans ce mail, un traiteur ignore qu'une demande
+# lui a été transmise tant qu'il ne se reconnecte pas — tout le funnel
+# « 3 devis » et le ciblage direct dépendent du fait que le traiteur
+# revienne dans son espace pour répondre.
+
+
+@_safe("quote_request_received")
+def quote_request_received(
+    db: Session,
+    *,
+    quote_request: QuoteRequest,
+    caterer: Caterer,
+) -> None:
+    """Email envoyé à chaque user actif du traiteur quand une demande
+    lui est attribuée (fan-out 3 devis ou ciblage direct).
+
+    Mêmes garanties que `order_confirmed` : on charge les destinataires
+    ici pour ne pas dépendre du caller, et on enqueue 1 mail par user
+    (personnalisation + isolement d'un échec à un seul destinataire)."""
+    recipients = db.scalars(
+        select(User).where(
+            User.caterer_id == caterer.id,
+            User.is_active.is_(True),
+        )
+    ).all()
+    if not recipients:
+        return
+
+    company_name = quote_request.company.name if quote_request.company else ""
+    cta_url = f"{config.BASE_URL}/caterer/requests/{quote_request.id}"
+    for user in recipients:
+        render_and_send_async(
+            to=user.email,
+            subject="Nouvelle demande de devis",
+            template_name="quote_request_received",
+            user=user,
+            caterer=caterer,
+            company_name=company_name,
+            event_date=quote_request.event_date,
+            event_city=quote_request.event_city,
+            guest_count=quote_request.guest_count,
+            cta_url=cta_url,
+        )
