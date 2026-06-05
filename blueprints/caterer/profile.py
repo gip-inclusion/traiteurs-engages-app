@@ -12,6 +12,7 @@ from extensions import limiter
 from forms.caterer import CatererProfileForm
 from forms.client import UserProfileForm
 from models import SERVICE_OFFERING_LABELS
+from services import geocoding
 from services.account import apply_profile_form
 from services.json_schemas import ServiceConfig
 from services.uploads import save_upload
@@ -137,6 +138,7 @@ def register(bp):
             caterer.name = form.name.data or caterer.name
         if form.description.data is not None:
             caterer.description = form.description.data or caterer.description
+        previous_address = (caterer.address, caterer.city, caterer.zip_code)
         if form.address.data is not None:
             caterer.address = form.address.data or caterer.address
         if form.city.data is not None:
@@ -145,6 +147,19 @@ def register(bp):
             caterer.zip_code = form.zip_code.data or caterer.zip_code
         if form.delivery_radius_km.data is not None:
             caterer.delivery_radius_km = form.delivery_radius_km.data
+        # Regéocoder uniquement si l'adresse a changé (ou si on n'a jamais
+        # géocodé). geocode_address swallow ses erreurs et renvoie None ;
+        # dans ce cas on garde les anciennes coordonnées plutôt que de les
+        # effacer — le filtre matching tombera en mode tolérant.
+        new_address = (caterer.address, caterer.city, caterer.zip_code)
+        if new_address != previous_address or (
+            caterer.latitude is None and caterer.longitude is None
+        ):
+            coords = geocoding.geocode_address(
+                caterer.address, caterer.city, caterer.zip_code
+            )
+            if coords is not None:
+                caterer.latitude, caterer.longitude = coords
         caterer.dietary_vegetarian = form.dietary_vegetarian.data
         caterer.dietary_vegan = form.dietary_vegan.data
         caterer.dietary_halal = form.dietary_halal.data

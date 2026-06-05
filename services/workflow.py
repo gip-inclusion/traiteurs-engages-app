@@ -61,6 +61,40 @@ class OrderNotFound(WorkflowError):
     pass
 
 
+def _ensure_quote_request_coords(qr: QuoteRequest) -> None:
+    """Géocode l'adresse événement si lat/lon manquantes mais adresse présente.
+
+    Silencieux : si geocode_address renvoie None (timeout, hors-réseau, adresse
+    introuvable), on laisse les coordonnées à None — le filtre matching tombe
+    alors en mode tolérant. On modifie l'instance ORM directement ; le commit
+    appelant persistera le résultat.
+    """
+    if qr.event_latitude is not None and qr.event_longitude is not None:
+        return
+    if not (qr.event_address or qr.event_city):
+        return
+    from services.geocoding import geocode_address
+
+    coords = geocode_address(qr.event_address, qr.event_city, qr.event_zip_code)
+    if coords is None:
+        return
+    qr.event_latitude, qr.event_longitude = coords
+
+
+def _ensure_caterer_coords(caterer: Caterer) -> None:
+    """Pendant de _ensure_quote_request_coords pour un traiteur."""
+    if caterer.latitude is not None and caterer.longitude is not None:
+        return
+    if not (caterer.address or caterer.city):
+        return
+    from services.geocoding import geocode_address
+
+    coords = geocode_address(caterer.address, caterer.city, caterer.zip_code)
+    if coords is None:
+        return
+    caterer.latitude, caterer.longitude = coords
+
+
 def refuse_quote(
     db,
     *,
@@ -238,9 +272,22 @@ def approve_quote_request(
     if not qr:
         raise RequestNotFound
 
-    targets = list(
+    all_validated = list(
         db.scalars(select(Caterer).where(Caterer.is_validated.is_(True))).all()
     )
+
+    # Géocodage paresseux : si la demande ou un traiteur n'a pas encore
+    # de coordonnées mais que l'adresse est renseignée, on tente
+    # geocode_address à la volée et on persiste le résultat. Cela
+    # absorbe les profils créés avant le déploiement de ce code, sans
+    # nécessiter un script de backfill séparé.
+    _ensure_quote_request_coords(qr)
+    for caterer in all_validated:
+        _ensure_caterer_coords(caterer)
+
+    from services.matching import is_caterer_eligible
+
+    targets = [c for c in all_validated if is_caterer_eligible(c, qr)]
 
     qrcs: list[QuoteRequestCaterer] = []
     for caterer in targets:
@@ -300,6 +347,7 @@ def approve_quote_request(
             "event": "quote_request_approved",
             "quote_request_id": str(request_id),
             "company_id": str(qr.company_id),
+            "caterers_total": len(all_validated),
             "caterers_targeted": len(targets),
         },
     )

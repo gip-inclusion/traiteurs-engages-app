@@ -45,7 +45,7 @@ from models import (
     QuoteRequestStatus,
     QuoteStatus,
 )
-from services import workflow
+from services import geocoding, workflow
 from services.notifications import (
     caterer_user_ids,
     notify_users,
@@ -333,6 +333,21 @@ def register(bp):
         apply_quote_request_form(qr, form)
         apply_drinks(qr, request.form)
         qr.is_compare_mode = is_compare
+        # Géocoder l'adresse événement si le client n'a pas fourni de
+        # coordonnées explicites mais a renseigné une adresse. Utilisé par
+        # le filtre rayon d'intervention lors du fan-out vers les
+        # traiteurs (services.matching). Erreurs silencieuses : si le
+        # géocodage échoue, le filtre tombe en mode tolérant.
+        if (
+            qr.event_latitude is None
+            and qr.event_longitude is None
+            and (qr.event_address or qr.event_city)
+        ):
+            coords = geocoding.geocode_address(
+                qr.event_address, qr.event_city, qr.event_zip_code
+            )
+            if coords is not None:
+                qr.event_latitude, qr.event_longitude = coords
         db.add(qr)
         try:
             db.flush()

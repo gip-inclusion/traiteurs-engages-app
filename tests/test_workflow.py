@@ -8,6 +8,7 @@ from models import (
     Caterer,
     CatererStructureType,
     Company,
+    MealType,
     Order,
     OrderStatus,
     QRCStatus,
@@ -515,6 +516,219 @@ def test_submit_unknown_quote_raises(session):
             quote_id=uuid.uuid4(),
             caterer=caterers[0],
         )
+
+
+# ---------------------------------------------------------------------------
+# approve_quote_request — filtres matching (offering + rayon)
+# ---------------------------------------------------------------------------
+
+
+def _isolate_fixture_caterers(s) -> None:
+    """Désactive le caterer fixture pour les tests de matching pour ne
+    raisonner que sur les traiteurs créés par le test. Sera annulé par
+    le rollback de la fixture session.
+    """
+    from sqlalchemy import select
+
+    fixture_caterer = s.scalar(select(Caterer).where(Caterer.siret == "98765432109876"))
+    if fixture_caterer is not None:
+        fixture_caterer.is_validated = False
+        s.flush()
+
+
+def _seed_matching_qr(
+    s,
+    *,
+    meal_type: MealType | None = None,
+    event_latitude: float | None = None,
+    event_longitude: float | None = None,
+) -> uuid.UUID:
+    from sqlalchemy import select
+
+    acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
+    alice = s.scalar(select(User).where(User.email == "alice@test.local"))
+    qr = QuoteRequest(
+        company_id=acme.id,
+        user_id=alice.id,
+        guest_count=18,
+        status=QuoteRequestStatus.pending_review,
+        meal_type=meal_type,
+        event_address="1 rue Test",
+        event_city="Paris",
+        event_zip_code="75001",
+        event_latitude=event_latitude,
+        event_longitude=event_longitude,
+        event_date=_dt.date.today() + _dt.timedelta(days=21),
+    )
+    s.add(qr)
+    s.flush()
+    return qr.id
+
+
+def _make_matching_caterer(
+    s,
+    *,
+    offerings: list[str] | None = None,
+    delivery_radius_km: int | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> Caterer:
+    c = Caterer(
+        name=f"M-{uuid.uuid4().hex[:6]}",
+        siret=f"55{uuid.uuid4().hex[:12]}",
+        structure_type=CatererStructureType.ESAT,
+        invoice_prefix=f"M{uuid.uuid4().hex[:4]}",
+        is_validated=True,
+        service_offerings=offerings,
+        delivery_radius_km=delivery_radius_km,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    s.add(c)
+    s.flush()
+    return c
+
+
+def test_approve_excludes_caterer_without_matching_offering(session):
+    """Bug 1 reproduit : Bonne Table ne propose que plateaux_repas, la
+    demande cible un cocktail déjeunatoire — elle ne doit pas recevoir
+    la demande.
+    """
+    from sqlalchemy import select
+
+    _isolate_fixture_caterers(session)
+    qr_id = _seed_matching_qr(session, meal_type=MealType.cocktail_dejeunatoire)
+    caterer_yes = _make_matching_caterer(
+        session, offerings=["cocktail_dejeunatoire", "plateaux_repas"]
+    )
+    caterer_no = _make_matching_caterer(session, offerings=["plateaux_repas"])
+
+    workflow.approve_quote_request(session, request_id=qr_id)
+    session.flush()
+
+    qrc_ids = {
+        q.caterer_id
+        for q in session.scalars(
+            select(QuoteRequestCaterer).where(
+                QuoteRequestCaterer.quote_request_id == qr_id
+            )
+        ).all()
+    }
+    assert caterer_yes.id in qrc_ids
+    assert caterer_no.id not in qrc_ids
+
+
+def test_approve_includes_caterer_when_offerings_empty(session):
+    """Tolérance : si le traiteur n'a rien renseigné, on lui envoie
+    quand même la demande (le filtre offering n'est jamais déclenché).
+    """
+    from sqlalchemy import select
+
+    _isolate_fixture_caterers(session)
+    qr_id = _seed_matching_qr(session, meal_type=MealType.cocktail_dejeunatoire)
+    caterer_blank = _make_matching_caterer(session, offerings=None)
+
+    workflow.approve_quote_request(session, request_id=qr_id)
+    session.flush()
+
+    qrc_ids = {
+        q.caterer_id
+        for q in session.scalars(
+            select(QuoteRequestCaterer).where(
+                QuoteRequestCaterer.quote_request_id == qr_id
+            )
+        ).all()
+    }
+    assert caterer_blank.id in qrc_ids
+
+
+def test_approve_excludes_caterer_beyond_delivery_radius(session):
+    """Bug 2 reproduit : Bonne Table rayon 7 km, demande à 24 km — elle
+    ne doit pas recevoir la demande.
+    """
+    from sqlalchemy import select
+
+    _isolate_fixture_caterers(session)
+    # Saclay ~ (48.731, 2.171), Paris centre ~ (48.8566, 2.3522), ~20 km
+    qr_id = _seed_matching_qr(
+        session,
+        event_latitude=48.8566,
+        event_longitude=2.3522,
+    )
+    caterer_close = _make_matching_caterer(
+        session,
+        delivery_radius_km=50,
+        latitude=48.8600,
+        longitude=2.3500,
+    )
+    caterer_far = _make_matching_caterer(
+        session,
+        delivery_radius_km=7,
+        latitude=48.731,
+        longitude=2.171,
+    )
+
+    workflow.approve_quote_request(session, request_id=qr_id)
+    session.flush()
+
+    qrc_ids = {
+        q.caterer_id
+        for q in session.scalars(
+            select(QuoteRequestCaterer).where(
+                QuoteRequestCaterer.quote_request_id == qr_id
+            )
+        ).all()
+    }
+    assert caterer_close.id in qrc_ids
+    assert caterer_far.id not in qrc_ids
+
+
+def test_approve_geocodes_missing_coords_on_the_fly(session, monkeypatch):
+    """Si un traiteur n'a pas de coords mais a une adresse, on géocode
+    pendant approve et le filtre rayon peut alors s'appliquer.
+    """
+    from sqlalchemy import select
+
+    from services import geocoding
+
+    _isolate_fixture_caterers(session)
+    qr_id = _seed_matching_qr(
+        session,
+        event_latitude=48.8566,
+        event_longitude=2.3522,
+    )
+
+    # Caterer sans coords mais avec adresse Saclay.
+    caterer_far = _make_matching_caterer(session, delivery_radius_km=7)
+    caterer_far.address = "1 rue de la Mairie"
+    caterer_far.city = "Saclay"
+    caterer_far.zip_code = "91400"
+    session.flush()
+
+    def _fake_geocode(address, city=None, zip_code=None):
+        if city == "Saclay":
+            return (48.731, 2.171)
+        return None
+
+    monkeypatch.setattr(geocoding, "geocode_address", _fake_geocode)
+
+    workflow.approve_quote_request(session, request_id=qr_id)
+    session.flush()
+
+    # Le géocodage à la volée a peuplé les coords...
+    refreshed = session.scalar(select(Caterer).where(Caterer.id == caterer_far.id))
+    assert refreshed.latitude == pytest.approx(48.731)
+    assert refreshed.longitude == pytest.approx(2.171)
+    # ...puis le filtre rayon a exclu le traiteur (24 km > 7 km).
+    qrc_ids = {
+        q.caterer_id
+        for q in session.scalars(
+            select(QuoteRequestCaterer).where(
+                QuoteRequestCaterer.quote_request_id == qr_id
+            )
+        ).all()
+    }
+    assert caterer_far.id not in qrc_ids
 
 
 def test_submit_quote_for_other_caterer_raises(session):
