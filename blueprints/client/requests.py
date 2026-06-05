@@ -367,6 +367,12 @@ def register(bp):
                 related_entity_type="quote_request",
                 related_entity_id=qr.id,
             )
+            # Email parallèle à la notif in-app (P0 du funnel).
+            from services import email_triggers
+
+            email_triggers.quote_request_received(
+                db, quote_request=qr, caterer=target_caterer
+            )
         elif qr.status == QuoteRequestStatus.pending_review:
             notify_users(
                 db,

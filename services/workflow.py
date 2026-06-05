@@ -276,6 +276,13 @@ def approve_quote_request(
                 related_entity_type="quote_request",
                 related_entity_id=qr.id,
             )
+        # Email parallèle à la notif in-app (P0 du funnel : sans cet
+        # email, un traiteur ignore qu'il a une demande à traiter).
+        # Import tardif pour éviter le cycle workflow ↔ email_triggers.
+        from services import email_triggers
+
+        for caterer in targets:
+            email_triggers.quote_request_received(db, quote_request=qr, caterer=caterer)
         if qr.user_id is not None:
             notify(
                 db,

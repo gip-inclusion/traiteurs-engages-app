@@ -1,0 +1,16 @@
+Une nouvelle demande de devis vous a été transmise
+
+Bonjour {{ user.first_name }},
+
+{% if company_name %}{{ company_name }}{% else %}Un client{% endif %} souhaite recevoir un devis. Vous avez jusqu'à 7 jours pour répondre.
+
+{% if event_date %}Date : {{ event_date.strftime('%d/%m/%Y') }}
+{% endif %}{% if guest_count %}Convives : {{ guest_count }}
+{% endif %}{% if event_city %}Lieu : {{ event_city }}
+{% endif %}
+Répondre à la demande : {{ cta_url }}
+
+Plus vous répondez vite, plus vous avez de chances d'être retenu. Au-delà de 3 traiteurs ayant déjà envoyé un devis, la demande est clôturée.
+
+—
+Vous recevez cet email car votre établissement {{ caterer.name }} figure dans le catalogue des Traiteurs Engagés et a été sollicité pour cette demande.
