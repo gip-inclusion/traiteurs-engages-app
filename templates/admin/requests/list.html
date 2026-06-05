@@ -43,9 +43,25 @@
     </thead>
     <tbody>
       {% for req in requests %}
+      {# Demande directe = un seul QRC (le traiteur ciblé) créé à la
+         soumission ; sinon 3 devis. `req.caterers` est eager-loadé. #}
+      {% set target_caterer = req.caterers[0].caterer if (not req.is_compare_mode and req.caterers) else none %}
       <tr class="hover:bg-cream border-t border-soft">
         <td class="px-4 py-3 text-sm font-medium text-black">{{ req.company.name }}</td>
-        <td class="px-4 py-3 text-sm text-mute">{{ meal_type_labels.get(req.meal_type) or req.service_type or '-' }}</td>
+        <td class="px-4 py-3 text-sm">
+          <div class="text-mute">{{ meal_type_labels.get(req.meal_type) or req.service_type or '-' }}</div>
+          {% if req.is_compare_mode %}
+          <span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-bold bg-navy-soft text-navy">
+            <i data-lucide="users" class="w-3 h-3"></i>
+            3 devis
+          </span>
+          {% else %}
+          <span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-bold bg-cream text-text">
+            <i data-lucide="user" class="w-3 h-3"></i>
+            Direct{% if target_caterer %} &rarr; <span class="font-bold">{{ target_caterer.name }}</span>{% endif %}
+          </span>
+          {% endif %}
+        </td>
         <td class="px-4 py-3 text-sm text-mute">{{ req.event_date.strftime('%d/%m/%Y') if req.event_date else '-' }}</td>
         <td class="px-4 py-3 text-sm text-mute">{{ req.guest_count or '-' }}</td>
         <td class="px-4 py-3 text-sm text-mute">
