@@ -77,6 +77,8 @@ class Settings(BaseSettings):
 
     support_user_emails: str | None = None
 
+    matomo_tag_manager_url: str | None = None
+
     @field_validator(
         "stripe_secret_key",
         "stripe_publishable_key",
@@ -89,6 +91,7 @@ class Settings(BaseSettings):
         "s3_endpoint_url",
         "s3_public_url",
         "brevo_api_key",
+        "matomo_tag_manager_url",
         mode="before",
     )
     @classmethod
@@ -148,3 +151,5 @@ SUPPORT_USER_EMAILS = frozenset(
     for e in (settings.support_user_emails or "").split(",")
     if e.strip()
 )
+
+MATOMO_TAG_MANAGER_URL = settings.matomo_tag_manager_url or ""

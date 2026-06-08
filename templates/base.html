@@ -19,6 +19,11 @@
   <script src="{{ url_for('static', filename='js/vendor/lucide.min.js') }}" defer></script>
 
   <script src="{{ url_for('static', filename='js/history-back.js') }}" defer></script>
+  {% if matomo_tag_manager_url %}
+  <script src="{{ url_for('static', filename='js/matomo-tag-manager.js') }}"
+          data-matomo-container-url="{{ matomo_tag_manager_url }}"
+          defer></script>
+  {% endif %}
   {% block head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-cream">
