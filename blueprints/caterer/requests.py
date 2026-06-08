@@ -76,6 +76,12 @@ def _derive_qrc_display_status(qr, caterer_id):
     ]
     caterer_quote = max(candidate_quotes, key=lambda q: q.version, default=None)
     no_active_quote = caterer_quote is None or caterer_quote.status == QuoteStatus.draft
+    # Refus explicite par le traiteur : on rejoint l'onglet "Cloturees"
+    # quelle que soit la presence d'un devis brouillon. request_reject
+    # empeche deja un refus apres envoi d'un devis "sent", donc le seul
+    # devis residuel possible est un brouillon non envoye.
+    if qrc and qrc.status == QRCStatus.rejected:
+        return "closed"
     if qrc and qrc.status == QRCStatus.closed and no_active_quote:
         return "closed"
     if no_active_quote:
