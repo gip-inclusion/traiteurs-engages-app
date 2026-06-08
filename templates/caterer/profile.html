@@ -58,7 +58,7 @@
     </div>
 
     <div class="bg-white rounded-lg p-6">
-      <h2 class="font-display font-bold text-xl mb-4 text-text">Livraison</h2>
+      <h2 class="font-display font-bold text-xl mb-4 text-text">Adresse postale</h2>
       <div class="space-y-4">
         <div>
           <label for="address" class="block text-sm font-bold mb-1 text-text">Adresse</label>
@@ -84,11 +84,11 @@
   </div>
 
   <div class="bg-white rounded-lg p-6">
-    <h2 class="font-display font-bold text-xl mb-4 text-text">Regimes alimentaires proposes</h2>
+    <h2 class="font-display font-bold text-xl mb-4 text-text">Régimes alimentaires proposés</h2>
     <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
       {% set dietary_options = [
-        ('dietary_vegetarian', 'Vegetarien', caterer.dietary_vegetarian),
-        ('dietary_vegan', 'Vegan', caterer.dietary_vegan),
+        ('dietary_vegetarian', 'Végétarien', caterer.dietary_vegetarian),
+        ('dietary_bio', 'Bio', caterer.dietary_bio),
         ('dietary_halal', 'Halal', caterer.dietary_halal),
         ('dietary_gluten_free', 'Sans gluten', caterer.dietary_gluten_free),
         ('dietary_lactose_free', 'Sans lactose', caterer.dietary_lactose_free),

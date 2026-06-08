@@ -167,7 +167,7 @@ def seed():
             capacity_max=200,
             delivery_radius_km=20,
             dietary_vegetarian=True,
-            dietary_vegan=True,
+            dietary_bio=True,
             dietary_halal=True,
             is_validated=True,
             invoice_prefix="ESAT1",
@@ -222,7 +222,7 @@ def seed():
             capacity_max=80,
             delivery_radius_km=15,
             dietary_vegetarian=True,
-            dietary_vegan=True,
+            dietary_bio=True,
             is_validated=True,
             invoice_prefix="EIDEL",
             service_offerings=[
