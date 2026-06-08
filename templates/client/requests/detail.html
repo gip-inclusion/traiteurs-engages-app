@@ -349,7 +349,11 @@
               <p class="text-sm mb-6 text-mute">
                 Vous acceptez le devis de <strong>{{ quote.caterer.name }}</strong> pour un montant de
                 <strong>{{ "%.2f" | format(quote.total_amount_ht | float) }} EUR HT</strong>.
+                {% if qr.is_compare_mode %}
                 Les autres devis seront automatiquement refuses et une commande sera creee.
+                {% else %}
+                Une commande sera creee automatiquement.
+                {% endif %}
               </p>
               <div class="flex items-center justify-end gap-3">
                 <button type="button" data-action="dialog-close" data-target="accept-dialog-{{ quote.id }}"
