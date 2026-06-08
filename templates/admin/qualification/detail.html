@@ -77,10 +77,7 @@
       <h2 class="font-display font-bold text-lg text-black mb-4">Regimes alimentaires</h2>
       <div class="flex flex-wrap gap-2">
         {% if qr.dietary_vegetarian %}
-        <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft">Vegetarien{% if qr.vegetarian_count %} ({{ qr.vegetarian_count }}){% endif %}</span>
-        {% endif %}
-        {% if qr.dietary_vegan %}
-        <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft">Vegan{% if qr.vegan_count %} ({{ qr.vegan_count }}){% endif %}</span>
+        <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft">Végétarien{% if qr.vegetarian_count %} ({{ qr.vegetarian_count }}){% endif %}</span>
         {% endif %}
         {% if qr.dietary_halal %}
         <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft">Halal{% if qr.halal_count %} ({{ qr.halal_count }}){% endif %}</span>
@@ -91,7 +88,7 @@
         {% if qr.dietary_lactose_free %}
         <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft">Sans lactose{% if qr.lactose_free_count %} ({{ qr.lactose_free_count }}){% endif %}</span>
         {% endif %}
-        {% if not (qr.dietary_vegetarian or qr.dietary_vegan or qr.dietary_halal or qr.dietary_gluten_free or qr.dietary_lactose_free) %}
+        {% if not (qr.dietary_vegetarian or qr.dietary_halal or qr.dietary_gluten_free or qr.dietary_lactose_free) %}
         <p class="text-sm text-mute">Aucun regime specifique.</p>
         {% endif %}
       </div>

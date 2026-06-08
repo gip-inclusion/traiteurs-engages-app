@@ -193,10 +193,11 @@ def create_app():
             "notification_target_url": notification_target_url,
         }
 
-    from cli import admin_cli, uploads_cli
+    from cli import admin_cli, announcements_cli, uploads_cli
 
     app.cli.add_command(admin_cli)
     app.cli.add_command(uploads_cli)
+    app.cli.add_command(announcements_cli)
 
     @app.before_request
     def load_current_user():

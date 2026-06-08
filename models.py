@@ -350,8 +350,6 @@ class QuoteRequest(DietaryMixin, Base):
     budget_global: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     budget_per_person: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     vegetarian_count: Mapped[int | None] = mapped_column(Integer)
-    dietary_vegan: Mapped[bool] = mapped_column(Boolean, default=False)
-    vegan_count: Mapped[int | None] = mapped_column(Integer)
     halal_count: Mapped[int | None] = mapped_column(Integer)
     gluten_free_count: Mapped[int | None] = mapped_column(Integer)
     lactose_free_count: Mapped[int | None] = mapped_column(Integer)
