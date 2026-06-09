@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session
 import config
 from models import (
     Caterer,
+    Message,
     Order,
     QRCStatus,
     Quote,
     QuoteRequest,
     QuoteRequestCaterer,
     User,
+    UserRole,
 )
 from services.email import render_and_send_async
 
@@ -161,3 +163,58 @@ def quote_request_received(
             guest_count=quote_request.guest_count,
             cta_url=cta_url,
         )
+
+
+# --- E2 — Message received -----------------------------------------------
+#
+# Email envoyé au destinataire d'un message dès sa réception, en parallèle
+# de la notif in-app (blueprints/api.send_message). Sans cet email, un
+# contact ne sait qu'il a reçu un message que s'il revient sur la
+# plateforme.
+
+# Préfixe d'URL de la messagerie selon le rôle du destinataire : chaque
+# espace a sa propre route `*.message_thread` (cf. blueprints/_messages.py).
+_MESSAGE_THREAD_PREFIX = {
+    UserRole.client_admin: "/client",
+    UserRole.client_user: "/client",
+    UserRole.caterer: "/caterer",
+    UserRole.super_admin: "/admin",
+}
+
+_MESSAGE_PREVIEW_MAX = 500
+
+
+@_safe("message_received")
+def message_received(
+    *,
+    message: Message,
+    sender: User,
+    recipient: User,
+) -> None:
+    """Email au destinataire d'un message. Erreurs silencieuses (_safe) :
+    un échec d'envoi ne doit pas bloquer l'enregistrement du message."""
+    if recipient is None or not recipient.is_active:
+        return
+    prefix = _MESSAGE_THREAD_PREFIX.get(recipient.role)
+    if prefix is None:
+        return
+
+    sender_name = (
+        f"{sender.first_name} {sender.last_name}".strip()
+        if sender is not None
+        else "Un contact"
+    )
+    body = (message.body or "").strip()
+    preview = body[:_MESSAGE_PREVIEW_MAX]
+    truncated = len(body) > _MESSAGE_PREVIEW_MAX
+    cta_url = f"{config.BASE_URL}{prefix}/messages/{message.thread_id}"
+    render_and_send_async(
+        to=recipient.email,
+        subject="Nouveau message",
+        template_name="message_received",
+        user=recipient,
+        sender_name=sender_name,
+        preview=preview,
+        truncated=truncated,
+        cta_url=cta_url,
+    )

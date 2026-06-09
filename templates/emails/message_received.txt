@@ -1,0 +1,14 @@
+Vous avez reçu un nouveau message
+
+Bonjour {{ user.first_name }},
+
+{{ sender_name }} vous a envoyé un message.
+{% if preview %}
+« {{ preview }}{% if truncated %}…{% endif %} »
+{% endif %}
+Voir le message : {{ cta_url }}
+
+Répondez directement depuis votre messagerie pour poursuivre la conversation.
+
+—
+Vous recevez cet email car vous avez une conversation en cours sur Les Traiteurs Engagés.
