@@ -218,14 +218,21 @@ def qualification_detail(request_id):
             joinedload(QuoteRequest.user),
             joinedload(QuoteRequest.company),
             selectinload(QuoteRequest.quotes).joinedload(Quote.caterer),
+            # Necessaire pour afficher le traiteur cible d'une demande
+            # directe (is_compare_mode=False) dans le bandeau de detail.
+            selectinload(QuoteRequest.caterers).joinedload(QuoteRequestCaterer.caterer),
         )
     )
     if not qr:
         abort(404)
+    target_caterer = (
+        qr.caterers[0].caterer if (not qr.is_compare_mode and qr.caterers) else None
+    )
     return render_template(
         "admin/qualification/detail.html",
         user=g.current_user,
         qr=qr,
+        target_caterer=target_caterer,
         meal_type_labels=MEAL_TYPE_LABELS,
     )
 
