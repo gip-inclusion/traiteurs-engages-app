@@ -18,20 +18,6 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
   <div class="lg:col-span-2 space-y-6">
     <div class="bg-white rounded-lg p-6">
-      <h2 class="font-display font-bold text-lg text-black mb-4">Entreprise</h2>
-      <p class="text-sm font-medium text-black">{{ qr.company.name }}</p>
-      <p class="text-xs mt-1 text-mute">SIRET : {{ qr.company.siret }}</p>
-      {% if qr.company.city %}<p class="text-xs text-mute">{{ qr.company.city }}</p>{% endif %}
-      {% if qr.user %}
-      <div class="mt-4 pt-4 border-t border-soft">
-        <p class="text-xs font-bold uppercase text-mute mb-1">Demande creee par</p>
-        <p class="text-sm font-medium text-black">{{ qr.user.first_name }} {{ qr.user.last_name }}</p>
-        <p class="text-xs mt-1 text-mute">{{ qr.user.email }}</p>
-      </div>
-      {% endif %}
-    </div>
-
-    <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-lg text-black mb-4">Details de l'evenement</h2>
       <div class="flex flex-wrap gap-2 mb-4">
         <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-cream text-text-soft">
@@ -171,6 +157,43 @@
 
   <div class="space-y-6">
 
+    <div class="bg-white rounded-lg p-6">
+      <h2 class="font-display font-bold text-lg text-black mb-4">Entreprise</h2>
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center bg-navy-soft" style="flex-shrink:0;">
+          <i data-lucide="building-2" class="w-5 h-5 text-navy"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-display font-bold text-base text-text truncate">{{ qr.company.name }}</p>
+          <p class="text-xs text-mute truncate">SIRET {{ qr.company.siret }}</p>
+          {% if qr.company.city %}
+          <p class="text-xs text-mute truncate">{{ qr.company.city }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% if qr.user %}
+      <div class="mt-4 pt-4 border-t border-soft">
+        <p class="text-xs font-bold uppercase text-mute mb-1">Demande creee par</p>
+        <p class="text-sm font-medium text-black">{{ qr.user.first_name }} {{ qr.user.last_name }}</p>
+        <p class="text-xs mt-1 text-mute">{{ qr.user.email }}</p>
+      </div>
+      {% endif %}
+      <div class="flex flex-col gap-3 mt-4">
+        <button type="button" data-action="dialog-open" data-target="admin-client-message-modal"
+          class="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold btn-ghost-navy">
+          <i data-lucide="message-square" class="w-4 h-4"></i>
+          Envoyer un message au client
+        </button>
+      </div>
+    </div>
+
+    {{ send_message_modal(
+         modal_id="admin-client-message-modal",
+         recipient_user_id=qr.user_id,
+         recipient_name=qr.company.name,
+         quote_request_id=qr.id,
+         thread_endpoint="admin.message_thread") }}
+
     {% if target_caterer %}
     <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-lg text-black mb-4">Traiteur</h2>
@@ -254,11 +277,6 @@
             Valider la demande
           </button>
         </form>
-        <button type="button" data-action="dialog-open" data-target="admin-client-message-modal"
-          class="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold btn-ghost-navy">
-          <i data-lucide="message-square" class="w-4 h-4"></i>
-          Envoyer un message au client
-        </button>
         <button type="button" data-action="dialog-open" data-target="reject-dialog"
           class="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-white text-sm font-bold bg-danger">
           <i data-lucide="x" class="w-4 h-4"></i>
@@ -266,13 +284,6 @@
         </button>
       </div>
     </div>
-
-    {{ send_message_modal(
-         modal_id="admin-client-message-modal",
-         recipient_user_id=qr.user_id,
-         recipient_name=qr.company.name,
-         quote_request_id=qr.id,
-         thread_endpoint="admin.message_thread") }}
 
     <dialog id="reject-dialog" class="rounded-lg p-0 backdrop:bg-black/50 max-w-md w-full" data-backdrop-dismiss>
       <div class="p-6">
@@ -295,22 +306,6 @@
         </form>
       </div>
     </dialog>
-    {% else %}
-    <div class="bg-white rounded-lg p-6">
-      <h2 class="font-display font-bold text-lg text-black mb-4">Actions</h2>
-      <button type="button" data-action="dialog-open" data-target="admin-client-message-modal"
-        class="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold btn-ghost-navy">
-        <i data-lucide="message-square" class="w-4 h-4"></i>
-        Envoyer un message au client
-      </button>
-    </div>
-
-    {{ send_message_modal(
-         modal_id="admin-client-message-modal",
-         recipient_user_id=qr.user_id,
-         recipient_name=qr.company.name,
-         quote_request_id=qr.id,
-         thread_endpoint="admin.message_thread") }}
     {% endif %}
   </div>
 </div>

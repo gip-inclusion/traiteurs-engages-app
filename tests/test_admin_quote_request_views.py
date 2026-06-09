@@ -274,6 +274,58 @@ def test_qualification_detail_shows_caterer_block_for_direct(client, login):
         _cleanup_caterer(target_id)
 
 
+def test_qualification_detail_dispatched_has_no_actions_block(client, login):
+    """Demande déjà envoyée : pas de bloc Actions (Valider/Rejeter), mais
+    le bouton message au client reste (déplacé dans le bloc Entreprise)."""
+    from database import session_factory
+
+    s = session_factory()
+    try:
+        target = _make_throwaway_caterer(s)
+        target_id = target.id
+        qr_id = _seed_qr(s, is_compare_mode=False, target_caterer=target)
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.get(f"/admin/qualification/{qr_id}")
+        assert r.status_code == 200
+        body = r.data
+        assert b"Valider la demande" not in body
+        assert b"Rejeter" not in body
+        assert b"Envoyer un message au client" in body
+    finally:
+        _cleanup_qrs([qr_id])
+        _cleanup_caterer(target_id)
+
+
+def test_qualification_detail_pending_keeps_approve_reject(client, login):
+    """Demande en attente : bloc Actions conservé (Valider + Rejeter), et
+    le bouton message au client reste présent (dans le bloc Entreprise)."""
+    from database import session_factory
+    from models import QuoteRequestStatus
+
+    s = session_factory()
+    try:
+        qr_id = _seed_qr(
+            s, is_compare_mode=True, status=QuoteRequestStatus.pending_review
+        )
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.get(f"/admin/qualification/{qr_id}")
+        assert r.status_code == 200
+        body = r.data
+        assert b"Valider la demande" in body
+        assert b"Rejeter" in body
+        assert b"Envoyer un message au client" in body
+    finally:
+        _cleanup_qrs([qr_id])
+
+
 def test_caterers_list_excludes_dead_quote_requests_from_counter(client, login):
     """Une QRC `selected` dont la QR parente est `cancelled` ne doit pas
     apparaître dans le compteur (la demande est morte)."""
