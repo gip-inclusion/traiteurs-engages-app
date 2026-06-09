@@ -76,6 +76,36 @@ def _make_throwaway_caterer(s):
     return c
 
 
+def _add_caterer_user(s, caterer):
+    """Attache un user actif au traiteur (destinataire des messages)."""
+    from models import User, UserRole
+
+    u = User(
+        email=f"cat-{uuid.uuid4().hex[:6]}@test.local",
+        password_hash="x",
+        first_name="Cat",
+        last_name="X",
+        role=UserRole.caterer,
+        caterer_id=caterer.id,
+    )
+    s.add(u)
+    s.flush()
+    return u
+
+
+def _cleanup_users(user_ids):
+    from database import session_factory
+    from models import User
+
+    s = session_factory()
+    try:
+        for uid in user_ids:
+            s.execute(User.__table__.delete().where(User.id == uid))
+        s.commit()
+    finally:
+        s.close()
+
+
 def _cleanup_qrs(qr_ids):
     from database import session_factory
     from models import QuoteRequest, QuoteRequestCaterer
@@ -186,11 +216,13 @@ def test_caterers_list_shows_pending_counter_for_selected_qrc(client, login):
 
 
 # ---------------------------------------------------------------------------
-# /admin/qualification/<id> : meme badge sur la page detail
+# /admin/qualification/<id> : bloc « Traiteur » pour les demandes directes
 # ---------------------------------------------------------------------------
 
 
-def test_qualification_detail_shows_3_devis_badge_for_compare_mode(client, login):
+def test_qualification_detail_no_caterer_block_for_compare_mode(client, login):
+    """En mode 3 devis, pas de traiteur cible unique : le bloc Traiteur
+    ne doit pas apparaître."""
     from database import session_factory
 
     s = session_factory()
@@ -203,18 +235,53 @@ def test_qualification_detail_shows_3_devis_badge_for_compare_mode(client, login
         login("admin@test.local")
         r = client.get(f"/admin/qualification/{qr_id}")
         assert r.status_code == 200
-        assert b"3 devis" in r.data
+        assert b"Voir la fiche traiteur" not in r.data
     finally:
         _cleanup_qrs([qr_id])
 
 
-def test_qualification_detail_shows_direct_badge_with_caterer_name(client, login):
+def test_qualification_detail_shows_caterer_block_for_direct(client, login):
+    """Demande directe : bloc Traiteur avec nom, lien fiche traiteur et
+    bouton message (le traiteur a un user actif)."""
     from database import session_factory
 
     s = session_factory()
     try:
         target = _make_throwaway_caterer(s)
         target_name = target.name
+        target_id = target.id
+        cat_user = _add_caterer_user(s, target)
+        cat_user_id = cat_user.id
+        qr_id = _seed_qr(s, is_compare_mode=False, target_caterer=target)
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.get(f"/admin/qualification/{qr_id}")
+        assert r.status_code == 200
+        body = r.data
+        # Bloc Traiteur + nom du traiteur
+        assert target_name.encode() in body
+        # Lien vers la fiche traiteur admin
+        assert f"/admin/caterers/{target_id}".encode() in body
+        assert b"Voir la fiche traiteur" in body
+        # Bouton message (un user existe)
+        assert b"Envoyer un message au traiteur" in body
+    finally:
+        _cleanup_qrs([qr_id])
+        _cleanup_users([cat_user_id])
+        _cleanup_caterer(target_id)
+
+
+def test_qualification_detail_dispatched_has_no_actions_block(client, login):
+    """Demande déjà envoyée : pas de bloc Actions (Valider/Rejeter), mais
+    le bouton message au client reste (déplacé dans le bloc Entreprise)."""
+    from database import session_factory
+
+    s = session_factory()
+    try:
+        target = _make_throwaway_caterer(s)
         target_id = target.id
         qr_id = _seed_qr(s, is_compare_mode=False, target_caterer=target)
         s.commit()
@@ -224,11 +291,39 @@ def test_qualification_detail_shows_direct_badge_with_caterer_name(client, login
         login("admin@test.local")
         r = client.get(f"/admin/qualification/{qr_id}")
         assert r.status_code == 200
-        assert b"Direct" in r.data
-        assert target_name.encode() in r.data
+        body = r.data
+        assert b"Valider la demande" not in body
+        assert b"Rejeter" not in body
+        assert b"Envoyer un message au client" in body
     finally:
         _cleanup_qrs([qr_id])
         _cleanup_caterer(target_id)
+
+
+def test_qualification_detail_pending_keeps_approve_reject(client, login):
+    """Demande en attente : bloc Actions conservé (Valider + Rejeter), et
+    le bouton message au client reste présent (dans le bloc Entreprise)."""
+    from database import session_factory
+    from models import QuoteRequestStatus
+
+    s = session_factory()
+    try:
+        qr_id = _seed_qr(
+            s, is_compare_mode=True, status=QuoteRequestStatus.pending_review
+        )
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.get(f"/admin/qualification/{qr_id}")
+        assert r.status_code == 200
+        body = r.data
+        assert b"Valider la demande" in body
+        assert b"Rejeter" in body
+        assert b"Envoyer un message au client" in body
+    finally:
+        _cleanup_qrs([qr_id])
 
 
 def test_caterers_list_excludes_dead_quote_requests_from_counter(client, login):
