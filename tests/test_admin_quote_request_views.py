@@ -185,6 +185,52 @@ def test_caterers_list_shows_pending_counter_for_selected_qrc(client, login):
         _cleanup_caterer(caterer_id)
 
 
+# ---------------------------------------------------------------------------
+# /admin/qualification/<id> : meme badge sur la page detail
+# ---------------------------------------------------------------------------
+
+
+def test_qualification_detail_shows_3_devis_badge_for_compare_mode(client, login):
+    from database import session_factory
+
+    s = session_factory()
+    try:
+        qr_id = _seed_qr(s, is_compare_mode=True)
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.get(f"/admin/qualification/{qr_id}")
+        assert r.status_code == 200
+        assert b"3 devis" in r.data
+    finally:
+        _cleanup_qrs([qr_id])
+
+
+def test_qualification_detail_shows_direct_badge_with_caterer_name(client, login):
+    from database import session_factory
+
+    s = session_factory()
+    try:
+        target = _make_throwaway_caterer(s)
+        target_name = target.name
+        target_id = target.id
+        qr_id = _seed_qr(s, is_compare_mode=False, target_caterer=target)
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.get(f"/admin/qualification/{qr_id}")
+        assert r.status_code == 200
+        assert b"Direct" in r.data
+        assert target_name.encode() in r.data
+    finally:
+        _cleanup_qrs([qr_id])
+        _cleanup_caterer(target_id)
+
+
 def test_caterers_list_excludes_dead_quote_requests_from_counter(client, login):
     """Une QRC `selected` dont la QR parente est `cancelled` ne doit pas
     apparaître dans le compteur (la demande est morte)."""
