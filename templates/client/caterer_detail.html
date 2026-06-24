@@ -87,7 +87,7 @@
         <div class="bg-white rounded-lg p-6">
           <h2 class="font-display font-bold text-xl mb-3 text-text">Options alimentaires</h2>
           <div class="flex flex-wrap gap-2">
-            {% set diet_pills = [("vegetarian", "Vegetarien", "bg-green-100 text-green-700"), ("vegan", "Vegan", "bg-emerald-100 text-emerald-700"), ("halal", "Halal", "bg-blue-100 text-blue-700"), ("gluten_free", "Sans gluten", "bg-amber-100 text-amber-700"), ("lactose_free", "Sans lactose", "bg-pink-100 text-pink-700")] %}
+            {% set diet_pills = [("vegetarian", "Végétarien", "bg-green-100 text-green-700"), ("bio", "Bio", "bg-emerald-100 text-emerald-700"), ("halal", "Halal", "bg-blue-100 text-blue-700"), ("gluten_free", "Sans gluten", "bg-amber-100 text-amber-700"), ("lactose_free", "Sans lactose", "bg-pink-100 text-pink-700")] %}
             {% set ns = namespace(found=false) %}
             {% for key, label, style in diet_pills %}
             {% if caterer["dietary_" + key] %}

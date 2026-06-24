@@ -29,8 +29,7 @@ STRUCTURE_GROUPS = {
 }
 
 DIETARY_FLAGS = [
-    ("vegetarian", "Vegetarien"),
-    ("vegan", "Vegan"),
+    ("vegetarian", "Végétarien"),
     ("halal", "Halal"),
     ("gluten_free", "Sans gluten"),
     ("lactose_free", "Sans lactose"),
@@ -47,12 +46,10 @@ _QR_DIRECT_FIELDS = (
     "budget_global",
     "budget_per_person",
     "dietary_vegetarian",
-    "dietary_vegan",
     "dietary_halal",
     "dietary_gluten_free",
     "dietary_lactose_free",
     "vegetarian_count",
-    "vegan_count",
     "halal_count",
     "gluten_free_count",
     "lactose_free_count",

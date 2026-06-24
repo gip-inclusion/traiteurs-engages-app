@@ -28,7 +28,6 @@ commission_invoice_seq = Sequence("commission_invoice_number_seq", start=1)
 
 class DietaryMixin:
     dietary_vegetarian: Mapped[bool] = mapped_column(Boolean, default=False)
-    dietary_vegan: Mapped[bool] = mapped_column(Boolean, default=False)
     dietary_halal: Mapped[bool] = mapped_column(Boolean, default=False)
     dietary_gluten_free: Mapped[bool] = mapped_column(Boolean, default=False)
     dietary_lactose_free: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -195,6 +194,7 @@ class Caterer(DietaryMixin, Base):
     )
     logo_url: Mapped[str | None] = mapped_column(String(500))
     delivery_radius_km: Mapped[int | None] = mapped_column(Integer)
+    dietary_bio: Mapped[bool] = mapped_column(Boolean, default=False)
     service_config: Mapped[dict | None] = mapped_column(JSON)
     service_offerings: Mapped[list | None] = mapped_column(JSON)
     service_offering_specs: Mapped[dict | None] = mapped_column(JSON)
@@ -350,7 +350,6 @@ class QuoteRequest(DietaryMixin, Base):
     budget_global: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     budget_per_person: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     vegetarian_count: Mapped[int | None] = mapped_column(Integer)
-    vegan_count: Mapped[int | None] = mapped_column(Integer)
     halal_count: Mapped[int | None] = mapped_column(Integer)
     gluten_free_count: Mapped[int | None] = mapped_column(Integer)
     lactose_free_count: Mapped[int | None] = mapped_column(Integer)

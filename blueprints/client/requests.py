@@ -90,10 +90,10 @@ def _caterer_capabilities(caterer):
     return {
         "dietary": {
             "vegetarian": bool(caterer.dietary_vegetarian),
-            "vegan": bool(caterer.dietary_vegan),
             "halal": bool(caterer.dietary_halal),
             "gluten_free": bool(caterer.dietary_gluten_free),
             "lactose_free": bool(caterer.dietary_lactose_free),
+            "bio": bool(caterer.dietary_bio),
         },
     }
 

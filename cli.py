@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from blueprints.auth import validate_password
 from database import get_session
-from models import Caterer, User, UserRole
+from models import Caterer, MembershipStatus, User, UserRole
 
 
 admin_cli = AppGroup("admin", help="Manage super-admin accounts.")
@@ -287,3 +287,79 @@ def migrate_uploads_to_s3(dry_run: bool, verbose: bool):
     if dry_run:
         click.echo("  (dry-run: no changes were committed)")
     sys.exit(1 if errors else 0)
+
+
+announcements_cli = AppGroup(
+    "announcements",
+    help="One-off broadcasts (feature announcements, etc).",
+)
+
+
+_BIO_NOTIF_TYPE = "feature_dietary_bio"
+
+
+@announcements_cli.command(
+    "broadcast-bio",
+    help=(
+        "Notify every active caterer user that the 'Bio' option is now "
+        "available in their profile. Idempotent : will skip users who "
+        "already received the notification."
+    ),
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="List who would be notified, do not insert anything.",
+)
+def broadcast_bio_announcement(dry_run: bool) -> None:
+    from models import Notification
+
+    title = "Nouveau : indiquez si vous proposez du Bio"
+    body = (
+        "Une nouvelle option « Bio » est disponible dans votre fiche traiteur. "
+        "Pensez à la cocher si vous proposez une cuisine bio — elle sera mise "
+        "en avant auprès des clients."
+    )
+
+    with get_session() as db:
+        recipients = list(
+            db.scalars(
+                select(User.id).where(
+                    User.role == UserRole.caterer,
+                    User.is_active.is_(True),
+                    User.membership_status == MembershipStatus.active,
+                )
+            )
+        )
+        already_notified = set(
+            db.scalars(
+                select(Notification.user_id).where(
+                    Notification.type == _BIO_NOTIF_TYPE,
+                    Notification.user_id.in_(recipients),
+                )
+            )
+        )
+        targets = [uid for uid in recipients if uid not in already_notified]
+
+        click.echo(f"  active caterer users        : {len(recipients)}")
+        click.echo(f"  already notified previously : {len(already_notified)}")
+        click.echo(f"  to notify now               : {len(targets)}")
+
+        if dry_run:
+            click.echo("  (dry-run: nothing inserted)")
+            return
+
+        for uid in targets:
+            db.add(
+                Notification(
+                    user_id=uid,
+                    type=_BIO_NOTIF_TYPE,
+                    title=title,
+                    body=body,
+                    related_entity_type=None,
+                    related_entity_id=None,
+                )
+            )
+        db.commit()
+        click.echo(f"  inserted: {len(targets)} notification(s)")

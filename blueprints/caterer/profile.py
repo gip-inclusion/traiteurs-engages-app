@@ -161,7 +161,7 @@ def register(bp):
             if coords is not None:
                 caterer.latitude, caterer.longitude = coords
         caterer.dietary_vegetarian = form.dietary_vegetarian.data
-        caterer.dietary_vegan = form.dietary_vegan.data
+        caterer.dietary_bio = form.dietary_bio.data
         caterer.dietary_halal = form.dietary_halal.data
         caterer.dietary_gluten_free = form.dietary_gluten_free.data
         caterer.dietary_lactose_free = form.dietary_lactose_free.data

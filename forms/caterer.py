@@ -50,7 +50,7 @@ class CatererProfileForm(FlaskForm):
         validators=[Optional(), NumberRange(min=0, max=2000)]
     )
     dietary_vegetarian = BooleanField()
-    dietary_vegan = BooleanField()
+    dietary_bio = BooleanField()
     dietary_halal = BooleanField()
     dietary_gluten_free = BooleanField()
     dietary_lactose_free = BooleanField()
