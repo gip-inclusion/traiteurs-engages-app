@@ -400,6 +400,12 @@ def send_message():
         related_entity_type="message",
         related_entity_id=msg.id,
     )
+    # Email parallèle à la notif in-app : le destinataire est prévenu sans
+    # avoir à revenir sur la plateforme. Import tardif pour éviter le cycle
+    # blueprints ↔ services.email_triggers.
+    from services import email_triggers
+
+    email_triggers.message_received(message=msg, sender=user, recipient=recipient)
     db.commit()
 
     return jsonify({"status": "ok", "thread_id": str(thread_id)}), 201

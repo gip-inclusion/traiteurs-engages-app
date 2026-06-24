@@ -43,18 +43,33 @@ configure_logging()
 install_sql_tracing(engine)
 
 
-CSP = (
-    "default-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src 'self' https://fonts.gstatic.com; "
-    "img-src 'self' data: blob:; "
-    "connect-src 'self' https://api-adresse.data.gouv.fr; "
-    "object-src 'none'; "
-    "frame-ancestors 'none'; "
-    "base-uri 'self'; "
-    "form-action 'self' https://connect.stripe.com"
-)
+def _matomo_origin(url: str) -> str:
+    # Extrait "https://host[:port]" d'une URL container Matomo, pour
+    # n'autoriser dans la CSP que l'origine stricte (pas le path).
+    if not url:
+        return ""
+    scheme_sep = url.find("://")
+    if scheme_sep == -1:
+        return ""
+    after_scheme = url.find("/", scheme_sep + 3)
+    return url if after_scheme == -1 else url[:after_scheme]
+
+
+def _build_csp(matomo_url: str) -> str:
+    matomo_origin = _matomo_origin(matomo_url)
+    extra = f" {matomo_origin}" if matomo_origin else ""
+    return (
+        "default-src 'self'; "
+        f"script-src 'self'{extra}; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        f"img-src 'self' data: blob:{extra}; "
+        f"connect-src 'self' https://api-adresse.data.gouv.fr{extra}; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self' https://connect.stripe.com"
+    )
 
 
 def create_app():
@@ -140,6 +155,10 @@ def create_app():
             "dev_demo_mode": demo_mode,
             "dev_demo_accounts": DEMO_ACCOUNTS,
         }
+
+    @app.context_processor
+    def _inject_matomo():
+        return {"matomo_tag_manager_url": config.MATOMO_TAG_MANAGER_URL}
 
     @app.context_processor
     def _inject_notifications():
@@ -313,7 +332,9 @@ def create_app():
         response.headers["Permissions-Policy"] = (
             "geolocation=(), microphone=(), camera=(), payment=()"
         )
-        response.headers["Content-Security-Policy"] = CSP
+        response.headers["Content-Security-Policy"] = _build_csp(
+            config.MATOMO_TAG_MANAGER_URL
+        )
         if request.is_secure or settings.secure_cookies:
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"

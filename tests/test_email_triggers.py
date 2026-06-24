@@ -382,3 +382,87 @@ def test_quote_request_received_skips_when_no_users(app, session, captured_email
             session, quote_request=qr, caterer=caterer
         )
     assert captured_emails == []
+
+
+# ---------------------------------------------------------------------------
+# message_received (E2 du funnel messagerie)
+# ---------------------------------------------------------------------------
+
+
+def _msg(body="Bonjour, une question sur votre devis."):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(body=body, thread_id=uuid.uuid4())
+
+
+def _cook(s):
+    from sqlalchemy import select
+
+    from models import User
+
+    return s.scalar(select(User).where(User.email == "cook@test.local"))
+
+
+def test_message_received_emails_caterer_recipient_with_caterer_cta(
+    app, session, captured_emails
+):
+    from services import email_triggers
+
+    alice = _alice(session)
+    cook = _cook(session)
+    msg = _msg()
+    with app.app_context():
+        email_triggers.message_received(message=msg, sender=alice, recipient=cook)
+    assert len(captured_emails) == 1
+    call = captured_emails[0]
+    assert call["to"] == cook.email
+    assert "message" in call["subject"].lower()
+    # Nom de l'expéditeur
+    assert f"{alice.first_name} {alice.last_name}" in call["html"]
+    # Aperçu du corps
+    assert "votre devis" in call["html"]
+    # CTA vers la messagerie côté traiteur
+    assert f"/caterer/messages/{msg.thread_id}" in call["html"]
+
+
+def test_message_received_uses_client_cta_for_client_recipient(
+    app, session, captured_emails
+):
+    from services import email_triggers
+
+    alice = _alice(session)
+    cook = _cook(session)
+    msg = _msg()
+    with app.app_context():
+        email_triggers.message_received(message=msg, sender=cook, recipient=alice)
+    assert len(captured_emails) == 1
+    assert f"/client/messages/{msg.thread_id}" in captured_emails[0]["html"]
+
+
+def test_message_received_skips_inactive_recipient(app, session, captured_emails):
+    from services import email_triggers
+
+    alice = _alice(session)
+    cook = _cook(session)
+    cook.is_active = False
+    session.flush()
+    with app.app_context():
+        email_triggers.message_received(message=_msg(), sender=alice, recipient=cook)
+    assert captured_emails == []
+
+
+def test_message_received_truncates_long_body(app, session, captured_emails):
+    from services import email_triggers
+
+    alice = _alice(session)
+    cook = _cook(session)
+    long_body = "x" * 800
+    with app.app_context():
+        email_triggers.message_received(
+            message=_msg(body=long_body), sender=alice, recipient=cook
+        )
+    assert len(captured_emails) == 1
+    html = captured_emails[0]["html"]
+    # Tronqué à 500 caractères + ellipse, donc pas les 800 caractères complets.
+    assert "x" * 800 not in html
+    assert "…" in html
