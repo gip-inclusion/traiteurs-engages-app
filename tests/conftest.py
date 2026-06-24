@@ -133,6 +133,21 @@ def _seed_users():
         s.close()
 
 
+@pytest.fixture(autouse=True)
+def _stub_geocoder(monkeypatch):
+    """Coupe le réseau pour Nominatim dans tous les tests.
+
+    Les hooks de géocodage (profil traiteur, création de demande, fan-out)
+    appellent services.geocoding.geocode_address. Par défaut on renvoie
+    None pour que les tests qui ne s'intéressent pas au géocodage ne
+    soient pas dépendants du réseau ni ralentis. Les tests qui veulent
+    vérifier la persistance des coordonnées re-monkeypatchent localement.
+    """
+    from services import geocoding
+
+    monkeypatch.setattr(geocoding, "geocode_address", lambda *a, **kw: None)
+
+
 @pytest.fixture
 def login(client):
     def _login(email, password="testpass"):
