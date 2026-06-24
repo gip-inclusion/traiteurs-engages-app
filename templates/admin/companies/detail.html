@@ -7,8 +7,13 @@
 {% block content %}
 <div class="mb-6">
   <div class="mb-3">{{ back_button(label="Retour a la liste") }}</div>
-  <div class="flex items-center gap-3">
+  <div class="flex items-center justify-between gap-3 flex-wrap">
     <h1 class="font-display font-bold text-2xl text-black">{{ company.name }}</h1>
+    <a href="{{ url_for('admin.company_edit', company_id=company.id) }}"
+      class="inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold btn-ghost-navy">
+      <i data-lucide="pencil" class="w-4 h-4"></i>
+      Modifier les informations
+    </a>
   </div>
 </div>
 

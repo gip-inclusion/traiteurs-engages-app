@@ -82,6 +82,11 @@
     <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-lg text-black mb-4">Actions admin</h2>
       <div class="space-y-3">
+        <a href="{{ url_for('admin.caterer_edit', caterer_id=caterer.id) }}"
+          class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold btn-ghost-navy">
+          <i data-lucide="pencil" class="w-4 h-4"></i>
+          Modifier les informations
+        </a>
         {% if caterer.is_validated %}
         <form method="POST" action="{{ url_for('admin.caterer_invalidate', caterer_id=caterer.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
