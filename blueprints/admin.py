@@ -31,8 +31,10 @@ from models import (
     OrderStatus,
     Payment,
     PaymentStatus,
+    QRCStatus,
     Quote,
     QuoteRequest,
+    QuoteRequestCaterer,
     QuoteRequestStatus,
     QuoteStatus,
     User,
@@ -162,7 +164,16 @@ def requests_list():
         status_filter = "all"
     page = max(1, request.args.get("page", 1, type=int) or 1)
 
-    stmt = select(QuoteRequest).options(joinedload(QuoteRequest.company))
+    # Charge les QRC + caterers pour pouvoir nommer le traiteur destinataire
+    # d'une demande directe (is_compare_mode=False). selectinload évite le
+    # N+1 sur les ~25 demandes affichées par page.
+    stmt = (
+        select(QuoteRequest)
+        .options(joinedload(QuoteRequest.company))
+        .options(
+            selectinload(QuoteRequest.caterers).joinedload(QuoteRequestCaterer.caterer)
+        )
+    )
     count_stmt = select(func.count(QuoteRequest.id))
     if status_filter != "all":
         stmt = stmt.where(QuoteRequest.status == status_filter)
@@ -207,14 +218,30 @@ def qualification_detail(request_id):
             joinedload(QuoteRequest.user),
             joinedload(QuoteRequest.company),
             selectinload(QuoteRequest.quotes).joinedload(Quote.caterer),
+            # Necessaire pour afficher le bloc « Traiteur » d'une demande
+            # directe (is_compare_mode=False) : la fiche du traiteur cible
+            # + un de ses users comme destinataire de message.
+            selectinload(QuoteRequest.caterers)
+            .joinedload(QuoteRequestCaterer.caterer)
+            .selectinload(Caterer.users),
         )
     )
     if not qr:
         abort(404)
+    target_caterer = (
+        qr.caterers[0].caterer if (not qr.is_compare_mode and qr.caterers) else None
+    )
+    # Premier user du traiteur, comme cote client (cf. blueprints/client/
+    # requests.py) : destinataire du message si le traiteur a un compte.
+    target_caterer_user = (
+        target_caterer.users[0] if target_caterer and target_caterer.users else None
+    )
     return render_template(
         "admin/qualification/detail.html",
         user=g.current_user,
         qr=qr,
+        target_caterer=target_caterer,
+        target_caterer_user=target_caterer_user,
         meal_type_labels=MEAL_TYPE_LABELS,
     )
 
@@ -284,8 +311,27 @@ def qualification_reject(request_id):
 def caterers_list():
     db = get_db()
     caterers = db.scalars(select(Caterer).order_by(Caterer.name)).all()
+    # Compteur « demandes en attente de traitement par ce traiteur ».
+    # = QRC.status == selected (sollicité, pas encore répondu) sur une
+    # demande encore active (sent_to_caterers). On exclut les QR mortes
+    # (cancelled/completed/quotes_refused) pour ne pas gonfler le badge
+    # avec des demandes que le traiteur n'a plus à traiter.
+    pending_qrc_rows = db.execute(
+        select(
+            QuoteRequestCaterer.caterer_id,
+            func.count(QuoteRequestCaterer.id),
+        )
+        .join(QuoteRequest, QuoteRequest.id == QuoteRequestCaterer.quote_request_id)
+        .where(QuoteRequestCaterer.status == QRCStatus.selected)
+        .where(QuoteRequest.status == QuoteRequestStatus.sent_to_caterers)
+        .group_by(QuoteRequestCaterer.caterer_id)
+    ).all()
+    pending_by_caterer = {cid: cnt for cid, cnt in pending_qrc_rows}
     return render_template(
-        "admin/caterers/list.html", user=g.current_user, caterers=caterers
+        "admin/caterers/list.html",
+        user=g.current_user,
+        caterers=caterers,
+        pending_by_caterer=pending_by_caterer,
     )
 
 
