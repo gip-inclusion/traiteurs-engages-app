@@ -19,11 +19,12 @@ from sqlalchemy.orm import joinedload, selectinload
 from blueprints.middleware import login_required, role_required
 from database import get_db
 from extensions import limiter
-from forms.caterer import RejectionForm
-from forms.client import UserProfileForm
+from forms.caterer import AdminCatererForm, RejectionForm
+from forms.client import CompanySettingsForm, UserProfileForm
 from models import (
     MEAL_TYPE_LABELS,
     Caterer,
+    CatererStructureType,
     Company,
     CompanyEmployee,
     CompanyService,
@@ -348,6 +349,53 @@ def caterer_detail(caterer_id):
     )
 
 
+@admin_bp.route("/caterers/<uuid:caterer_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("super_admin")
+def caterer_edit(caterer_id):
+    db = get_db()
+    caterer = db.get(Caterer, caterer_id)
+    if not caterer:
+        abort(404)
+    if request.method == "POST":
+        form = AdminCatererForm()
+        if not form.validate_on_submit():
+            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            return render_template(
+                "admin/caterers/edit.html",
+                user=g.current_user,
+                caterer=caterer,
+                structure_types=list(CatererStructureType),
+            ), 400
+        if form.name.data is not None:
+            caterer.name = (form.name.data or "").strip() or caterer.name
+        if form.siret.data:
+            caterer.siret = form.siret.data.strip()
+        if form.structure_type.data:
+            caterer.structure_type = form.structure_type.data
+        caterer.address = (form.address.data or "").strip() or None
+        caterer.city = (form.city.data or "").strip() or None
+        caterer.zip_code = (form.zip_code.data or "").strip() or None
+        caterer.description = (form.description.data or "").strip() or None
+        log_admin_action(
+            db,
+            g.current_user,
+            "caterer.edit",
+            target_type="caterer",
+            target_id=caterer_id,
+            extra={"caterer_name": caterer.name},
+        )
+        db.commit()
+        flash(f"Traiteur {caterer.name} mis a jour.", "success")
+        return redirect(url_for("admin.caterer_detail", caterer_id=caterer_id))
+    return render_template(
+        "admin/caterers/edit.html",
+        user=g.current_user,
+        caterer=caterer,
+        structure_types=list(CatererStructureType),
+    )
+
+
 @admin_bp.route("/caterers/<uuid:caterer_id>/validate", methods=["POST"])
 @login_required
 @role_required("super_admin")
@@ -433,6 +481,56 @@ def company_detail(company_id):
         services=services,
         requests=requests,
         meal_type_labels=MEAL_TYPE_LABELS,
+    )
+
+
+@admin_bp.route("/companies/<uuid:company_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("super_admin")
+def company_edit(company_id):
+    db = get_db()
+    company = db.get(Company, company_id)
+    if not company:
+        abort(404)
+    if request.method == "POST":
+        form = CompanySettingsForm()
+        if not form.validate_on_submit():
+            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            return render_template(
+                "admin/companies/edit.html", user=g.current_user, company=company
+            ), 400
+        new_siret = (form.siret.data or "").strip()
+        if new_siret and new_siret != company.siret:
+            clash = db.scalar(
+                select(Company.id).where(
+                    Company.siret == new_siret, Company.id != company.id
+                )
+            )
+            if clash is not None:
+                flash("Ce SIRET est deja utilise par une autre entreprise.", "error")
+                return render_template(
+                    "admin/companies/edit.html", user=g.current_user, company=company
+                ), 400
+        if form.name.data is not None:
+            company.name = (form.name.data or "").strip() or company.name
+        if new_siret:
+            company.siret = new_siret
+        company.address = (form.address.data or "").strip() or None
+        company.city = (form.city.data or "").strip() or None
+        company.zip_code = (form.zip_code.data or "").strip() or None
+        log_admin_action(
+            db,
+            g.current_user,
+            "company.edit",
+            target_type="company",
+            target_id=company_id,
+            extra={"company_name": company.name},
+        )
+        db.commit()
+        flash(f"Entreprise {company.name} mise a jour.", "success")
+        return redirect(url_for("admin.company_detail", company_id=company_id))
+    return render_template(
+        "admin/companies/edit.html", user=g.current_user, company=company
     )
 
 

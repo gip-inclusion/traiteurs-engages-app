@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import back_button %}
+
+{% block title %}Modifier {{ company.name }} - Les Traiteurs Engages{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <div class="mb-3">{{ back_button(label="Retour a la fiche") }}</div>
+  <h1 class="font-display font-bold text-2xl text-black">Modifier l'entreprise</h1>
+</div>
+
+<div class="bg-white rounded-lg p-6 max-w-2xl">
+  <form method="POST" action="{{ url_for('admin.company_edit', company_id=company.id) }}" class="space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div>
+      <label class="block text-sm font-bold mb-2 text-text">Nom</label>
+      <input type="text" name="name" value="{{ company.name or '' }}" required
+        class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+    </div>
+
+    <div>
+      <label class="block text-sm font-bold mb-2 text-text">SIRET</label>
+      <input type="text" name="siret" value="{{ company.siret or '' }}" maxlength="14"
+        class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+    </div>
+
+    <div>
+      <label class="block text-sm font-bold mb-2 text-text">Adresse</label>
+      <input type="text" name="address" value="{{ company.address or '' }}"
+        class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Ville</label>
+        <input type="text" name="city" value="{{ company.city or '' }}"
+          class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Code postal</label>
+        <input type="text" name="zip_code" value="{{ company.zip_code or '' }}" maxlength="10"
+          class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3 pt-2">
+      <button type="submit"
+        class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 btn-navy">
+        <i data-lucide="check" class="w-4 h-4"></i>
+        Enregistrer
+      </button>
+      <a href="{{ url_for('admin.company_detail', company_id=company.id) }}"
+        class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 btn-ghost-navy">
+        Annuler
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
