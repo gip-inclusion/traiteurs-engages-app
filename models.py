@@ -647,6 +647,12 @@ class Message(Base):
         Uuid, ForeignKey("quote_requests.id")
     )
     body: Mapped[str] = mapped_column(Text)
+    # Pièce jointe optionnelle (1 par message). `attachment_url` est la
+    # clé de stockage (servie par une route authentifiée, pas le proxy
+    # public /uploads). `attachment_name` = nom de fichier d'origine
+    # affiché au destinataire.
+    attachment_url: Mapped[str | None] = mapped_column(String(500))
+    attachment_name: Mapped[str | None] = mapped_column(String(255))
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
