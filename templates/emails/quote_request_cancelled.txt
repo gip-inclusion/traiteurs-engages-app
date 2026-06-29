@@ -1,0 +1,14 @@
+Une demande de devis a été annulée
+
+Bonjour {{ user.first_name }},
+
+La demande de {% if company_name %}{{ company_name }}{% else %}votre client{% endif %}{% if event_city %} à {{ event_city }}{% endif %}{% if event_date %} (le {{ event_date.strftime('%d/%m/%Y') }}){% endif %} a été annulée par notre équipe. Vous n'avez plus à y répondre.
+{% if reason %}
+Motif : {{ reason }}
+{% endif %}
+Voir mes demandes : {{ cta_url }}
+
+Si vous aviez déjà envoyé un devis pour cette demande, il a été automatiquement clôturé.
+
+—
+Vous recevez cet email car votre établissement {{ caterer.name }} avait été sollicité pour cette demande sur Les Traiteurs Engagés.

@@ -448,6 +448,96 @@ def notify_request_updated(db, *, request_id: uuid.UUID) -> int:
     return notified
 
 
+def cancel_quote_request(db, *, request_id: uuid.UUID, reason: str | None) -> int:
+    """Annule une demande déjà envoyée aux traiteurs. Passe la demande en
+    `cancelled`, clôture les QRC encore actifs, refuse les devis déjà
+    envoyés, et notifie les traiteurs concernés (in-app + email) ainsi que
+    le client (in-app). Retourne le nombre de traiteurs notifiés."""
+    qr = db.get(QuoteRequest, request_id)
+    if qr is None:
+        raise RequestNotFound
+
+    qr.status = QuoteRequestStatus.cancelled
+
+    active_qrcs = db.scalars(
+        select(QuoteRequestCaterer).where(
+            QuoteRequestCaterer.quote_request_id == request_id,
+            QuoteRequestCaterer.status.in_(
+                (QRCStatus.selected, QRCStatus.transmitted_to_client)
+            ),
+        )
+    ).all()
+
+    # Les devis déjà transmis au client deviennent caducs.
+    sent_quotes = db.scalars(
+        select(Quote).where(
+            Quote.quote_request_id == request_id,
+            Quote.status == QuoteStatus.sent,
+        )
+    ).all()
+    for q in sent_quotes:
+        q.status = QuoteStatus.refused
+        q.refusal_reason = "Demande annulée par l'équipe."
+
+    from services import email_triggers
+
+    caterer_ids = [q.caterer_id for q in active_qrcs]
+    caterers = {
+        c.id: c
+        for c in db.scalars(select(Caterer).where(Caterer.id.in_(caterer_ids))).all()
+    }
+    body = "Une demande qui vous a été transmise a été annulée par notre équipe."
+    if reason:
+        body += f" Motif : {reason}"
+
+    notified = 0
+    for qrc in active_qrcs:
+        qrc.status = QRCStatus.closed
+        caterer = caterers.get(qrc.caterer_id)
+        if caterer is None:
+            continue
+        notify_users(
+            db,
+            caterer_user_ids(db, qrc.caterer_id),
+            type="quote_request_cancelled",
+            title="Demande annulée",
+            body=body,
+            related_entity_type="quote_request",
+            related_entity_id=qr.id,
+        )
+        email_triggers.quote_request_cancelled(
+            db, quote_request=qr, caterer=caterer, reason=reason
+        )
+        notified += 1
+
+    if qr.user_id is not None:
+        client_body = "Votre demande de devis a été annulée par notre équipe."
+        if reason:
+            client_body += f" Motif : {reason}"
+        notify(
+            db,
+            user_id=qr.user_id,
+            type="quote_request_cancelled",
+            title="Demande annulée",
+            body=client_body,
+            related_entity_type="quote_request",
+            related_entity_id=qr.id,
+        )
+
+    _workflow_logger.info(
+        "quote_request_cancelled",
+        extra={
+            "event": "quote_request_cancelled",
+            "quote_request_id": str(request_id),
+            "company_id": str(qr.company_id),
+            "caterers_notified": notified,
+            "quotes_refused": len(sent_quotes),
+            "has_reason": bool(reason),
+        },
+    )
+    return notified
+
+
 def submit_quote(
     db,
     *,

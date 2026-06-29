@@ -414,6 +414,40 @@ def qualification_edit(request_id):
     )
 
 
+@admin_bp.route("/qualification/<uuid:request_id>/cancel", methods=["POST"])
+@login_required
+@role_required("super_admin")
+def qualification_cancel(request_id):
+    form = RejectionForm()
+    db = get_db()
+    qr = db.get(QuoteRequest, request_id)
+    if not qr:
+        abort(404)
+    if qr.status != QuoteRequestStatus.sent_to_caterers:
+        flash("Cette demande ne peut pas etre annulee.", "error")
+        return redirect(url_for("admin.qualification_detail", request_id=request_id))
+    if not form.validate_on_submit():
+        flash("Veuillez corriger les erreurs du formulaire.", "error")
+        return redirect(url_for("admin.qualification_detail", request_id=request_id))
+
+    reason = form.rejection_reason.data
+    notified = workflow.cancel_quote_request(db, request_id=request_id, reason=reason)
+    log_admin_action(
+        db,
+        g.current_user,
+        "quote_request.cancel",
+        target_type="quote_request",
+        target_id=request_id,
+        extra={"caterers_notified": notified, "reason": reason},
+    )
+    db.commit()
+    if notified:
+        flash(f"Demande annulee. {notified} traiteur(s) notifie(s).", "info")
+    else:
+        flash("Demande annulee.", "info")
+    return redirect(url_for("admin.requests_list"))
+
+
 @admin_bp.route("/caterers")
 @login_required
 @role_required("super_admin")

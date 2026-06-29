@@ -207,6 +207,48 @@ def quote_request_updated(
         )
 
 
+# --- E1c — Quote request cancelled (caterer side) ------------------------
+#
+# Quand le super-admin annule une demande déjà envoyée, les traiteurs
+# encore en lice doivent savoir qu'ils n'ont plus à y répondre.
+
+
+@_safe("quote_request_cancelled")
+def quote_request_cancelled(
+    db: Session,
+    *,
+    quote_request: QuoteRequest,
+    caterer: Caterer,
+    reason: str | None = None,
+) -> None:
+    """Email à chaque user actif du traiteur quand une demande qui lui a
+    été transmise est annulée par l'équipe."""
+    recipients = db.scalars(
+        select(User).where(
+            User.caterer_id == caterer.id,
+            User.is_active.is_(True),
+        )
+    ).all()
+    if not recipients:
+        return
+
+    company_name = quote_request.company.name if quote_request.company else ""
+    cta_url = f"{config.BASE_URL}/caterer/requests"
+    for user in recipients:
+        render_and_send_async(
+            to=user.email,
+            subject="Une demande de devis a été annulée",
+            template_name="quote_request_cancelled",
+            user=user,
+            caterer=caterer,
+            company_name=company_name,
+            event_date=quote_request.event_date,
+            event_city=quote_request.event_city,
+            reason=reason,
+            cta_url=cta_url,
+        )
+
+
 # --- E2 — Message received -----------------------------------------------
 #
 # Email envoyé au destinataire d'un message dès sa réception, en parallèle
