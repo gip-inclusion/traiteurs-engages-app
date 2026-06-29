@@ -390,6 +390,64 @@ def reject_quote_request(
     )
 
 
+def notify_request_updated(db, *, request_id: uuid.UUID) -> int:
+    """Re-notifie les traiteurs encore en lice qu'une demande qui leur a
+    été transmise vient d'être modifiée (in-app + email). On ne prévient
+    que les QRC actifs (selected / transmitted_to_client) : un traiteur
+    déjà clôturé ou écarté n'a plus à répondre. Retourne le nombre de
+    traiteurs notifiés."""
+    qr = db.get(QuoteRequest, request_id)
+    if qr is None:
+        raise RequestNotFound
+
+    active_qrcs = db.scalars(
+        select(QuoteRequestCaterer).where(
+            QuoteRequestCaterer.quote_request_id == request_id,
+            QuoteRequestCaterer.status.in_(
+                (QRCStatus.selected, QRCStatus.transmitted_to_client)
+            ),
+        )
+    ).all()
+    if not active_qrcs:
+        return 0
+
+    from services import email_triggers
+
+    caterer_ids = [q.caterer_id for q in active_qrcs]
+    caterers = {
+        c.id: c
+        for c in db.scalars(select(Caterer).where(Caterer.id.in_(caterer_ids))).all()
+    }
+    city = qr.event_city or "lieu non renseigné"
+    notified = 0
+    for cid in caterer_ids:
+        caterer = caterers.get(cid)
+        if caterer is None:
+            continue
+        notify_users(
+            db,
+            caterer_user_ids(db, cid),
+            type="quote_request_updated",
+            title="Demande modifiée",
+            body=f"Une demande qui vous a été transmise ({city}) a été "
+            "modifiée par notre équipe.",
+            related_entity_type="quote_request",
+            related_entity_id=qr.id,
+        )
+        email_triggers.quote_request_updated(db, quote_request=qr, caterer=caterer)
+        notified += 1
+
+    _workflow_logger.info(
+        "quote_request_updated_notified",
+        extra={
+            "event": "quote_request_updated_notified",
+            "quote_request_id": str(request_id),
+            "caterers_notified": notified,
+        },
+    )
+    return notified
+
+
 def submit_quote(
     db,
     *,

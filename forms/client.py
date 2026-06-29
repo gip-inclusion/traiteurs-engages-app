@@ -89,6 +89,57 @@ class QuoteRequestForm(FlaskForm):
             )
 
 
+class AdminQuoteRequestForm(FlaskForm):
+    """Édition admin d'une demande de devis (formulaire à plat).
+
+    Couvre les champs de contenu modifiables par le super-admin, y compris
+    après envoi aux traiteurs. Ne touche pas aux champs structurels
+    (company_service_id, is_compare_mode, target_caterer_id) ni aux
+    coordonnées (recalculées par géocodage à la sauvegarde)."""
+
+    meal_type = SelectField(choices=[("", "—")] + MEAL_TYPES, validators=[Optional()])
+    event_date = DateField(format="%Y-%m-%d", validators=[Optional()])
+    event_start_time = TimeField(format="%H:%M", validators=[Optional()])
+    event_end_time = TimeField(format="%H:%M", validators=[Optional()])
+    guest_count = IntegerField(validators=[Optional(), NumberRange(min=1, max=10000)])
+    event_address = StringField(validators=[Optional(), Length(max=500)])
+    event_city = StringField(validators=[Optional(), Length(max=255)])
+    event_zip_code = StringField(validators=[Optional(), Length(max=10)])
+    budget_global = DecimalField(places=2, validators=[Optional(), NumberRange(min=0)])
+    budget_per_person = DecimalField(
+        places=2, validators=[Optional(), NumberRange(min=0)]
+    )
+
+    dietary_vegetarian = BooleanField()
+    dietary_halal = BooleanField()
+    dietary_gluten_free = BooleanField()
+    dietary_lactose_free = BooleanField()
+    vegetarian_count = IntegerField(
+        validators=[Optional(), NumberRange(min=0, max=10000)]
+    )
+    halal_count = IntegerField(validators=[Optional(), NumberRange(min=0, max=10000)])
+    gluten_free_count = IntegerField(
+        validators=[Optional(), NumberRange(min=0, max=10000)]
+    )
+    lactose_free_count = IntegerField(
+        validators=[Optional(), NumberRange(min=0, max=10000)]
+    )
+
+    drinks_details = TextAreaField(validators=[Optional(), Length(max=5000)])
+    wants_waitstaff = BooleanField()
+    service_waitstaff_details = TextAreaField(validators=[Optional(), Length(max=5000)])
+    wants_equipment = BooleanField()
+    wants_decoration = BooleanField()
+    wants_nappes = BooleanField()
+    wants_livraison = BooleanField()
+    wants_setup = BooleanField()
+    service_setup_time = TimeField(format="%H:%M", validators=[Optional()])
+    service_setup_details = TextAreaField(validators=[Optional(), Length(max=5000)])
+    wants_cleanup = BooleanField()
+
+    message_to_caterer = TextAreaField(validators=[Optional(), Length(max=5000)])
+
+
 class ServiceForm(FlaskForm):
     name = StringField(validators=[InputRequired(), Length(min=1, max=255)])
     description = TextAreaField(validators=[Optional(), Length(max=5000)])

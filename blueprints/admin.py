@@ -20,7 +20,7 @@ from blueprints.middleware import login_required, role_required
 from database import get_db
 from extensions import limiter
 from forms.caterer import AdminCatererForm, RejectionForm
-from forms.client import CompanySettingsForm, UserProfileForm
+from forms.client import AdminQuoteRequestForm, CompanySettingsForm, UserProfileForm
 from models import (
     MEAL_TYPE_LABELS,
     Caterer,
@@ -41,6 +41,7 @@ from models import (
     User,
     UserRole,
 )
+from services import geocoding
 from services import messagerie as messagerie_service
 from services import workflow
 from blueprints.auth import _stamp_session
@@ -304,6 +305,113 @@ def qualification_reject(request_id):
     db.commit()
     flash("Demande rejetee.", "info")
     return redirect(url_for("admin.requests_list"))
+
+
+_EDITABLE_REQUEST_STATUSES = (
+    QuoteRequestStatus.pending_review,
+    QuoteRequestStatus.sent_to_caterers,
+)
+
+
+@admin_bp.route("/qualification/<uuid:request_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("super_admin")
+def qualification_edit(request_id):
+    db = get_db()
+    qr = db.get(QuoteRequest, request_id)
+    if not qr:
+        abort(404)
+    if qr.status not in _EDITABLE_REQUEST_STATUSES:
+        flash("Cette demande ne peut plus etre modifiee.", "error")
+        return redirect(url_for("admin.qualification_detail", request_id=request_id))
+
+    if request.method == "POST":
+        form = AdminQuoteRequestForm()
+        if not form.validate_on_submit():
+            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            return render_template(
+                "admin/qualification/edit.html",
+                user=g.current_user,
+                qr=qr,
+                meal_type_labels=MEAL_TYPE_LABELS,
+            ), 400
+
+        prev_address = (qr.event_address, qr.event_city, qr.event_zip_code)
+
+        qr.meal_type = form.meal_type.data or None
+        qr.event_date = form.event_date.data
+        qr.event_start_time = form.event_start_time.data
+        qr.event_end_time = form.event_end_time.data
+        qr.guest_count = form.guest_count.data
+        qr.event_address = (form.event_address.data or "").strip() or None
+        qr.event_city = (form.event_city.data or "").strip() or None
+        qr.event_zip_code = (form.event_zip_code.data or "").strip() or None
+        qr.budget_global = form.budget_global.data
+        qr.budget_per_person = form.budget_per_person.data
+        qr.dietary_vegetarian = form.dietary_vegetarian.data
+        qr.dietary_halal = form.dietary_halal.data
+        qr.dietary_gluten_free = form.dietary_gluten_free.data
+        qr.dietary_lactose_free = form.dietary_lactose_free.data
+        qr.vegetarian_count = form.vegetarian_count.data
+        qr.halal_count = form.halal_count.data
+        qr.gluten_free_count = form.gluten_free_count.data
+        qr.lactose_free_count = form.lactose_free_count.data
+        qr.drinks_details = (form.drinks_details.data or "").strip() or None
+        qr.wants_waitstaff = form.wants_waitstaff.data
+        qr.service_waitstaff_details = (
+            form.service_waitstaff_details.data or ""
+        ).strip() or None
+        qr.wants_equipment = form.wants_equipment.data
+        qr.wants_decoration = form.wants_decoration.data
+        qr.wants_nappes = form.wants_nappes.data
+        qr.wants_livraison = form.wants_livraison.data
+        qr.wants_setup = form.wants_setup.data
+        qr.service_setup_time = form.service_setup_time.data
+        qr.service_setup_details = (
+            form.service_setup_details.data or ""
+        ).strip() or None
+        qr.wants_cleanup = form.wants_cleanup.data
+        qr.message_to_caterer = (form.message_to_caterer.data or "").strip() or None
+
+        # Re-géocode si l'adresse a changé (les coordonnées alimentent le
+        # filtre rayon du matching). Erreur silencieuse : None garde
+        # l'ancienne valeur.
+        new_address = (qr.event_address, qr.event_city, qr.event_zip_code)
+        if new_address != prev_address and (qr.event_address or qr.event_city):
+            coords = geocoding.geocode_address(
+                qr.event_address, qr.event_city, qr.event_zip_code
+            )
+            if coords is not None:
+                qr.event_latitude, qr.event_longitude = coords
+
+        log_admin_action(
+            db,
+            g.current_user,
+            "quote_request.edit",
+            target_type="quote_request",
+            target_id=request_id,
+        )
+
+        notified = 0
+        if qr.status == QuoteRequestStatus.sent_to_caterers:
+            notified = workflow.notify_request_updated(db, request_id=request_id)
+        db.commit()
+
+        if notified:
+            flash(
+                f"Demande mise a jour. {notified} traiteur(s) notifie(s).",
+                "success",
+            )
+        else:
+            flash("Demande mise a jour.", "success")
+        return redirect(url_for("admin.qualification_detail", request_id=request_id))
+
+    return render_template(
+        "admin/qualification/edit.html",
+        user=g.current_user,
+        qr=qr,
+        meal_type_labels=MEAL_TYPE_LABELS,
+    )
 
 
 @admin_bp.route("/caterers")

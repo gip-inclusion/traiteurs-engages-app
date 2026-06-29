@@ -263,6 +263,19 @@
     </div>
     {% endif %}
 
+    {% if qr.status in (QuoteRequestStatus.pending_review, QuoteRequestStatus.sent_to_caterers) %}
+    <div class="bg-white rounded-lg p-6">
+      <h2 class="font-display font-bold text-lg text-black mb-4">Gerer la demande</h2>
+      <div class="flex flex-col gap-3">
+        <a href="{{ url_for('admin.qualification_edit', request_id=qr.id) }}"
+          class="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold btn-ghost-navy no-underline">
+          <i data-lucide="pencil" class="w-4 h-4"></i>
+          Modifier la demande
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
     {% if qr.status == QuoteRequestStatus.pending_review %}
     <div class="bg-white rounded-lg p-6">
       <h2 class="font-display font-bold text-lg text-black mb-4">Actions</h2>

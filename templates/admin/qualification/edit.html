@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import back_button %}
+
+{% block title %}Modifier la demande - Les Traiteurs Engages{% endblock %}
+
+{% set _input = "w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default" %}
+
+{% block content %}
+<div class="mb-6">
+  <div class="mb-3">{{ back_button(label="Retour a la demande") }}</div>
+  <h1 class="font-display font-bold text-2xl text-black">Modifier la demande</h1>
+  {% if qr.status == QuoteRequestStatus.sent_to_caterers %}
+  <p class="text-sm text-mute mt-1">
+    Cette demande a déjà été envoyée aux traiteurs : les traiteurs encore en lice seront notifiés de la modification.
+  </p>
+  {% endif %}
+</div>
+
+<div class="bg-white rounded-lg p-6 max-w-3xl">
+  <form method="POST" action="{{ url_for('admin.qualification_edit', request_id=qr.id) }}" class="space-y-5">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div>
+      <label class="block text-sm font-bold mb-2 text-text">Type de prestation</label>
+      <select name="meal_type" class="{{ _input }}">
+        <option value="">—</option>
+        {% for m, label in meal_type_labels.items() %}
+        <option value="{{ m.value }}" {% if qr.meal_type == m.value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Date</label>
+        <input type="date" name="event_date" value="{{ qr.event_date.strftime('%Y-%m-%d') if qr.event_date else '' }}" class="{{ _input }}">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Début</label>
+        <input type="time" name="event_start_time" value="{{ qr.event_start_time.strftime('%H:%M') if qr.event_start_time else '' }}" class="{{ _input }}">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Fin</label>
+        <input type="time" name="event_end_time" value="{{ qr.event_end_time.strftime('%H:%M') if qr.event_end_time else '' }}" class="{{ _input }}">
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Convives</label>
+        <input type="number" id="guest_count" name="guest_count" min="1" value="{{ qr.guest_count if qr.guest_count is not none else '' }}" class="{{ _input }}">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Budget global (EUR)</label>
+        <input type="number" step="0.01" id="budget_global" name="budget_global" value="{{ qr.budget_global if qr.budget_global is not none else '' }}" class="{{ _input }}">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Budget / personne (EUR)</label>
+        <input type="number" step="0.01" id="budget_per_person" name="budget_per_person" value="{{ qr.budget_per_person if qr.budget_per_person is not none else '' }}" class="{{ _input }}">
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-bold mb-2 text-text">Adresse</label>
+      <input type="text" name="event_address" value="{{ qr.event_address or '' }}" class="{{ _input }}">
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Ville</label>
+        <input type="text" name="event_city" value="{{ qr.event_city or '' }}" class="{{ _input }}">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2 text-text">Code postal</label>
+        <input type="text" name="event_zip_code" value="{{ qr.event_zip_code or '' }}" maxlength="10" class="{{ _input }}">
+      </div>
+    </div>
+
+    <fieldset class="border border-default rounded-lg p-4">
+      <legend class="text-sm font-bold px-2 text-text">Régimes alimentaires</legend>
+      {% set diet_fields = [
+        ('dietary_vegetarian', 'vegetarian_count', 'Végétarien', qr.dietary_vegetarian, qr.vegetarian_count),
+        ('dietary_halal', 'halal_count', 'Halal', qr.dietary_halal, qr.halal_count),
+        ('dietary_gluten_free', 'gluten_free_count', 'Sans gluten', qr.dietary_gluten_free, qr.gluten_free_count),
+        ('dietary_lactose_free', 'lactose_free_count', 'Sans lactose', qr.dietary_lactose_free, qr.lactose_free_count),
+      ] %}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {% for flag, count, label, checked, count_val in diet_fields %}
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-2 text-sm text-text flex-1">
+            <input type="checkbox" name="{{ flag }}" {% if checked %}checked{% endif %} class="w-4 h-4 rounded accent-navy">
+            {{ label }}
+          </label>
+          <input type="number" name="{{ count }}" min="0" placeholder="Nb" value="{{ count_val if count_val is not none else '' }}" class="w-20 border rounded-lg px-2 py-1.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+        </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset class="border border-default rounded-lg p-4">
+      <legend class="text-sm font-bold px-2 text-text">Options de service</legend>
+      {% set opt_fields = [
+        ('wants_waitstaff', 'Service en salle', qr.wants_waitstaff),
+        ('wants_equipment', 'Vaisselle / matériel', qr.wants_equipment),
+        ('wants_decoration', 'Décoration', qr.wants_decoration),
+        ('wants_nappes', 'Nappes', qr.wants_nappes),
+        ('wants_livraison', 'Livraison', qr.wants_livraison),
+        ('wants_setup', 'Installation', qr.wants_setup),
+        ('wants_cleanup', 'Nettoyage', qr.wants_cleanup),
+      ] %}
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {% for flag, label, checked in opt_fields %}
+        <label class="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="{{ flag }}" {% if checked %}checked{% endif %} class="w-4 h-4 rounded accent-navy">
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div>
+      <label class="block text-sm font-bold mb-2 text-text">Message au traiteur</label>
+      <textarea name="message_to_caterer" rows="3" class="{{ _input }}">{{ qr.message_to_caterer or '' }}</textarea>
+    </div>
+
+    <div class="flex items-center gap-3 pt-2">
+      <button type="submit" class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 btn-navy">
+        <i data-lucide="check" class="w-4 h-4"></i>
+        Enregistrer
+      </button>
+      <a href="{{ url_for('admin.qualification_detail', request_id=qr.id) }}"
+        class="rounded-full text-sm font-bold px-5 py-3 inline-flex items-center gap-2 btn-ghost-navy">
+        Annuler
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin-request-budget.js') }}" defer></script>
+{% endblock %}
