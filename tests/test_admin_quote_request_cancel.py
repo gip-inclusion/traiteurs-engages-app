@@ -49,7 +49,9 @@ def _make_caterer_with_user(s):
     return c, u
 
 
-def _seed_sent_request(s, *, caterer=None, with_sent_quote=False, status=None):
+def _seed_sent_request(
+    s, *, caterer=None, with_sent_quote=False, status=None, creator_email=None
+):
     from models import (
         Company,
         MealType,
@@ -63,10 +65,12 @@ def _seed_sent_request(s, *, caterer=None, with_sent_quote=False, status=None):
     )
 
     acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
-    alice = s.scalar(select(User).where(User.email == "alice@test.local"))
+    creator = s.scalar(
+        select(User).where(User.email == (creator_email or "alice@test.local"))
+    )
     qr = QuoteRequest(
         company_id=acme.id,
-        user_id=alice.id,
+        user_id=creator.id,
         meal_type=MealType.plateaux_repas,
         event_date=_dt.date.today() + _dt.timedelta(days=30),
         guest_count=12,
@@ -255,6 +259,79 @@ def test_cancel_forbidden_for_non_admin(client, login):
         assert r.status_code == 403
     finally:
         _cleanup(qr_id=qr_id)
+
+
+def test_cancel_notifies_company_admins_not_just_creator(client, login):
+    """La demande est créée par bob (client_user) ; à l'annulation, un
+    admin actif de la même société doit aussi être notifié."""
+    from database import session_factory
+    from models import (
+        Company,
+        MembershipStatus,
+        Notification,
+        QuoteRequestStatus,
+        User,
+        UserRole,
+    )
+
+    s = session_factory()
+    admin_id = None
+    try:
+        acme = s.scalar(select(Company).where(Company.siret == "12345678901234"))
+        co_admin = User(
+            email=f"coadmin-{uuid.uuid4().hex[:6]}@test.local",
+            password_hash="x",
+            first_name="Co",
+            last_name="Admin",
+            role=UserRole.client_admin,
+            company_id=acme.id,
+            membership_status=MembershipStatus.active,
+        )
+        s.add(co_admin)
+        s.flush()
+        admin_id = co_admin.id
+        bob = s.scalar(select(User).where(User.email == "bob@test.local"))
+        qr_id, _ = _seed_sent_request(
+            s,
+            status=QuoteRequestStatus.sent_to_caterers,
+            creator_email="bob@test.local",
+        )
+        bob_id = bob.id
+        s.commit()
+    finally:
+        s.close()
+    try:
+        login("admin@test.local")
+        r = client.post(
+            f"/admin/qualification/{qr_id}/cancel",
+            data={"rejection_reason": "Annulation test."},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        s2 = session_factory()
+        try:
+            for uid in (admin_id, bob_id):
+                notif = s2.scalar(
+                    select(Notification).where(
+                        Notification.user_id == uid,
+                        Notification.type == "quote_request_cancelled",
+                        Notification.related_entity_id == qr_id,
+                    )
+                )
+                assert notif is not None
+        finally:
+            s2.close()
+    finally:
+        _cleanup(qr_id=qr_id)
+        if admin_id is not None:
+            from database import session_factory as _sf
+
+            s3 = _sf()
+            try:
+                s3.execute(User.__table__.delete().where(User.id == admin_id))
+                s3.commit()
+            finally:
+                s3.close()
 
 
 def test_cancellation_reason_visible_to_client(client, login):
