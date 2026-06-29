@@ -272,8 +272,41 @@
           <i data-lucide="pencil" class="w-4 h-4"></i>
           Modifier la demande
         </a>
+        {% if qr.status == QuoteRequestStatus.sent_to_caterers %}
+        <button type="button" data-action="dialog-open" data-target="cancel-dialog"
+          class="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-white text-sm font-bold bg-danger">
+          <i data-lucide="x" class="w-4 h-4"></i>
+          Annuler la demande
+        </button>
+        {% endif %}
       </div>
     </div>
+
+    {% if qr.status == QuoteRequestStatus.sent_to_caterers %}
+    <dialog id="cancel-dialog" class="rounded-lg p-0 backdrop:bg-black/50 max-w-md w-full" data-backdrop-dismiss>
+      <div class="p-6">
+        <h3 class="font-display font-bold text-lg text-black mb-2">Annuler la demande</h3>
+        <p class="text-sm mb-4 text-mute">
+          Les traiteurs encore sollicités seront notifiés de l'annulation et leurs devis en cours seront clôturés. Le client sera également prévenu.
+        </p>
+        <form method="POST" action="{{ url_for('admin.qualification_cancel', request_id=qr.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="rejection_reason" rows="3"
+            class="w-full rounded-lg px-3 py-2.5 text-sm text-black mb-4 input-soft"
+            placeholder="Motif (facultatif)..."></textarea>
+          <div class="flex items-center justify-end gap-3">
+            <button type="button" data-action="dialog-close" data-target="cancel-dialog"
+              class="px-4 py-2 text-sm font-bold rounded-full btn-ghost-navy">
+              Retour
+            </button>
+            <button type="submit" class="px-4 py-2 text-sm font-bold text-white rounded-full bg-danger">
+              Confirmer l'annulation
+            </button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+    {% endif %}
     {% endif %}
 
     {% if qr.status == QuoteRequestStatus.pending_review %}

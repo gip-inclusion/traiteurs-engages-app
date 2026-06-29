@@ -343,7 +343,7 @@ def test_reject_quote_request_marks_cancelled_with_reason(session):
 
     qr = session.scalar(select(QuoteRequest).where(QuoteRequest.id == qr_id))
     assert qr.status == QuoteRequestStatus.cancelled
-    assert qr.message_to_caterer == "hors zone"
+    assert qr.cancellation_reason == "hors zone"
 
 
 def test_reject_unknown_request_raises_not_found(session):
