@@ -368,6 +368,7 @@ class QuoteRequest(DietaryMixin, Base):
     wants_cleanup: Mapped[bool] = mapped_column(Boolean, default=False)
     is_compare_mode: Mapped[bool] = mapped_column(Boolean, default=True)
     message_to_caterer: Mapped[str | None] = mapped_column(Text)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

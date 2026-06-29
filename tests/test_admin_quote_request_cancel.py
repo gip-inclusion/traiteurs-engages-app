@@ -176,6 +176,7 @@ def test_cancel_sent_request_closes_everything_and_notifies(
         try:
             qr = s2.get(QuoteRequest, qr_id)
             assert qr.status == QuoteRequestStatus.cancelled
+            assert qr.cancellation_reason == "Événement annulé par le client."
             qrc = s2.scalar(
                 select(QuoteRequestCaterer).where(
                     QuoteRequestCaterer.quote_request_id == qr_id
@@ -252,5 +253,29 @@ def test_cancel_forbidden_for_non_admin(client, login):
         login("cook@test.local")  # role caterer
         r = client.post(f"/admin/qualification/{qr_id}/cancel", data={})
         assert r.status_code == 403
+    finally:
+        _cleanup(qr_id=qr_id)
+
+
+def test_cancellation_reason_visible_to_client(client, login):
+    from database import session_factory
+    from models import QuoteRequest, QuoteRequestStatus
+
+    s = session_factory()
+    try:
+        qr_id, _ = _seed_sent_request(s, status=QuoteRequestStatus.cancelled)
+        qr = s.get(QuoteRequest, qr_id)
+        qr.cancellation_reason = "Budget non validé en interne."
+        s.commit()
+    finally:
+        s.close()
+    try:
+        # alice est cliente admin de la société propriétaire (ACME)
+        login("alice@test.local")
+        r = client.get(f"/client/requests/{qr_id}")
+        assert r.status_code == 200
+        body = r.data.decode("utf-8")
+        assert "Demande annulée" in body
+        assert "Budget non validé en interne." in body
     finally:
         _cleanup(qr_id=qr_id)

@@ -364,7 +364,7 @@ def reject_quote_request(
     if not qr:
         raise RequestNotFound
     qr.status = QuoteRequestStatus.cancelled
-    qr.message_to_caterer = reason or ""
+    qr.cancellation_reason = reason or None
 
     if qr.user_id is not None:
         body = "Votre demande de devis a été refusée par notre équipe."
@@ -458,6 +458,7 @@ def cancel_quote_request(db, *, request_id: uuid.UUID, reason: str | None) -> in
         raise RequestNotFound
 
     qr.status = QuoteRequestStatus.cancelled
+    qr.cancellation_reason = reason or None
 
     active_qrcs = db.scalars(
         select(QuoteRequestCaterer).where(

@@ -30,6 +30,16 @@
       {% endif %}
     </div>
 
+    {% if qr.status == QuoteRequestStatus.cancelled and qr.cancellation_reason %}
+    <div class="bg-danger-soft rounded-lg p-4 mb-6 flex items-start gap-3">
+      <i data-lucide="x-circle" class="w-5 h-5 text-danger mt-0.5 flex-shrink-0"></i>
+      <div>
+        <p class="text-sm font-bold text-danger">Demande annulée</p>
+        <p class="text-sm mt-1 whitespace-pre-line text-text-soft">{{ qr.cancellation_reason }}</p>
+      </div>
+    </div>
+    {% endif %}
+
 
     <div class="split-detail">
       <div class="split-main">
