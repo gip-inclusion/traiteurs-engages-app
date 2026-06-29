@@ -366,19 +366,18 @@ def reject_quote_request(
     qr.status = QuoteRequestStatus.cancelled
     qr.cancellation_reason = reason or None
 
-    if qr.user_id is not None:
-        body = "Votre demande de devis a été refusée par notre équipe."
-        if reason:
-            body += f" Motif : {reason}"
-        notify(
-            db,
-            user_id=qr.user_id,
-            type="quote_request_rejected",
-            title="Demande refusée",
-            body=body,
-            related_entity_type="quote_request",
-            related_entity_id=qr.id,
-        )
+    body = "Votre demande de devis a été refusée par notre équipe."
+    if reason:
+        body += f" Motif : {reason}"
+    notify_users(
+        db,
+        [qr.user_id, *company_admin_user_ids(db, qr.company_id)],
+        type="quote_request_rejected",
+        title="Demande refusée",
+        body=body,
+        related_entity_type="quote_request",
+        related_entity_id=qr.id,
+    )
     _workflow_logger.info(
         "quote_request_rejected",
         extra={
@@ -511,19 +510,21 @@ def cancel_quote_request(db, *, request_id: uuid.UUID, reason: str | None) -> in
         )
         notified += 1
 
-    if qr.user_id is not None:
-        client_body = "Votre demande de devis a été annulée par notre équipe."
-        if reason:
-            client_body += f" Motif : {reason}"
-        notify(
-            db,
-            user_id=qr.user_id,
-            type="quote_request_cancelled",
-            title="Demande annulée",
-            body=client_body,
-            related_entity_type="quote_request",
-            related_entity_id=qr.id,
-        )
+    # Côté client : on prévient le créateur ET les admins de la société,
+    # pas seulement l'auteur de la demande (notify_users déduplique et
+    # ignore les None).
+    client_body = "Votre demande de devis a été annulée par notre équipe."
+    if reason:
+        client_body += f" Motif : {reason}"
+    notify_users(
+        db,
+        [qr.user_id, *company_admin_user_ids(db, qr.company_id)],
+        type="quote_request_cancelled",
+        title="Demande annulée",
+        body=client_body,
+        related_entity_type="quote_request",
+        related_entity_id=qr.id,
+    )
 
     _workflow_logger.info(
         "quote_request_cancelled",
