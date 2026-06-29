@@ -165,6 +165,48 @@ def quote_request_received(
         )
 
 
+# --- E1b — Quote request updated (caterer side) --------------------------
+#
+# Quand le super-admin modifie une demande déjà envoyée, les traiteurs
+# ciblés doivent savoir que les détails ont changé (date, lieu, convives…)
+# pour réviser leur réponse.
+
+
+@_safe("quote_request_updated")
+def quote_request_updated(
+    db: Session,
+    *,
+    quote_request: QuoteRequest,
+    caterer: Caterer,
+) -> None:
+    """Email à chaque user actif du traiteur quand une demande qui lui a
+    été transmise est modifiée par l'équipe."""
+    recipients = db.scalars(
+        select(User).where(
+            User.caterer_id == caterer.id,
+            User.is_active.is_(True),
+        )
+    ).all()
+    if not recipients:
+        return
+
+    company_name = quote_request.company.name if quote_request.company else ""
+    cta_url = f"{config.BASE_URL}/caterer/requests/{quote_request.id}"
+    for user in recipients:
+        render_and_send_async(
+            to=user.email,
+            subject="Une demande de devis a été modifiée",
+            template_name="quote_request_updated",
+            user=user,
+            caterer=caterer,
+            company_name=company_name,
+            event_date=quote_request.event_date,
+            event_city=quote_request.event_city,
+            guest_count=quote_request.guest_count,
+            cta_url=cta_url,
+        )
+
+
 # --- E2 — Message received -----------------------------------------------
 #
 # Email envoyé au destinataire d'un message dès sa réception, en parallèle
