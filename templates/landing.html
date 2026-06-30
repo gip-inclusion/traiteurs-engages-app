@@ -7,30 +7,7 @@
 <main class="landing-root" style="background-color:#FAF7F2;color:#1A3A52;">
 
 
-  <header class="fixed top-0 left-0 right-0 z-50" style="backdrop-filter: blur(8px); background-color: rgba(255,255,255,0.95);">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between" style="height:4.25rem;">
-        <div class="flex items-center gap-3">
-          <img src="{{ url_for('static', filename='img/landing/logo-republique.png') }}"
-               alt="R&#233;publique Fran&#231;aise" style="height:2.5rem;width:auto;">
-          <div style="width:1px;height:2.25rem;background-color:rgba(26,58,82,0.2);"></div>
-          <img src="{{ url_for('static', filename='img/landing/logo-traiteurs-engages.svg') }}"
-               alt="Les traiteurs engag&#233;s" style="height:2.25rem;width:auto;">
-        </div>
-        <nav class="flex items-center gap-4">
-          <a href="{{ url_for('auth.login') }}"
-             class="hidden sm:inline font-bold transition-opacity hover:opacity-70"
-             style="color:#1A3A52;font-size:0.9375rem;">Se connecter</a>
-          <a href="{{ url_for('auth.signup') }}"
-             class="swap-btn relative inline-block text-white"
-             style="width:11rem;height:2.75rem;border-radius:9999px;background-color:#1A3A52;font-size:0.9375rem;">
-            <span class="swap-front">S'inscrire</span>
-            <span class="swap-back">C'est parti&#160;!</span>
-          </a>
-        </nav>
-      </div>
-    </div>
-  </header>
+  {% include "components/public_header.html" %}
 
 
   <section id="hero" class="landing-hero" style="background-color:#FAF7F2;padding-top:6rem;padding-bottom:6rem;">
@@ -259,23 +236,7 @@
   </section>
 
 
-  <footer style="background-color:#1A3A52;padding-top:2.5rem;padding-bottom:2.5rem;">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col md:flex-row items-center md:items-start justify-between" style="gap:2rem;">
-        <div>
-          <img src="{{ url_for('static', filename='img/landing/logo-traiteurs-engages-white.svg') }}"
-               alt="Les traiteurs engag&#233;s" style="height:2.75rem;width:auto;">
-        </div>
-        <nav class="flex flex-col md:flex-row items-center"
-             style="gap:0.875rem;color:rgba(255,255,255,0.7);font-size:0.875rem;">
-          <a href="{{ url_for('client.search') }}">Consulter le catalogue traiteur</a>
-          <a href="{{ url_for('auth.signup') }}">S'inscrire</a>
-          <a href="{{ url_for('auth.login') }}">Se connecter</a>
-          <a href="{{ url_for('legal.cgs_current') }}">CGU/CGV</a>
-        </nav>
-      </div>
-    </div>
-  </footer>
+  {% include "components/public_footer.html" %}
 
 </main>
 {% endblock %}

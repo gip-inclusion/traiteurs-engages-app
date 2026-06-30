@@ -1,0 +1,70 @@
+{# Shell partagé des articles SEO. Les pages concrètes étendent ce
+   template et remplissent `article` (corps) + `faq_jsonld` (FAQPage).
+   Le contexte fournit : article (slug/title/description/breadcrumb),
+   canonical_url, base_url. #}
+{% extends "base.html" %}
+
+{% block title %}{{ article.title }}{% endblock %}
+
+{% block head %}
+  <meta name="description" content="{{ article.description }}">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Les traiteurs engagés">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:title" content="{{ article.title }}">
+  <meta property="og:description" content="{{ article.description }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:image" content="{{ base_url }}{{ url_for('static', filename='img/landing/Hero_image.png') }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {{ {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Article",
+        "headline": article.title,
+        "description": article.description,
+        "inLanguage": "fr-FR",
+        "mainEntityOfPage": canonical_url,
+        "image": base_url ~ url_for('static', filename='img/landing/Hero_image.png'),
+        "publisher": {
+          "@type": "Organization",
+          "name": "Les traiteurs engagés — Plateforme de l'inclusion",
+          "url": base_url
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {"@type": "ListItem", "position": 1, "name": "Accueil", "item": base_url ~ "/"},
+          {"@type": "ListItem", "position": 2, "name": article.breadcrumb, "item": canonical_url}
+        ]
+      }
+    ]
+  } | tojson }}
+  </script>
+  {% block extra_jsonld %}{% endblock %}
+{% endblock %}
+
+{% block public_content %}
+<div class="article-page">
+
+  {% include "components/public_header.html" %}
+
+  <div class="article-container">
+    <nav class="article-breadcrumb" aria-label="Fil d'Ariane">
+      <a href="{{ url_for('landing') }}">Accueil</a>
+      <span aria-hidden="true">›</span>
+      <span aria-current="page">{{ article.breadcrumb }}</span>
+    </nav>
+
+    <article class="article-body">
+      {% block article %}{% endblock %}
+    </article>
+  </div>
+
+  {% include "components/public_footer.html" %}
+
+</div>
+{% endblock %}
