@@ -8,11 +8,11 @@ une entrée à ``ARTICLES`` et son template ``templates/content/<...>.html``
 
 from dataclasses import dataclass
 
-from flask import Blueprint, abort, render_template
+from flask import Blueprint, render_template
 
 import config
 
-content_bp = Blueprint("content", __name__, url_prefix="/ressources")
+content_bp = Blueprint("content", __name__)
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,17 @@ ARTICLES: dict[str, "Article"] = {
         ),
         breadcrumb="Traiteur solidaire à Paris",
     ),
+    "traiteur-handicap-entreprise-paris": Article(
+        slug="traiteur-handicap-entreprise-paris",
+        template="content/traiteur_handicap_entreprise_paris.html",
+        title="Traiteur handicap Paris — Entreprises adaptées & insertion",
+        description=(
+            "Faites appel à un traiteur employant des personnes handicapées "
+            "pour vos événements en IDF. Structures ESAT et EA vérifiées. "
+            "Plateforme officielle inclusion.gouv.fr."
+        ),
+        breadcrumb="Traiteur handicap à Paris",
+    ),
 }
 
 
@@ -46,12 +57,17 @@ def inject_articles():
     return {"seo_articles": list(ARTICLES.values())}
 
 
-@content_bp.route("/<slug>")
+# URLs en racine (`/<slug>`) restreintes aux slugs publiés via le convertisseur
+# `any` : seules les vraies pages d'articles matchent, aucune autre route de
+# l'app n'est captée (un slug inconnu → 404 Flask standard). La règle se met à
+# jour automatiquement quand on ajoute un article au registre.
+_SLUG_RULE = "/<any({}):slug>".format(",".join(f"'{s}'" for s in ARTICLES))
+
+
+@content_bp.route(_SLUG_RULE)
 def article(slug: str):
-    art = ARTICLES.get(slug)
-    if art is None:
-        abort(404)
-    canonical_url = f"{config.BASE_URL}/ressources/{art.slug}"
+    art = ARTICLES[slug]
+    canonical_url = f"{config.BASE_URL}/{art.slug}"
     return render_template(
         art.template,
         article=art,

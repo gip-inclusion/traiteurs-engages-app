@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def test_article_renders_with_seo_metadata(client):
-    r = client.get("/ressources/traiteur-solidaire-paris")
+    r = client.get("/traiteur-solidaire-paris")
     assert r.status_code == 200
     body = r.data.decode("utf-8")
     # H1 et chapeau
@@ -15,7 +15,7 @@ def test_article_renders_with_seo_metadata(client):
     # apostrophe échappée par l'autoescape Jinja (&#39;) → on teste un fragment sans apostrophe
     assert "entreprises adaptées pour vos événements pro" in body
     assert '<link rel="canonical"' in body
-    assert "/ressources/traiteur-solidaire-paris" in body
+    assert "/traiteur-solidaire-paris" in body
     # Open Graph
     assert 'property="og:title"' in body
     # Données structurées
@@ -29,16 +29,30 @@ def test_article_renders_with_seo_metadata(client):
     assert 'class="public-header"' in body
     assert 'class="public-footer"' in body
     assert "Ressources" in body
-    assert body.count("/ressources/traiteur-solidaire-paris") >= 2  # canonical + footer
+    assert body.count('href="/traiteur-solidaire-paris"') >= 1  # footer
+
+
+def test_handicap_article_renders(client):
+    r = client.get("/traiteur-handicap-entreprise-paris")
+    assert r.status_code == 200
+    body = r.data.decode("utf-8")
+    assert "Traiteur handicap Paris : organisez vos événements" in body
+    assert "entreprises adaptées (EA) et ESAT" in body
+    assert '"@type": "FAQPage"' in body
+    assert "AGEFIPH" in body
+    # cross-link : les deux articles sont listés dans le footer partout
+    assert 'href="/traiteur-solidaire-paris"' in body
+    assert 'href="/traiteur-handicap-entreprise-paris"' in body
 
 
 def test_unknown_article_is_404(client):
-    assert client.get("/ressources/n-existe-pas").status_code == 404
+    assert client.get("/n-existe-pas-du-tout").status_code == 404
 
 
-def test_landing_footer_links_to_article(client):
+def test_landing_footer_links_to_all_articles(client):
     r = client.get("/")
     assert r.status_code == 200
     body = r.data.decode("utf-8")
-    assert "/ressources/traiteur-solidaire-paris" in body
+    assert 'href="/traiteur-solidaire-paris"' in body
+    assert 'href="/traiteur-handicap-entreprise-paris"' in body
     assert "Ressources" in body
