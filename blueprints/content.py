@@ -59,6 +59,17 @@ ARTICLES: dict[str, "Article"] = {
         ),
         breadcrumb="Traiteur séminaire à Paris",
     ),
+    "traiteur-cocktail-soiree-entreprise-paris": Article(
+        slug="traiteur-cocktail-soiree-entreprise-paris",
+        template="content/traiteur_cocktail_soiree_entreprise_paris.html",
+        title="Traiteur cocktail entreprise Paris — Prestataires vérifiés IDF",
+        description=(
+            "Trouvez un traiteur pour votre cocktail ou soirée d'entreprise à "
+            "Paris. Cocktail apéritif, dinatoire, buffet. Structures vérifiées "
+            "en IDF. inclusion.gouv.fr."
+        ),
+        breadcrumb="Traiteur cocktail à Paris",
+    ),
 }
 
 

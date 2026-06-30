@@ -58,6 +58,16 @@ def test_seminaire_article_renders(client):
     assert 'href="/traiteur-seminaire-entreprise-paris"' in body
 
 
+def test_cocktail_article_renders(client):
+    r = client.get("/traiteur-cocktail-soiree-entreprise-paris")
+    assert r.status_code == 200
+    body = r.data.decode("utf-8")
+    assert "Traiteur cocktail entreprise Paris" in body
+    assert '"@type": "FAQPage"' in body
+    assert "cocktail dinatoire" in body.lower()
+    assert 'href="/traiteur-cocktail-soiree-entreprise-paris"' in body
+
+
 def test_unknown_article_is_404(client):
     assert client.get("/n-existe-pas-du-tout").status_code == 404
 
@@ -69,4 +79,5 @@ def test_landing_footer_links_to_all_articles(client):
     assert 'href="/traiteur-solidaire-paris"' in body
     assert 'href="/traiteur-handicap-entreprise-paris"' in body
     assert 'href="/traiteur-seminaire-entreprise-paris"' in body
+    assert 'href="/traiteur-cocktail-soiree-entreprise-paris"' in body
     assert "Ressources" in body
