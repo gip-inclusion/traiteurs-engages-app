@@ -48,6 +48,17 @@ ARTICLES: dict[str, "Article"] = {
         ),
         breadcrumb="Traiteur handicap à Paris",
     ),
+    "traiteur-seminaire-entreprise-paris": Article(
+        slug="traiteur-seminaire-entreprise-paris",
+        template="content/traiteur_seminaire_entreprise_paris.html",
+        title="Traiteur séminaire Paris — Prestataire engagé & solidaire",
+        description=(
+            "Trouvez un traiteur pour votre séminaire à Paris : structures "
+            "solidaires et entreprises adaptées en IDF. Buffet, déjeuner, "
+            "pauses. Plateforme inclusion.gouv.fr."
+        ),
+        breadcrumb="Traiteur séminaire à Paris",
+    ),
 }
 
 

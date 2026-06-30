@@ -45,6 +45,19 @@ def test_handicap_article_renders(client):
     assert 'href="/traiteur-handicap-entreprise-paris"' in body
 
 
+def test_seminaire_article_renders(client):
+    r = client.get("/traiteur-seminaire-entreprise-paris")
+    assert r.status_code == 200
+    body = r.data.decode("utf-8")
+    assert "Traiteur séminaire Paris : bien manger, bien faire" in body
+    assert '"@type": "FAQPage"' in body
+    assert "Déjeuner buffet" in body
+    # cross-link : les trois articles listés dans le footer partout
+    assert 'href="/traiteur-solidaire-paris"' in body
+    assert 'href="/traiteur-handicap-entreprise-paris"' in body
+    assert 'href="/traiteur-seminaire-entreprise-paris"' in body
+
+
 def test_unknown_article_is_404(client):
     assert client.get("/n-existe-pas-du-tout").status_code == 404
 
@@ -55,4 +68,5 @@ def test_landing_footer_links_to_all_articles(client):
     body = r.data.decode("utf-8")
     assert 'href="/traiteur-solidaire-paris"' in body
     assert 'href="/traiteur-handicap-entreprise-paris"' in body
+    assert 'href="/traiteur-seminaire-entreprise-paris"' in body
     assert "Ressources" in body
