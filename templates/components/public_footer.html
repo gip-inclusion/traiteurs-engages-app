@@ -1,0 +1,25 @@
+{# Pied de page public (landing + articles SEO). Navy. Inclus par
+   landing.html et content/_base.html : un seul point de vérité. Le groupe
+   « Ressources » référence TOUS les articles, sur toutes les pages. #}
+<footer class="public-footer">
+  <div class="public-footer-inner">
+    <img src="{{ url_for('static', filename='img/landing/logo-traiteurs-engages-white.svg') }}"
+         alt="Les traiteurs engag&#233;s" class="public-footer-logo">
+    <div class="public-footer-groups">
+      <nav class="public-footer-nav" aria-label="Navigation">
+        <a href="{{ url_for('client.search') }}">Consulter le catalogue traiteur</a>
+        <a href="{{ url_for('auth.signup') }}">S'inscrire</a>
+        <a href="{{ url_for('auth.login') }}">Se connecter</a>
+        <a href="{{ url_for('legal.cgs_current') }}">CGU/CGV</a>
+      </nav>
+      {% if seo_articles %}
+      <nav class="public-footer-nav" aria-label="Ressources">
+        <span class="public-footer-heading">Ressources</span>
+        {% for a in seo_articles %}
+        <a href="{{ url_for('content.article', slug=a.slug) }}">{{ a.breadcrumb }}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+    </div>
+  </div>
+</footer>

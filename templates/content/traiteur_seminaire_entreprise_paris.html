@@ -1,0 +1,184 @@
+{% extends "content/_base.html" %}
+
+{% block article %}
+{% set faq_items = [
+  {
+    "q": "Combien coûte un traiteur pour un séminaire à Paris ?",
+    "a": "Les tarifs varient selon le format, le nombre de convives et les prestations choisies. À titre indicatif, comptez entre 20 et 25 € par personne pour un déjeuner buffet, et entre 8 et 15 € pour une pause café élaborée. Nos traiteurs solidaires sont alignés sur les prix du marché parisien — l'engagement social n'implique pas de surcoût."
+  },
+  {
+    "q": "Combien de temps à l'avance faut-il réserver ?",
+    "a": "Pour un séminaire de moins de 30 personnes, un délai de 5 à 7 jours ouvrés est généralement suffisant. Au-delà, prévoyez 2 à 3 semaines, surtout en période chargée (septembre-octobre, janvier-février, juin)."
+  },
+  {
+    "q": "Le traiteur peut-il intervenir dans nos propres locaux ?",
+    "a": "Oui, à condition que le lieu dispose d'un minimum d'infrastructure (plan de travail, accès à l'eau). Précisez la configuration de vos locaux lors du premier échange avec le traiteur."
+  },
+  {
+    "q": "Nos convives ont des régimes alimentaires différents — est-ce gérable ?",
+    "a": "Tout à fait. Végétarien, vegan, sans gluten, halal : nos traiteurs sont habitués à composer des menus mixtes. Transmettez la liste des contraintes alimentaires au moment de la commande."
+  },
+  {
+    "q": "La plateforme prend-elle en charge l'organisation du repas ?",
+    "a": "Non. Les traiteurs engagés est une plateforme d'intermédiation : vous trouvez le bon traiteur, vous le contactez directement, et vous organisez la prestation ensemble. La plateforme est portée par inclusion.gouv.fr et garantit la vérification des structures référencées."
+  },
+  {
+    "q": "Peut-on avoir une attestation RSE après la prestation ?",
+    "a": "La plupart de nos traiteurs peuvent fournir une attestation précisant le statut de la structure (EA, ESAT, structure d'insertion). Demandez-le explicitement lors de votre prise de contact."
+  }
+] %}
+
+  <h1 class="article-h1">
+    Traiteur séminaire Paris : bien manger, bien faire
+  </h1>
+
+  <p class="article-lede">
+    Vous organisez un séminaire en Île-de-France et cherchez un traiteur fiable, capable de
+    gérer le repas ou les pauses de votre journée ? Les traiteurs engagés vous met en
+    relation avec des prestataires culinaires solidaires à Paris et en IDF — des structures
+    d'insertion professionnelle et des entreprises adaptées qui emploient des personnes
+    éloignées de l'emploi ou en situation de handicap. Une prestation traiteur de qualité,
+    et un choix qui renforce votre démarche RSE sans effort supplémentaire.
+  </p>
+
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Trouver un traiteur pour mon séminaire
+    </a>
+  </p>
+
+  <h2>Un traiteur pour séminaire à Paris : ce qu'il faut prévoir</h2>
+  <p>
+    Organiser la restauration d'un séminaire demande un minimum d'anticipation. Voici les
+    points clés à cadrer avant de contacter un traiteur :
+  </p>
+
+  <h3>Le format de restauration</h3>
+  <p>
+    Déjeuner assis, buffet debout, plateaux repas livrés, pauses café — le format dépend du
+    déroulé de votre journée et de la configuration du lieu. La plupart de nos traiteurs
+    proposent plusieurs options.
+  </p>
+
+  <h3>Le nombre de convives</h3>
+  <p>
+    Précisez une fourchette dès le premier contact : moins de 20, entre 20 et 50, au-delà
+    de 50 personnes. Cela conditionne la faisabilité et le tarif.
+  </p>
+
+  <h3>Les contraintes alimentaires</h3>
+  <p>
+    Végétarien, sans gluten, halal, allergie aux fruits à coque : recensez les besoins de
+    vos participants en amont. Nos traiteurs sont habitués à composer des menus adaptés.
+  </p>
+
+  <h3>Le lieu et la logistique</h3>
+  <p>
+    Le traiteur intervient-il dans vos locaux, dans une salle de séminaire louée, ou en
+    extérieur ? Vérifiez si le lieu dispose d'un accès cuisine ou d'un espace de
+    préparation.
+  </p>
+
+  <h2>Pourquoi choisir un traiteur solidaire pour votre séminaire ?</h2>
+  <p>
+    Un séminaire d'entreprise est un moment collectif fort. C'est aussi une occasion
+    souvent manquée d'aligner les actes avec les valeurs affichées.
+  </p>
+  <p>Faire appel à un traiteur solidaire pour votre séminaire parisien, c'est :</p>
+
+  <h3>Donner du sens au moment</h3>
+  <p>
+    Vos collaborateurs passent la journée à travailler ensemble — leur servir un repas
+    préparé par une structure d'insertion ou une entreprise adaptée prolonge naturellement
+    les sujets de cohésion et d'engagement.
+  </p>
+
+  <h3>Valoriser votre bilan RSE</h3>
+  <p>
+    La prestation est réalisée par une structure vérifiée, documentable. Elle peut
+    contribuer à vos indicateurs RSE et, selon le statut de la structure, être valorisée
+    dans votre contribution AGEFIPH.
+  </p>
+
+  <h3>Ne faire aucune concession sur la qualité</h3>
+  <p>
+    Les structures référencées sur Les Traiteurs Engagés ont été sélectionnées pour la
+    qualité de leurs prestations. L'engagement social n'est pas un substitut à la rigueur
+    culinaire — c'est un critère qui s'y ajoute.
+  </p>
+
+  <h2>Quels formats de restauration pour un séminaire ?</h2>
+
+  <h3>Petit-déjeuner d'accueil</h3>
+  <p>
+    Viennoiseries, jus, café, fruits — pour lancer la journée avant la première session.
+    Format léger, livraison tôt le matin.
+  </p>
+
+  <h3>Pause café du matin ou de l'après-midi</h3>
+  <p>
+    Boissons chaudes, biscuits, fruits de saison — un moment de respiration entre deux
+    séquences de travail.
+  </p>
+
+  <h3>Déjeuner buffet</h3>
+  <p>
+    Salades, plats chauds, desserts — le format le plus courant pour un séminaire en
+    journée. Permet à chacun de se servir à son rythme.
+  </p>
+
+  <h3>Plateaux repas individuels</h3>
+  <p>
+    Idéal quand le temps est limité ou que le lieu ne permet pas un buffet. Pratiques,
+    soignés, sans gaspillage.
+  </p>
+
+  <h3>Cocktail de clôture</h3>
+  <p>
+    Pour terminer la journée en convivialité : pièces apéritives salées et sucrées,
+    boissons — un format apprécié après une journée intensive.
+  </p>
+
+  <h2>Zone d'intervention : Paris et Île-de-France</h2>
+  <p>
+    Nos traiteurs solidaires interviennent dans toute l'Île-de-France : Paris intra-muros,
+    La Défense, banlieue proche et grande couronne. La zone d'intervention précise de
+    chaque prestataire est indiquée sur sa fiche.
+  </p>
+  <p>
+    Vous organisez votre séminaire dans un lieu atypique — tiers-lieu, rooftop, espace de
+    coworking ? Précisez-le lors de votre prise de contact : nos traiteurs sont habitués
+    aux contraintes logistiques variées.
+  </p>
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Trouver un traiteur séminaire près de mon lieu
+    </a>
+  </p>
+
+  <h2>Questions fréquentes</h2>
+  <div class="article-faq">
+    {% for item in faq_items %}
+    <div class="article-faq-item">
+      <h3 class="article-faq-q">{{ item.q }}</h3>
+      <p class="article-faq-a">{{ item.a }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% set ns = namespace(questions=[]) %}
+  {% for item in faq_items %}
+    {% set ns.questions = ns.questions + [{
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": {"@type": "Answer", "text": item.a}
+    }] %}
+  {% endfor %}
+  <script type="application/ld+json">
+  {{ {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": ns.questions
+  } | tojson }}
+  </script>
+{% endblock %}

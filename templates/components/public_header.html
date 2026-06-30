@@ -1,0 +1,23 @@
+{# En-tête public (landing + articles SEO). Fixe, fond translucide flouté.
+   Inclus par landing.html et content/_base.html : un seul point de vérité,
+   donc les deux pages partagent rigoureusement le même en-tête. #}
+<header class="public-header">
+  <div class="public-header-inner">
+    <div class="public-header-bar">
+      <div class="public-brand">
+        <img src="{{ url_for('static', filename='img/landing/logo-republique.png') }}"
+             alt="R&#233;publique Fran&#231;aise" class="public-brand-republique">
+        <div class="public-brand-sep" aria-hidden="true"></div>
+        <img src="{{ url_for('static', filename='img/landing/logo-traiteurs-engages.svg') }}"
+             alt="Les traiteurs engag&#233;s" class="public-brand-logo">
+      </div>
+      <nav class="public-nav">
+        <a href="{{ url_for('auth.login') }}" class="public-nav-login">Se connecter</a>
+        <a href="{{ url_for('auth.signup') }}" class="swap-btn public-nav-signup">
+          <span class="swap-front">S'inscrire</span>
+          <span class="swap-back">C'est parti&#160;!</span>
+        </a>
+      </nav>
+    </div>
+  </div>
+</header>

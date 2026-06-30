@@ -1,0 +1,165 @@
+{% extends "content/_base.html" %}
+
+{% block article %}
+{% set faq_items = [
+  {
+    "q": "Un traiteur solidaire coûte-t-il plus cher qu'un traiteur classique ?",
+    "a": "Non. Les tarifs pratiqués par nos traiteurs solidaires sont comparables à ceux du marché événementiel parisien. L'engagement social est intégré au modèle de la structure, pas répercuté sur la facture."
+  },
+  {
+    "q": "Comment valoriser cette prestation dans mon bilan RSE ?",
+    "a": "Une prestation réalisée par une structure d'insertion ou une entreprise adaptée est directement valorisable dans votre reporting RSE et peut contribuer à vos obligations d'achats inclusifs. Certains traiteurs peuvent fournir une attestation de prestation à cet effet — renseignez-vous directement sur leur fiche."
+  },
+  {
+    "q": "La plateforme est-elle officielle ?",
+    "a": "Oui. Les traiteurs engagés est portée par La Plateforme de l'inclusion. Les structures référencées sont vérifiées avant toute mise en ligne."
+  },
+  {
+    "q": "Puis-je adapter le menu à des régimes alimentaires spécifiques ?",
+    "a": "Oui. Végétarien, sans gluten, halal, allergie : précisez vos contraintes lors de votre prise de contact avec le traiteur. Chaque structure gère ses propres menus et adaptations."
+  },
+  {
+    "q": "La plateforme intervient-elle seulement à Paris intra-muros ?",
+    "a": "Non, nos traiteurs couvrent l'ensemble de l'Île-de-France. La zone d'intervention précise est indiquée sur chaque fiche traiteur."
+  },
+  {
+    "q": "Comment fonctionne la plateforme Les traiteurs engagés ?",
+    "a": "Les traiteurs engagés est une plateforme d'intermédiation : vous parcourez les fiches, vous contactez directement le traiteur qui correspond à votre besoin, et vous organisez votre événement ensemble. Nous ne prenons pas en charge la prestation, nous vous mettons en relation avec le bon partenaire."
+  }
+] %}
+
+  <h1 class="article-h1">
+    Traiteur solidaire Paris : des événements d'entreprise qui ont du sens
+  </h1>
+
+  <p class="article-lede">
+    Organiser un repas d'équipe, un séminaire ou un cocktail de fin d'année, c'est aussi
+    une occasion de faire un choix qui compte. Les traiteurs engagés est la plateforme
+    officielle de mise en relation avec des traiteurs solidaires en Île-de-France.
+    Structures d'insertion professionnelle, entreprises adaptées : chaque traiteur
+    référencé emploie des personnes éloignées de l'emploi ou en situation de handicap.
+    Même niveau d'exigence culinaire. Un impact social réel, valorisable dans votre
+    démarche RSE.
+  </p>
+
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Découvrez nos traiteurs solidaires disponibles en IDF
+    </a>
+  </p>
+
+  <h2>Qu'est-ce qu'un traiteur solidaire ?</h2>
+  <p>
+    Un traiteur solidaire n'est pas seulement un prestataire qui cuisine bien. C'est une
+    structure dont le modèle économique repose sur l'emploi de personnes qui en ont
+    besoin : salariés en parcours d'insertion, travailleurs en situation de handicap au
+    sein d'entreprises adaptées (EA) ou d'établissements et services d'aide par le travail
+    (ESAT).
+  </p>
+  <p>Choisir un traiteur solidaire pour votre entreprise, c'est :</p>
+  <ul>
+    <li><strong>Contribuer à un emploi durable</strong> pour des personnes qui en sont souvent exclues</li>
+    <li><strong>Valoriser votre engagement RSE</strong> avec une prestation concrète et traçable</li>
+    <li><strong>Répondre partiellement à vos obligations légales</strong> en matière d'achats inclusifs</li>
+    <li><strong>Proposer à vos équipes</strong> un moment convivial porteur de sens</li>
+  </ul>
+
+  <h2>Une plateforme portée par l'État</h2>
+  <p>
+    Les traiteurs engagés est portée par la Plateforme de l'inclusion. Ce portail regroupe
+    les outils et initiatives officiels pour favoriser l'insertion professionnelle et le
+    recours au secteur adapté.
+  </p>
+  <p>
+    Pour votre entreprise, cela représente une garantie concrète : chaque traiteur
+    référencé a été vérifié sur la réalité de son engagement social (statut EA, ESAT ou
+    structure d'insertion reconnue), et non sur une simple déclaration.
+  </p>
+
+  <h2>Des traiteurs solidaires sélectionnés en Île-de-France</h2>
+  <p>
+    Les traiteurs engagés référence une sélection de structures solidaires implantées en
+    Île-de-France, disponibles pour vos événements professionnels : petits-déjeuners,
+    déjeuners d'équipe, séminaires, cocktails dinatoires, pots de départ, soirées
+    annuelles.
+  </p>
+  <p>
+    Chaque traiteur de la plateforme a été vérifié sur deux critères : la qualité de la
+    prestation culinaire et la réalité de son engagement social.
+  </p>
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Parcourir les fiches traiteurs
+    </a>
+  </p>
+
+  <h2>Pour quels événements faire appel à un traiteur solidaire ?</h2>
+  <p>Nos traiteurs interviennent sur l'ensemble des formats événementiels en entreprise :</p>
+
+  <h3>Séminaires et journées d'équipe</h3>
+  <p>
+    Déjeuner sur site ou en salle de réunion, buffet chaud ou froid, formule adaptée au
+    nombre de participants.
+  </p>
+
+  <h3>Cocktails et soirées d'entreprise</h3>
+  <p>
+    Pièces cocktail, cocktail dinatoire, buffet debout — pour vos lancements,
+    inaugurations ou soirées de fin d'année.
+  </p>
+
+  <h3>Petits-déjeuners et pauses gourmandes</h3>
+  <p>
+    Accueil de partenaires, réunion matinale, formation interne — des formats légers et
+    soignés.
+  </p>
+
+  <h3>Pots et moments de convivialité</h3>
+  <p>
+    Départ en retraite, promotion, anniversaire d'entreprise — des prestations sur-mesure
+    dès un petit groupe.
+  </p>
+
+  <h2>Pourquoi Paris et l'Île-de-France ?</h2>
+  <p>
+    La plateforme Les traiteurs engagés opère actuellement en Île-de-France. Nos traiteurs
+    solidaires interviennent à Paris et dans l'ensemble des départements franciliens :
+    Seine-et-Marne, Yvelines, Essonne, Hauts-de-Seine, Seine-Saint-Denis, Val-de-Marne et
+    Val-d'Oise.
+  </p>
+  <p>
+    Vous êtes basé en région parisienne et souhaitez un traiteur solidaire proche de vos
+    locaux ? Consultez les fiches pour filtrer par zone d'intervention.
+  </p>
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Trouver un traiteur solidaire près de chez moi
+    </a>
+  </p>
+
+  <h2>Questions fréquentes</h2>
+  <div class="article-faq">
+    {% for item in faq_items %}
+    <div class="article-faq-item">
+      <h3 class="article-faq-q">{{ item.q }}</h3>
+      <p class="article-faq-a">{{ item.a }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% set ns = namespace(questions=[]) %}
+  {% for item in faq_items %}
+    {% set ns.questions = ns.questions + [{
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": {"@type": "Answer", "text": item.a}
+    }] %}
+  {% endfor %}
+  <script type="application/ld+json">
+  {{ {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": ns.questions
+  } | tojson }}
+  </script>
+{% endblock %}

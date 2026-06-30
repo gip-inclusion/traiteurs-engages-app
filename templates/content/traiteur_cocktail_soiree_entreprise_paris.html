@@ -1,0 +1,145 @@
+{% extends "content/_base.html" %}
+
+{% block article %}
+{% set faq_items = [
+  {
+    "q": "Combien coûte un traiteur pour un cocktail d'entreprise à Paris ?",
+    "a": "À titre indicatif : entre 20 et 35 € par personne pour un cocktail apéritif soigné, entre 30 et 70 € pour un cocktail dinatoire complet. Les tarifs varient selon le format, le nombre de convives et le niveau de prestation."
+  },
+  {
+    "q": "Combien de temps à l'avance pour réserver ?",
+    "a": "Pour moins de 50 personnes, 2 à 3 semaines suffisent en période creuse. En juin et en décembre — périodes très chargées — prévoyez 4 à 6 semaines minimum dès que la date est fixée."
+  },
+  {
+    "q": "Le traiteur peut-il intervenir dans une salle que nous allons louer ?",
+    "a": "Oui. Transmettez les contraintes du lieu au traiteur : accès cuisine, électricité disponible, horaires d'accès, règles de la salle."
+  },
+  {
+    "q": "Peut-on personnaliser les pièces cocktail ?",
+    "a": "Certains traiteurs proposent des adaptations de présentation ou des pièces signature. Mentionnez votre demande lors du premier contact."
+  },
+  {
+    "q": "Comment fonctionne la plateforme ?",
+    "a": "Les Traiteurs Engagés est une plateforme d'intermédiation portée par inclusion.gouv.fr : vous consultez les fiches, vous contactez directement le traiteur, vous organisez la prestation ensemble."
+  }
+] %}
+
+  <h1 class="article-h1">
+    Traiteur cocktail entreprise Paris : des prestataires vérifiés en Île-de-France
+  </h1>
+
+  <p class="article-lede">
+    Soirée annuelle, pot de fin d'année, lancement produit, inauguration : vous cherchez un
+    traiteur pour votre prochain cocktail ou soirée d'entreprise à Paris ? Les traiteurs
+    engagés référence des prestataires culinaires en Île-de-France, disponibles pour tous
+    formats d'événements festifs professionnels. Structures vérifiées, contact direct, sans
+    intermédiaire.
+  </p>
+
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Trouver un traiteur cocktail à Paris
+    </a>
+  </p>
+
+  <h2>Quel format de cocktail pour votre événement ?</h2>
+
+  <h3>Le cocktail apéritif (1h–1h30)</h3>
+  <p>
+    Pièces salées et sucrées, boissons — pour clore une journée de séminaire, accueillir
+    des partenaires ou marquer une bonne nouvelle en interne. Format debout, léger, sans
+    organisation lourde.
+  </p>
+
+  <h3>Le cocktail dinatoire (2h30–3h)</h3>
+  <p>
+    Un repas complet sous forme de pièces cocktail, servi en station ou à la main. Permet
+    de se nourrir sans s'asseoir — adapté aux soirées de networking ou aux événements où la
+    circulation est importante.
+  </p>
+
+  <h3>Le buffet dînatoire</h3>
+  <p>
+    Tables avec plats à partager, desserts, boissons. Format plus structuré, adapté aux
+    soirées annuelles ou aux événements avec un programme (discours, remise de prix,
+    animation).
+  </p>
+
+  <h3>Le pot de départ ou de célébration</h3>
+  <p>
+    Format intime dès une vingtaine de personnes : planches, boissons, desserts. Simple,
+    sans sur-organisation.
+  </p>
+
+  <h2>Pour quels événements ?</h2>
+  <p>Nos traiteurs interviennent sur l'ensemble des occasions festives en entreprise :</p>
+  <ul>
+    <li>Soirée annuelle et fête de fin d'année</li>
+    <li>Lancement produit et inauguration</li>
+    <li>Pot de départ en retraite ou promotion interne</li>
+    <li>Afterwork et événement client</li>
+    <li>Remise de prix et cérémonie interne</li>
+    <li>Anniversaire d'entreprise</li>
+  </ul>
+
+  <h2>Zone d'intervention : Paris et grande couronne</h2>
+  <p>
+    Nos traiteurs interviennent à Paris intra-muros et dans l'ensemble de l'Île-de-France.
+    Certains couvrent également les salles de réception en grande couronne.
+  </p>
+  <p>
+    Vous organisez votre soirée dans un lieu privatisé — restaurant, salle de réception,
+    rooftop, espace atypique ? Précisez le lieu et ses contraintes logistiques lors du
+    premier contact. Nos traiteurs sont habitués à intervenir hors de leurs cuisines.
+  </p>
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Voir les traiteurs disponibles pour ma soirée
+    </a>
+  </p>
+
+  <h2>Structures vérifiées, dont certaines éligibles AGEFIPH</h2>
+  <p>
+    Les traiteurs engagés est portée par La Plateforme de l'inclusion. Les prestataires
+    référencés sont des structures d'insertion professionnelle et des entreprises adaptées
+    (EA) dont le statut est vérifié avant mise en ligne.
+  </p>
+  <p>
+    Pour les entreprises soumises à l'obligation d'emploi des travailleurs handicapés
+    (OETH), les achats réalisés auprès d'une EA ou d'un ESAT peuvent être valorisés dans le
+    calcul de la contribution AGEFIPH. La plupart de nos traiteurs peuvent fournir une
+    attestation de prestation à cet effet.
+  </p>
+
+  <h2>Questions fréquentes</h2>
+  <div class="article-faq">
+    {% for item in faq_items %}
+    <div class="article-faq-item">
+      <h3 class="article-faq-q">{{ item.q }}</h3>
+      <p class="article-faq-a">{{ item.a }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Consulter le catalogue traiteur
+    </a>
+  </p>
+
+  {% set ns = namespace(questions=[]) %}
+  {% for item in faq_items %}
+    {% set ns.questions = ns.questions + [{
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": {"@type": "Answer", "text": item.a}
+    }] %}
+  {% endfor %}
+  <script type="application/ld+json">
+  {{ {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": ns.questions
+  } | tojson }}
+  </script>
+{% endblock %}

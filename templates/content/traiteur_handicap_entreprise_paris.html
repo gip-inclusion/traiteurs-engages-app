@@ -1,0 +1,175 @@
+{% extends "content/_base.html" %}
+
+{% block article %}
+{% set faq_items = [
+  {
+    "q": "Un traiteur EA ou ESAT est-il aussi bon qu'un traiteur classique ?",
+    "a": "Oui. Les structures référencées sur Les Traiteurs Engagés ont été sélectionnées sur la qualité de leurs prestations culinaires, pas uniquement sur leur statut social. L'engagement emploi et la qualité gastronomique ne sont pas contradictoires."
+  },
+  {
+    "q": "La prestation est-elle déductible de ma contribution AGEFIPH ?",
+    "a": "Les achats réalisés auprès d'une EA ou d'un ESAT peuvent être valorisés dans le calcul de votre contribution AGEFIPH, sous conditions. Nous vous recommandons de vérifier les modalités exactes avec votre service RH ou un expert RQTH, car les règles évoluent régulièrement."
+  },
+  {
+    "q": "Comment savoir si un traiteur est bien une EA ou un ESAT ?",
+    "a": "Chaque traiteur référencé sur la plateforme indique son statut juridique sur sa fiche. Inclusion.gouv.fr garantit la vérification préalable des structures avant référencement."
+  },
+  {
+    "q": "Puis-je obtenir une attestation après la prestation ?",
+    "a": "La plupart des EA et ESAT peuvent fournir une attestation de sous-traitance valorisable. Demandez-le explicitement lors de votre prise de contact — c'est une pratique courante pour ces structures."
+  },
+  {
+    "q": "La plateforme couvre-t-elle toute l'Île-de-France ?",
+    "a": "Oui. Nos traiteurs interviennent à Paris et dans les sept départements franciliens. La zone d'intervention est précisée sur chaque fiche traiteur."
+  },
+  {
+    "q": "Quelle est la différence entre une EA et un ESAT ?",
+    "a": "Une entreprise adaptée (EA) emploie des travailleurs handicapés en milieu ordinaire, avec des contrats de travail classiques. Un ESAT est un établissement médico-social qui accueille des personnes dont le handicap nécessite un cadre de travail protégé. Les deux sont éligibles à la valorisation AGEFIPH, mais selon des modalités différentes."
+  }
+] %}
+
+  <h1 class="article-h1">
+    Traiteur handicap Paris : organisez vos événements avec une entreprise adaptée
+  </h1>
+
+  <p class="article-lede">
+    Vous souhaitez faire appel à un traiteur qui emploie des personnes en situation de
+    handicap pour votre prochain événement d'entreprise ? Les traiteurs engagés référence
+    des structures spécialisées en Île-de-France : entreprises adaptées (EA) et ESAT.
+    Chaque prestataire a été sélectionné pour la qualité de sa cuisine autant que pour la
+    réalité de son engagement. Une prestation traiteur concrète, valorisable dans votre
+    bilan RQTH et votre démarche RSE.
+  </p>
+
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Voir les traiteurs handicap disponibles en IDF
+    </a>
+  </p>
+
+  <h2>Traiteur et handicap : de quoi parle-t-on ?</h2>
+  <p>
+    Quand on parle de traiteur handicap, on désigne des structures dont l'activité
+    culinaire repose sur l'emploi majoritaire de travailleurs en situation de handicap. Il
+    en existe principalement deux types :
+  </p>
+
+  <h3>Les entreprises adaptées (EA)</h3>
+  <p>
+    Ce sont des entreprises du milieu ordinaire qui emploient au moins 55 % de travailleurs
+    handicapés reconnus. Elles fonctionnent comme n'importe quelle entreprise — avec des
+    contrats de droit commun — mais avec une mission sociale forte.
+  </p>
+
+  <h3>Les ESAT (Établissements et Services d'Aide par le Travail)</h3>
+  <p>
+    Les ESAT accueillent des personnes dont le handicap ne permet pas, momentanément ou
+    durablement, de travailler en milieu ordinaire. Ils proposent des activités
+    professionnelles dans un cadre médico-social adapté. Certains ont développé une
+    activité traiteur de qualité, ouverte aux entreprises.
+  </p>
+  <p>
+    Les deux types de structures sont référencés sur la plateforme Les traiteurs engagés.
+  </p>
+
+  <h2>Pourquoi choisir un traiteur handicap pour votre entreprise ?</h2>
+  <p>
+    Au-delà de la dimension éthique, faire appel à un traiteur du secteur adapté présente
+    des avantages concrets pour votre organisation.
+  </p>
+
+  <h3>Un achat valorisable dans votre bilan RQTH</h3>
+  <p>
+    Les dépenses réalisées auprès d'une EA ou d'un ESAT peuvent être déduites de votre
+    contribution annuelle à l'AGEFIPH (pour les entreprises soumises à l'obligation
+    d'emploi des travailleurs handicapés, OETH). C'est ce qu'on appelle la sous-traitance
+    valorisable — un levier souvent sous-utilisé par les équipes RH et achats.
+  </p>
+
+  <h3>Un argument RSE concret et traçable</h3>
+  <p>
+    Contrairement à des engagements déclaratifs, une prestation traiteur avec une EA ou un
+    ESAT est documentable : facture, attestation de prestation, statut de la structure. Un
+    élément tangible pour votre reporting extra-financier.
+  </p>
+
+  <h3>Un signal fort pour vos équipes</h3>
+  <p>
+    Organiser un séminaire ou une soirée d'entreprise avec un traiteur du secteur adapté
+    envoie un message cohérent à vos collaborateurs sur les valeurs de l'organisation.
+  </p>
+
+  <h2>Des traiteurs du secteur adapté sélectionnés en Île-de-France</h2>
+  <p>
+    La plateforme Les traiteurs engagés, portée par inclusion.gouv.fr, référence des EA et
+    structures d'insertion actives dans le secteur traiteur en Île-de-France. Chaque fiche
+    précise :
+  </p>
+  <ul>
+    <li>Le statut de la structure (EA, ESAT, structure d'insertion)</li>
+    <li>La zone d'intervention en IDF</li>
+    <li>Les formats de prestation disponibles</li>
+    <li>Les informations de contact pour demander un devis</li>
+  </ul>
+  <p class="article-cta">
+    <a href="{{ url_for('client.search') }}" class="article-cta-btn">
+      Parcourir les fiches traiteurs handicap
+    </a>
+  </p>
+
+  <h2>Pour quels événements ?</h2>
+  <p>
+    Les traiteurs du secteur adapté référencés sur la plateforme interviennent pour tous
+    types d'événements professionnels :
+  </p>
+
+  <h3>Séminaires et journées de travail</h3>
+  <p>
+    Déjeuner sur site, buffet froid ou chaud, formule adaptée au nombre de convives et aux
+    contraintes du lieu.
+  </p>
+
+  <h3>Cocktails et soirées d'entreprise</h3>
+  <p>
+    Cocktail dinatoire, pièces apéritives, buffet debout — pour vos soirées annuelles,
+    inaugurations ou lancements produit.
+  </p>
+
+  <h3>Petits-déjeuners et pauses</h3>
+  <p>
+    Accueil client, réunion matinale, séminaire résidentiel — des formats simples mais
+    soignés.
+  </p>
+
+  <h3>Pots et célébrations</h3>
+  <p>
+    Départ en retraite, promotion interne, anniversaire d'entreprise — des prestations
+    flexibles dès un petit comité.
+  </p>
+
+  <h2>Questions fréquentes</h2>
+  <div class="article-faq">
+    {% for item in faq_items %}
+    <div class="article-faq-item">
+      <h3 class="article-faq-q">{{ item.q }}</h3>
+      <p class="article-faq-a">{{ item.a }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% set ns = namespace(questions=[]) %}
+  {% for item in faq_items %}
+    {% set ns.questions = ns.questions + [{
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": {"@type": "Answer", "text": item.a}
+    }] %}
+  {% endfor %}
+  <script type="application/ld+json">
+  {{ {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": ns.questions
+  } | tojson }}
+  </script>
+{% endblock %}
