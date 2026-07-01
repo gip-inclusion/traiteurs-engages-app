@@ -36,7 +36,7 @@ def test_handicap_article_renders(client):
     r = client.get("/traiteur-handicap-entreprise-paris")
     assert r.status_code == 200
     body = r.data.decode("utf-8")
-    assert "handicap Paris : organisez vos événements" in body
+    assert "Traiteur et handicap Paris: organisez vos événements" in body
     assert "entreprises adaptées (EA) et ESAT" in body
     assert '"@type": "FAQPage"' in body
     assert "AGEFIPH" in body
