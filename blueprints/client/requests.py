@@ -56,6 +56,55 @@ from services.quotes import calculate_quote_totals
 logger = logging.getLogger(__name__)
 
 
+_QUOTE_FIELD_LABELS_FR = {
+    "csrf_token": "Jeton de sécurité",
+    "meal_type": "Type de prestation",
+    "event_date": "Date de l'événement",
+    "event_start_time": "Heure de début",
+    "event_end_time": "Heure de fin",
+    "guest_count": "Nombre de convives",
+    "event_address": "Adresse",
+    "event_city": "Ville",
+    "event_zip_code": "Code postal",
+    "budget_global": "Budget total",
+    "budget_per_person": "Budget par personne",
+    "vegetarian_count": "Nombre de végétariens",
+    "halal_count": "Nombre de repas halal",
+    "gluten_free_count": "Nombre de repas sans gluten",
+    "lactose_free_count": "Nombre de repas sans lactose",
+}
+
+
+def _flash_quote_form_errors(form):
+    """Journalise le vrai motif d'invalidité et affiche un message utile.
+
+    Le wizard poste en full-page ; un échec de validation ré-affiche le
+    formulaire vide. Sans ce détail, ni le client ni nous ne savons quel
+    champ pose problème. On logge `form.errors` (diagnostic) et on flashe
+    un message ciblé — avec un cas dédié pour le jeton CSRF, cause la plus
+    fréquente (onglet resté ouvert, cookies bloqués)."""
+    errors = form.errors
+    user = g.get("current_user")
+    logger.warning(
+        "quote request form invalid: user=%s company=%s errors=%s",
+        getattr(user, "id", None),
+        getattr(user, "company_id", None),
+        errors,
+    )
+    if "csrf_token" in errors:
+        flash(
+            "Votre session a expiré (page restée ouverte trop longtemps ou "
+            "cookies bloqués). Rechargez la page, puis renvoyez votre demande.",
+            "error",
+        )
+        return
+    if errors:
+        champs = ", ".join(_QUOTE_FIELD_LABELS_FR.get(name, name) for name in errors)
+        flash(f"Merci de vérifier ces champs : {champs}.", "error")
+    else:
+        flash("Veuillez corriger les erreurs du formulaire.", "error")
+
+
 def _no_store(response):
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -279,7 +328,7 @@ def register(bp):
             form.target_offerings = set(target_caterer.service_offerings or [])
 
         if not form.validate_on_submit():
-            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            _flash_quote_form_errors(form)
             services = (
                 db.execute(
                     select(CompanyService).where(
@@ -649,7 +698,7 @@ def register(bp):
 
         form = QuoteRequestForm()
         if not form.validate_on_submit():
-            flash("Veuillez corriger les erreurs du formulaire.", "error")
+            _flash_quote_form_errors(form)
             services = (
                 db.execute(
                     select(CompanyService).where(
