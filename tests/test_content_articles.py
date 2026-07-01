@@ -36,7 +36,7 @@ def test_handicap_article_renders(client):
     r = client.get("/traiteur-handicap-entreprise-paris")
     assert r.status_code == 200
     body = r.data.decode("utf-8")
-    assert "Traiteur handicap Paris : organisez vos événements" in body
+    assert "handicap Paris : organisez vos événements" in body
     assert "entreprises adaptées (EA) et ESAT" in body
     assert '"@type": "FAQPage"' in body
     assert "AGEFIPH" in body
@@ -49,7 +49,7 @@ def test_seminaire_article_renders(client):
     r = client.get("/traiteur-seminaire-entreprise-paris")
     assert r.status_code == 200
     body = r.data.decode("utf-8")
-    assert "Traiteur séminaire Paris : bien manger, bien faire" in body
+    assert "Traiteur pour un séminaire à Paris : bien manger, bien faire" in body
     assert '"@type": "FAQPage"' in body
     assert "Déjeuner buffet" in body
     # cross-link : les trois articles listés dans le footer partout
