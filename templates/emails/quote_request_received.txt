@@ -8,7 +8,7 @@ Bonjour {{ user.first_name }},
 {% endif %}{% if guest_count %}Convives : {{ guest_count }}
 {% endif %}{% if event_city %}Lieu : {{ event_city }}
 {% endif %}
-Répondre à la demande : {{ cta_url }}
+Répondre à la demande : {{ cta_url | trusted }}
 
 Plus vous répondez vite, plus vous avez de chances d'être retenu. Au-delà de 3 traiteurs ayant déjà envoyé un devis, la demande est clôturée.
 
