@@ -8,7 +8,7 @@ La demande de {% if company_name %}{{ company_name }}{% else %}votre client{% en
 {% endif %}{% if guest_count %}Convives : {{ guest_count }}
 {% endif %}{% if event_city %}Lieu : {{ event_city }}
 {% endif %}
-Voir la demande mise à jour : {{ cta_url }}
+Voir la demande mise à jour : {{ cta_url | trusted }}
 
 Si vous aviez déjà envoyé un devis, pensez à vérifier qu'il correspond toujours aux nouvelles informations.
 

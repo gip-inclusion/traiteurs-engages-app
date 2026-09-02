@@ -6,7 +6,7 @@ La demande de {% if company_name %}{{ company_name }}{% else %}votre client{% en
 {% if reason %}
 Motif : {{ reason }}
 {% endif %}
-Voir mes demandes : {{ cta_url }}
+Voir mes demandes : {{ cta_url | trusted }}
 
 Si vous aviez déjà envoyé un devis pour cette demande, il a été automatiquement clôturé.
 
