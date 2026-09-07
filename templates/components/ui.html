@@ -124,7 +124,7 @@
 
 {% macro contact_card(entity_type, entity_name, entity_logo_url=None,
                       contact_user_id=None, contact_first_name=None,
-                      contact_last_name=None, contact_email=None,
+                      contact_last_name=None, contact_email=None, contact_phone=None,
                       public_profile_href=None, messages_modal_id=None,
                       messages_href=None, nested=False) %}
   {% set labels = {
@@ -193,6 +193,14 @@
       </a>
       {% endif %}
     </div>
+    {% endif %}
+
+    {% if contact_phone %}
+    <a href="tel:{{ contact_phone | replace(' ', '') }}"
+       class="flex items-center gap-2 text-sm font-bold text-navy no-underline">
+      <i data-lucide="phone" class="w-4 h-4"></i>
+      {{ contact_phone }}
+    </a>
     {% endif %}
   </div>
 {% endmacro %}
