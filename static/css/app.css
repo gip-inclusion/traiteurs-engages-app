@@ -138,6 +138,17 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
   background: var(--c-cream);
 }
 
+/* Borderless icon button (copy a value, ...). Sits inside a card that already
+   has its own frame, so it must not draw a second one. */
+.btn-icon-navy {
+  color: var(--c-navy);
+  background: transparent;
+  transition: background-color .15s;
+}
+.btn-icon-navy:hover {
+  background: var(--c-cream);
+}
+
 /* Sidebar nav links */
 .sidebar-link {
   color: var(--c-mute);
