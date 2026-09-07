@@ -158,6 +158,7 @@ class UserProfileForm(FlaskForm):
     first_name = StringField(validators=[Optional(), Length(max=255)])
     last_name = StringField(validators=[Optional(), Length(max=255)])
     email = StringField(validators=[Optional(), Length(max=255)])
+    phone = StringField(validators=[Optional(), Length(max=30)])
     current_password = PasswordField(validators=[Optional()])
 
 

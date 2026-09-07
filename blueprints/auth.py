@@ -193,6 +193,7 @@ def signup():
         password = request.form.get("password", "")
         first_name = request.form.get("first_name", "").strip()
         last_name = request.form.get("last_name", "").strip()
+        phone = request.form.get("phone", "").strip()
         siret = request.form.get("siret", "").strip()
         accept_terms = is_terms_accepted(request.form)
 
@@ -245,6 +246,7 @@ def signup():
                     password_hash=password_hash,
                     first_name=first_name,
                     last_name=last_name,
+                    phone=phone or None,
                     role=UserRole.client_user,
                     company_id=existing_company.id,
                     membership_status=MembershipStatus.pending,
@@ -280,6 +282,7 @@ def signup():
                 password_hash=password_hash,
                 first_name=first_name,
                 last_name=last_name,
+                phone=phone or None,
                 role=UserRole.client_admin,
                 company_id=company.id,
                 membership_status=MembershipStatus.active,
@@ -352,6 +355,7 @@ def signup():
                 password_hash=password_hash,
                 first_name=first_name,
                 last_name=last_name,
+                phone=phone or None,
                 role=UserRole.caterer,
                 caterer_id=caterer.id,
                 membership_status=MembershipStatus.active,

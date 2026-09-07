@@ -47,6 +47,17 @@
             <p class="text-sm font-bold text-text truncate">{{ user.email }}</p>
           </div>
         </div>
+        {% if user.phone %}
+        <div class="flex items-center gap-3">
+          <div class="rounded-lg flex items-center justify-center bg-cream w-10 h-10 flex-shrink-0">
+            <i data-lucide="phone" class="w-4 h-4 text-text-soft"></i>
+          </div>
+          <div class="min-w-0">
+            <p class="text-xs text-mute">T&#233;l&#233;phone</p>
+            <p class="text-sm font-bold text-text truncate">{{ user.phone }}</p>
+          </div>
+        </div>
+        {% endif %}
         {% if user.company %}
         <div class="flex items-center gap-3">
           <div class="rounded-lg flex items-center justify-center bg-cream"
@@ -85,6 +96,12 @@
           <label class="block text-sm font-bold mb-2 text-text">Adresse e-mail</label>
           <input type="email" name="email" value="{{ user.email }}" required
             class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+        </div>
+        <div>
+          <label class="block text-sm font-bold mb-2 text-text">T&#233;l&#233;phone</label>
+          <input type="tel" name="phone" value="{{ user.phone or '' }}" autocomplete="tel" maxlength="30"
+            class="w-full border rounded-lg px-3 py-2.5 text-sm text-black outline-none focus:border-navy transition-colors border-default">
+          <p class="text-xs text-mute mt-1">Facultatif. Communiqu&#233; au traiteur une fois la commande pass&#233;e.</p>
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-text">Mot de passe actuel</label>

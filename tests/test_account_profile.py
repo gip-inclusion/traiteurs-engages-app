@@ -158,3 +158,61 @@ def test_email_change_collision_is_rejected(client, login, role):
         assert u.email == email
     finally:
         _reset_user(email, email, original_first, original_last)
+
+
+def _set_phone(email, phone):
+    from database import session_factory
+    from models import User
+
+    s = session_factory()
+    try:
+        u = s.scalar(select(User).where(User.email == email))
+        u.phone = phone
+        s.commit()
+    finally:
+        s.close()
+
+
+def test_client_profile_saves_then_clears_phone(client, login):
+    email = "alice@test.local"
+    original = _get_user(email)
+    base = {
+        "first_name": original.first_name,
+        "last_name": original.last_name,
+        "email": email,
+        "current_password": "",
+    }
+    try:
+        login(email)
+        r = client.post("/client/profile", data={**base, "phone": " 06 12 34 56 78 "})
+        assert r.status_code == 302, r.data
+        assert _get_user(email).phone == "06 12 34 56 78"
+
+        r = client.post("/client/profile", data={**base, "phone": ""})
+        assert r.status_code == 302, r.data
+        assert _get_user(email).phone is None
+    finally:
+        _set_phone(email, None)
+
+
+def test_profile_without_the_phone_field_keeps_it(client, login):
+    # The caterer and admin profiles share apply_profile_form but never show
+    # the field; saving there must not wipe a number set elsewhere.
+    email = "cook@test.local"
+    original = _get_user(email)
+    try:
+        _set_phone(email, "0601020304")
+        login(email)
+        r = client.post(
+            "/caterer/account",
+            data={
+                "first_name": original.first_name,
+                "last_name": original.last_name,
+                "email": email,
+                "current_password": "",
+            },
+        )
+        assert r.status_code == 302, r.data
+        assert _get_user(email).phone == "0601020304"
+    finally:
+        _set_phone(email, None)

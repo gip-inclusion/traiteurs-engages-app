@@ -18,6 +18,11 @@ def apply_profile_form(db, user, form) -> str | None:
 
     user.first_name = first_name
     user.last_name = last_name
+    # Only the client profile posts a phone. The admin and caterer forms share
+    # this service without the field, and must not wipe a number they never
+    # showed: WTForms leaves .data at None when the input is absent.
+    if form.phone.data is not None:
+        user.phone = form.phone.data.strip() or None
 
     if new_email == (user.email or "").lower():
         return None
