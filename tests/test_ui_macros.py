@@ -113,7 +113,7 @@ def test_confirm_dialog_destructive_variant(app):
     assert "#DC2626" in out
 
 
-def test_contact_card_shows_phone_when_given(app):
+def test_contact_card_shows_phone_with_a_copy_button(app):
     out = _render(
         app,
         '{% from "components/ui.html" import contact_card %}'
@@ -121,18 +121,20 @@ def test_contact_card_shows_phone_when_given(app):
         ' contact_first_name="Alice", contact_last_name="Dupont",'
         ' contact_phone="06 12 34 56 78") }}',
     )
-    assert 'href="tel:0612345678"' in out
     assert "06 12 34 56 78" in out
-    assert 'data-lucide="phone"' in out
+    assert 'data-action="copy-to-clipboard"' in out
+    assert 'data-value="06 12 34 56 78"' in out
+    # Displayed, not dialled: the number must not be a link.
+    assert "tel:" not in out
 
 
 def test_contact_card_hides_phone_when_absent(app):
-    # Opt-in: the quote request card must not leak the number before the
-    # request is accepted.
+    # Opt-in: the number stays hidden until the request is accepted.
     out = _render(
         app,
         '{% from "components/ui.html" import contact_card %}'
         '{{ contact_card(entity_type="client", entity_name="Acme",'
         ' contact_first_name="Alice", contact_last_name="Dupont") }}',
     )
-    assert "tel:" not in out
+    assert 'data-action="copy-to-clipboard"' not in out
+    assert 'data-lucide="copy"' not in out
