@@ -370,6 +370,8 @@
       contact_first_name=client_user.first_name if client_user else None,
       contact_last_name=client_user.last_name if client_user else None,
       contact_email=client_user.email if client_user else None,
+      contact_phone=client_user.phone if (client_user and qrc.display_status == 'quote_accepted'
+                                          and existing_quote and existing_quote.order) else None,
       messages_modal_id='send-message-client-' ~ (client_user.id|string) if client_user else None
     ) }}
 

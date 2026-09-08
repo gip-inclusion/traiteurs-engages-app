@@ -124,7 +124,7 @@
 
 {% macro contact_card(entity_type, entity_name, entity_logo_url=None,
                       contact_user_id=None, contact_first_name=None,
-                      contact_last_name=None, contact_email=None,
+                      contact_last_name=None, contact_email=None, contact_phone=None,
                       public_profile_href=None, messages_modal_id=None,
                       messages_href=None, nested=False) %}
   {% set labels = {
@@ -192,6 +192,21 @@
         Message
       </a>
       {% endif %}
+    </div>
+    {% endif %}
+
+    {% if contact_phone %}
+    <div class="flex items-center gap-2">
+      <i data-lucide="phone" class="w-4 h-4 text-text-soft"></i>
+      <span class="text-sm font-bold text-black">{{ contact_phone }}</span>
+      {# Empty label: the copy handler swaps its text for the confirmation, so
+         it must not hold the icon, which it would replace. #}
+      <button type="button" data-action="copy-to-clipboard" data-value="{{ contact_phone }}"
+              data-copied-label="Copi&#233;&#160;!" aria-label="Copier le num&#233;ro de t&#233;l&#233;phone"
+              class="ml-auto rounded-full text-xs font-bold px-2 py-1 inline-flex items-center gap-1 btn-icon-navy flex-shrink-0">
+        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+        <span data-copy-label></span>
+      </button>
     </div>
     {% endif %}
   </div>

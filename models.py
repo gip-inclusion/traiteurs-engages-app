@@ -243,6 +243,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     first_name: Mapped[str] = mapped_column(String(255))
     last_name: Mapped[str] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(30))
     role: Mapped[UserRole] = mapped_column(String(20))
     company_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("companies.id"), index=True
