@@ -35,13 +35,13 @@ whitenoise==6.12.0
 dramatiq[redis]==1.17.0
 redis==5.0.3
 boto3==1.38.16
-Pillow==12.2.0
+Pillow==12.3.0
 pikepdf==9.7.0
 
 # Quote download : HTML + CSS → PDF for the caterer's "Télécharger en PDF"
 # action. Replaces the previous window.print() screenshot. Needs system
 # libs (libpango / libpangoft2) installed in the image — see Dockerfile.
-weasyprint==68.0
+weasyprint==69.0
 
 # --- dev / test ---
 pytest==9.0.3
