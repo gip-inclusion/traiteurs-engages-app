@@ -5,40 +5,52 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+_TEST_DB_NAME = "traiteurs_test"
 
-def _ensure_test_db():
+
+def _db_urls():
     parent_url = os.environ.get(
         "DATABASE_URL", "postgresql://traiteurs:traiteurs@db:5432/traiteurs"
     )
-    test_db_name = "traiteurs_test"
-    maint_url = parent_url.rsplit("/", 1)[0] + "/postgres"
+    base = parent_url.rsplit("/", 1)[0]
+    return base + "/postgres", base + f"/{_TEST_DB_NAME}"
+
+
+# L'environnement de test est posé à l'import de conftest, pas dans une
+# fixture : des modules de test importent du code applicatif dès la collecte
+# (services.email → config + broker dramatiq), donc avant qu'aucune fixture
+# n'ait tourné. config.settings est figé à ce moment-là, et sans REDIS_URL la
+# construction du broker lève (CI). Les valeurs doivent donc être en place
+# avant le premier import de test.
+if not os.environ.get("SECRET_KEY"):
+    os.environ["SECRET_KEY"] = "x" * 32
+os.environ["DATABASE_URL"] = _db_urls()[1]
+os.environ["DRAMATIQ_TESTING"] = "1"
+os.environ.pop("STRIPE_SECRET_KEY", None)
+if not os.environ.get("LIMITER_ALLOW_MEMORY"):
+    os.environ["LIMITER_ALLOW_MEMORY"] = "1"
+if not os.environ.get("SECURE_COOKIES"):
+    os.environ["SECURE_COOKIES"] = "false"
+
+
+def _ensure_test_db():
+    maint_url, _ = _db_urls()
     parent_engine = create_engine(maint_url, isolation_level="AUTOCOMMIT")
     with parent_engine.connect() as conn:
         conn.execute(
             text(
                 f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                f"WHERE datname = '{test_db_name}' AND pid <> pg_backend_pid()"
+                f"WHERE datname = '{_TEST_DB_NAME}' AND pid <> pg_backend_pid()"
             )
         )
-        conn.execute(text(f"DROP DATABASE IF EXISTS {test_db_name}"))
-        conn.execute(text(f"CREATE DATABASE {test_db_name}"))
+        conn.execute(text(f"DROP DATABASE IF EXISTS {_TEST_DB_NAME}"))
+        conn.execute(text(f"CREATE DATABASE {_TEST_DB_NAME}"))
     parent_engine.dispose()
-    test_url = parent_url.rsplit("/", 1)[0] + f"/{test_db_name}"
-    return test_url
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _required_env():
-    if not os.environ.get("SECRET_KEY"):
-        os.environ["SECRET_KEY"] = "x" * 32
-    test_url = _ensure_test_db()
-    os.environ["DATABASE_URL"] = test_url
-    os.environ.pop("STRIPE_SECRET_KEY", None)
-    os.environ["DRAMATIQ_TESTING"] = "1"
-    if not os.environ.get("LIMITER_ALLOW_MEMORY"):
-        os.environ["LIMITER_ALLOW_MEMORY"] = "1"
-    if not os.environ.get("SECURE_COOKIES"):
-        os.environ["SECURE_COOKIES"] = "false"
+    _ensure_test_db()
     yield
 
 

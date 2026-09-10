@@ -6,7 +6,7 @@ Bonjour {{ user.first_name }},
 {% if preview %}
 « {{ preview }}{% if truncated %}…{% endif %} »
 {% endif %}
-Voir le message : {{ cta_url }}
+Voir le message : {{ cta_url | trusted }}
 
 Répondez directement depuis votre messagerie pour poursuivre la conversation.
 

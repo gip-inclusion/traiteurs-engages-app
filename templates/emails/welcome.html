@@ -25,7 +25,7 @@
                 jusqu'à 3 propositions de traiteurs solidaires sélectionnés.
               </p>
               <p style="margin:24px 0;text-align:center;">
-                <a href="{{ cta_url }}"
+                <a href="{{ cta_url | trusted }}"
                    style="display:inline-block;padding:14px 28px;background:#B70102;color:#ffffff;text-decoration:none;border-radius:9999px;font-weight:600;font-size:14px;">
                   Faire une première demande
                 </a>
@@ -38,7 +38,7 @@
                 validera ensuite votre compte sous 48 heures ouvrées.
               </p>
               <p style="margin:24px 0;text-align:center;">
-                <a href="{{ cta_url }}"
+                <a href="{{ cta_url | trusted }}"
                    style="display:inline-block;padding:14px 28px;background:#B70102;color:#ffffff;text-decoration:none;border-radius:9999px;font-weight:600;font-size:14px;">
                   Compléter mon profil
                 </a>
@@ -46,7 +46,7 @@
 
               {% else %}
               <p style="margin:24px 0;text-align:center;">
-                <a href="{{ cta_url }}"
+                <a href="{{ cta_url | trusted }}"
                    style="display:inline-block;padding:14px 28px;background:#B70102;color:#ffffff;text-decoration:none;border-radius:9999px;font-weight:600;font-size:14px;">
                   Accéder à mon espace
                 </a>

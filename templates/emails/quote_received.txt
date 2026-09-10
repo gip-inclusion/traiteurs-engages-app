@@ -9,7 +9,7 @@ Bonjour {{ user.first_name }},
 {% endif %}
 Connectez-vous pour consulter le détail et accepter ou refuser :
 
-{{ cta_url }}
+{{ cta_url | trusted }}
 
 —
 Les Traiteurs Engagés

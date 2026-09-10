@@ -1,4 +1,5 @@
 import datetime as _dt
+import html as _html
 import uuid
 from decimal import Decimal
 
@@ -154,7 +155,11 @@ def test_quote_received_emails_the_requester(app, session, captured_emails):
     assert call["to"] == "alice@test.local"
     assert "devis" in call["subject"].lower()
     assert caterer.name in call["html"]
-    assert "12.50" in call["html"] or "12,50" in call["html"]
+    # Les valeurs interpolées partent entité-encodées (durcissement anti-
+    # injection de template, cf. services/email.py) : on assert sur ce que
+    # le destinataire voit, pas sur la représentation filaire.
+    shown = _html.unescape(call["html"])
+    assert "12.50" in shown or "12,50" in shown
     assert "/client/requests/" in call["html"]
 
 

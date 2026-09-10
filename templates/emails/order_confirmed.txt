@@ -8,7 +8,7 @@ La commande est confirmée.
 {% endif %}{% if delivery_address %}Lieu : {{ delivery_address }}
 {% endif %}{% if total_amount_ht is not none %}Montant HT : {{ "%.2f"|format(total_amount_ht|float) }} €
 {% endif %}
-Voir la commande : {{ cta_url }}
+Voir la commande : {{ cta_url | trusted }}
 
 Une fois la prestation livrée, marquez la commande comme livrée depuis
 votre espace pour déclencher la facturation automatique.
