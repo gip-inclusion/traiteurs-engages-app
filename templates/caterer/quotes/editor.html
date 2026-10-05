@@ -51,6 +51,13 @@
                    class="w-full px-3 py-2 rounded-lg text-sm input-soft">
           </div>
         </div>
+        <div>
+          <label for="extra_info" class="block text-xs font-bold mb-1 text-text">Informations complémentaires</label>
+          <input type="text" id="extra_info" name="extra_info" maxlength="255"
+                 value="{{ quote.extra_info or '' if quote else '' }}"
+                 class="w-full px-3 py-2 rounded-lg text-sm input-soft">
+          <p class="text-xs mt-1 text-mute">Affichées sur le devis remis au client.</p>
+        </div>
       </div>
 
 

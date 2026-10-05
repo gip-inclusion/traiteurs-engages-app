@@ -59,6 +59,7 @@ class CatererProfileForm(FlaskForm):
 
 class QuoteForm(FlaskForm):
     notes = TextAreaField(validators=[Optional(), Length(max=10000)])
+    extra_info = StringField(validators=[Optional(), Length(max=255)])
     valid_until = DateField(format="%Y-%m-%d", validators=[Optional()])
     details = StringField(validators=[Optional(), Length(max=200000)])
 

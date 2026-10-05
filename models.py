@@ -421,6 +421,9 @@ class Quote(Base):
     total_amount_ht: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     amount_per_person: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Ligne libre saisie dans « Informations du devis » et imprimee sur le
+    # document, contrairement a `notes` qui reste interne a la fiche client.
+    extra_info: Mapped[str | None] = mapped_column(String(255))
     valid_until: Mapped[datetime.date | None] = mapped_column(Date)
     status: Mapped[QuoteStatus] = mapped_column(String(20), default=QuoteStatus.draft)
     refusal_reason: Mapped[str | None] = mapped_column(Text)
