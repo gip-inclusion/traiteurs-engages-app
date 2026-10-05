@@ -385,21 +385,31 @@ def send_message():
             return jsonify({"error": "Destinataire non autorise."}), 403
 
     # Upload APRÈS le gate d'autorisation : on ne stocke rien si le
-    # destinataire n'est pas autorisé. save_upload valide type (images +
+    # destinataire n'est pas autorisé. store_upload valide type (images +
     # PDF), magic bytes, taille (10 Mo) et ré-encode/nettoie le fichier.
     attachment_url = None
     attachment_name = None
     if upload is not None:
-        from services.uploads import save_upload
+        from services.uploads import UploadRejected, UploadStorageError, store_upload
 
-        attachment_url = save_upload(upload, subfolder="messages")
-        if attachment_url is None:
+        try:
+            attachment_url = store_upload(upload, subfolder="messages")
+        except UploadRejected:
             return jsonify(
                 {
                     "error": "Piece jointe refusee : formats acceptes images ou PDF, "
                     "taille max 10 Mo."
                 }
             ), 400
+        except UploadStorageError:
+            # Le fichier est valide : c'est le stockage qui a échoué. Dire
+            # « format refusé » ferait chercher l'erreur au mauvais endroit.
+            return jsonify(
+                {
+                    "error": "La piece jointe n'a pas pu etre enregistree suite a une "
+                    "erreur technique. Reessayez dans quelques instants."
+                }
+            ), 503
         attachment_name = (upload.filename or "piece-jointe")[:255]
 
     msg = Message(
