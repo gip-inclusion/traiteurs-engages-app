@@ -138,3 +138,28 @@ def test_contact_card_hides_phone_when_absent(app):
     )
     assert 'data-action="copy-to-clipboard"' not in out
     assert 'data-lucide="copy"' not in out
+
+
+_MODAL = (
+    '{% from "components/send_message_modal.html" import send_message_modal %}'
+    '{{ send_message_modal("m1", "11111111-1111-1111-1111-111111111111", "Acme") }}'
+)
+
+
+def test_send_message_modal_offers_an_attachment(app):
+    # L'API accepte déjà le multipart ; la modale doit exposer le champ.
+    out = _render(app, _MODAL)
+    assert "data-modal-file" in out
+    assert 'name="file"' in out
+    assert "data-modal-attach" in out
+    # Mêmes formats que la messagerie et que services/uploads.py.
+    assert "application/pdf" in out
+    assert "image/jpeg" in out
+
+
+def test_send_message_modal_body_is_not_required(app):
+    # Une pièce jointe seule est valide côté API : un `required` sur le
+    # texte bloquerait l'envoi côté navigateur avant même la requête.
+    out = _render(app, _MODAL)
+    textarea = out[out.index("<textarea") : out.index("</textarea>")]
+    assert "required" not in textarea
