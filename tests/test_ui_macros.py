@@ -152,6 +152,8 @@ def test_send_message_modal_offers_an_attachment(app):
     assert "data-modal-file" in out
     assert 'name="file"' in out
     assert "data-modal-attach" in out
+    # Le bouton porte un libelle visible, pas seulement l'icone.
+    assert "Ajouter une pi&#232;ce jointe" in out
     # Mêmes formats que la messagerie et que services/uploads.py.
     assert "application/pdf" in out
     assert "image/jpeg" in out

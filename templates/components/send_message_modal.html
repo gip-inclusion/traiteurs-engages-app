@@ -39,6 +39,12 @@
         <input type="file" name="file" data-modal-file
                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
                class="hidden">
+        <button type="button" data-modal-attach
+          class="rounded-full text-sm font-bold px-3 py-2 mb-2 inline-flex items-center gap-2 text-mute hover:text-navy hover:bg-cream transition-colors"
+          title="Image ou PDF, 10 Mo max">
+          <i data-lucide="paperclip" class="w-4 h-4"></i>
+          Ajouter une pi&#232;ce jointe
+        </button>
         <div data-modal-file-chip
              class="hidden mb-2 px-3 py-2 rounded-lg text-xs bg-cream text-text flex items-center justify-between gap-2">
           <span class="inline-flex items-center gap-1.5 min-w-0">
@@ -52,23 +58,16 @@
         </div>
         <div data-modal-error
              class="hidden mb-3 px-3 py-2 rounded-lg text-xs bg-danger-soft text-danger"></div>
-        <div class="flex items-center justify-between gap-3 mt-2">
-          <button type="button" data-modal-attach
-            class="rounded-full w-10 h-10 flex items-center justify-center text-mute hover:text-navy hover:bg-cream transition-colors flex-shrink-0"
-            title="Joindre un fichier (image ou PDF, 10 Mo max)" aria-label="Joindre un fichier">
-            <i data-lucide="paperclip" class="w-5 h-5"></i>
+        <div class="flex items-center justify-end gap-3 mt-2">
+          <button type="button" data-action="dialog-close" data-target="{{ modal_id }}"
+            class="px-4 py-2 text-sm font-bold rounded-full btn-ghost-navy">
+            Annuler
           </button>
-          <div class="flex items-center gap-3">
-            <button type="button" data-action="dialog-close" data-target="{{ modal_id }}"
-              class="px-4 py-2 text-sm font-bold rounded-full btn-ghost-navy">
-              Annuler
-            </button>
-            <button type="submit" data-modal-send
-              class="px-4 py-2 text-sm font-bold text-white rounded-full bg-navy inline-flex items-center gap-2">
-              <i data-lucide="send" class="w-4 h-4"></i>
-              Envoyer
-            </button>
-          </div>
+          <button type="submit" data-modal-send
+            class="px-4 py-2 text-sm font-bold text-white rounded-full bg-navy inline-flex items-center gap-2">
+            <i data-lucide="send" class="w-4 h-4"></i>
+            Envoyer
+          </button>
         </div>
       </form>
     </div>
