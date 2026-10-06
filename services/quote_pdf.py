@@ -5,19 +5,21 @@ import os
 
 from flask import current_app, render_template
 from weasyprint import CSS, HTML
-from weasyprint.urls import default_url_fetcher
+from weasyprint.urls import URLFetcher
 
 from models import MEAL_TYPE_LABELS
 from services.quotes import build_pdf_preview
 
 
-_BLOCKED_SCHEMES = ("http://", "https://", "ftp://", "ftps://")
+# The PDF never needs the network: an allowlist, rather than the former
+# blocklist of http/https/ftp prefixes, which was case-sensitive and let
+# "HTTP://..." through. WeasyPrint lowercases the scheme before checking it
+# and refuses anything else with a ValueError, so the resource is skipped.
+_ALLOWED_PROTOCOLS = frozenset({"data", "file"})
 
 
-def _safe_fetch(url):
-    if url.startswith(_BLOCKED_SCHEMES):
-        raise ValueError(f"PDF render refused network fetch: {url!r}")
-    return default_url_fetcher(url)
+def _safe_fetcher() -> URLFetcher:
+    return URLFetcher(allowed_protocols=_ALLOWED_PROTOCOLS, allow_redirects=False)
 
 
 @functools.cache
@@ -39,6 +41,6 @@ def render_quote_pdf(quote, qr, caterer) -> bytes:
         pdf_preview=pdf_preview,
         meal_type_labels=MEAL_TYPE_LABELS,
     )
-    return HTML(string=html_str, url_fetcher=_safe_fetch).write_pdf(
+    return HTML(string=html_str, url_fetcher=_safe_fetcher()).write_pdf(
         stylesheets=list(_stylesheets())
     )
