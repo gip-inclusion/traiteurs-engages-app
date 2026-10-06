@@ -28,9 +28,34 @@
         {% if quote_request_id %}
         <input type="hidden" name="quote_request_id" value="{{ quote_request_id }}">
         {% endif %}
-        <textarea name="body" rows="5" required minlength="1" maxlength="5000"
+        {# `required` retire: l'API accepte une piece jointe seule, comme la
+           messagerie. Le JS refuse l'envoi quand tout est vide. #}
+        <textarea name="body" rows="5" maxlength="5000"
           class="w-full rounded-lg px-3 py-2.5 text-sm text-black mb-2 input-soft"
           placeholder="Votre message..."></textarea>
+        {# Input masque, declenche par le bouton trombone (CSP : pas d'onclick
+           inline, le click est cable dans send-message-modal.js). Repere par
+           des attributs data et non des id : plusieurs modales coexistent. #}
+        <input type="file" name="file" data-modal-file
+               accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+               class="hidden">
+        <button type="button" data-modal-attach
+          class="rounded-full text-sm font-bold px-3 py-2 mb-2 inline-flex items-center gap-2 text-mute hover:text-navy hover:bg-cream transition-colors"
+          title="Image ou PDF, 10 Mo max">
+          <i data-lucide="paperclip" class="w-4 h-4"></i>
+          Ajouter une pi&#232;ce jointe
+        </button>
+        <div data-modal-file-chip
+             class="hidden mb-2 px-3 py-2 rounded-lg text-xs bg-cream text-text flex items-center justify-between gap-2">
+          <span class="inline-flex items-center gap-1.5 min-w-0">
+            <i data-lucide="paperclip" class="w-3.5 h-3.5 flex-shrink-0"></i>
+            <span data-modal-file-name class="truncate"></span>
+          </span>
+          <button type="button" data-modal-file-remove
+                  class="text-mute hover:text-danger flex-shrink-0" aria-label="Retirer la pi&#232;ce jointe">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
         <div data-modal-error
              class="hidden mb-3 px-3 py-2 rounded-lg text-xs bg-danger-soft text-danger"></div>
         <div class="flex items-center justify-end gap-3 mt-2">
