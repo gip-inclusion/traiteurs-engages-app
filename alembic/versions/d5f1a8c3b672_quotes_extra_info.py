@@ -10,7 +10,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("quotes", sa.Column("extra_info", sa.String(length=255), nullable=True))
+    op.add_column(
+        "quotes", sa.Column("extra_info", sa.String(length=255), nullable=True)
+    )
 
 
 def downgrade() -> None:
