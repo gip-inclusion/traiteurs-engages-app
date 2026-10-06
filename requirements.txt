@@ -12,7 +12,7 @@ alembic==1.18.4
 psycopg2-binary==2.9.12
 httpx==0.28.1
 python-dotenv==1.2.2
-werkzeug==3.1.8
+werkzeug==3.1.9
 gunicorn==25.3.0
 bcrypt==5.0.0
 pydantic-settings==2.14.2
@@ -41,7 +41,7 @@ pikepdf==9.7.0
 # Quote download : HTML + CSS → PDF for the caterer's "Télécharger en PDF"
 # action. Replaces the previous window.print() screenshot. Needs system
 # libs (libpango / libpangoft2) installed in the image — see Dockerfile.
-weasyprint==69.0
+weasyprint==70.0
 
 # --- dev / test ---
 pytest==9.0.3
