@@ -297,6 +297,7 @@ def register(bp):
             total_amount_ht=totals["total_ht"],
             amount_per_person=totals["amount_per_person"],
             notes=form.notes.data or "",
+            extra_info=(form.extra_info.data or "").strip() or None,
             valid_until=form.valid_until.data,
             status=QuoteStatus.draft,
             lines=lines,
@@ -410,6 +411,7 @@ def register(bp):
         quote.total_amount_ht = totals["total_ht"]
         quote.amount_per_person = totals["amount_per_person"]
         quote.notes = form.notes.data or ""
+        quote.extra_info = (form.extra_info.data or "").strip() or None
         quote.valid_until = (
             form.valid_until.data if form.valid_until.data else quote.valid_until
         )

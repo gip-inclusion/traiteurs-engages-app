@@ -279,6 +279,17 @@
     html += '</div>';
     html += '</div>';
 
+    // Same block as _pdf_preview.html, read from the live input so the
+    // preview matches what will be printed before the quote is saved.
+    var extraInput = document.getElementById('extra_info');
+    var extraInfo = extraInput ? extraInput.value.trim() : '';
+    if (extraInfo) {
+      html += '<div class="mb-6 text-xs">';
+      html += '<p class="uppercase font-bold mb-2 text-mute">Informations complémentaires</p>';
+      html += '<p class="text-text">' + escapeHtml(extraInfo) + '</p>';
+      html += '</div>';
+    }
+
     html += '<table class="w-full text-sm mb-6"><thead><tr style="background-color:var(--c-navy);color:#fff;">';
     html += '<th class="text-left px-3 py-2 font-bold uppercase text-xs">Désignation</th>';
     html += '<th class="text-right px-3 py-2 font-bold uppercase text-xs">Qté</th>';

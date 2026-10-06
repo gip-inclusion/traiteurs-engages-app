@@ -81,6 +81,14 @@
 </div>
 
 
+{% if quote.extra_info %}
+<div class="mb-6 text-xs">
+  <p class="uppercase font-bold mb-2 text-mute">Informations complémentaires</p>
+  <p class="text-text">{{ quote.extra_info }}</p>
+</div>
+{% endif %}
+
+
 <table class="w-full text-sm mb-6">
   <thead>
     <tr style="background-color:var(--c-navy);color:#fff;">
