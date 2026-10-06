@@ -241,10 +241,23 @@ def delete_upload(url: str) -> bool:
         return False
 
 
-def save_upload(file, subfolder: str = "general") -> str | None:
+class UploadRejected(Exception):
+    """The file itself was refused: type, size or content."""
+
+
+class UploadStorageError(Exception):
+    """The file was valid but the storage backend could not keep it."""
+
+
+def store_upload(file, subfolder: str = "general") -> str:
+    """Validate, clean and store an upload, raising on failure.
+
+    Unlike save_upload, the caller can tell a refused file (the user should
+    pick another one) from a storage outage (retrying later may work).
+    """
     result = _validate(file)
     if result is None:
-        return None
+        raise UploadRejected()
     declared_ext, safe_name = result
 
     if declared_ext == "pdf":
@@ -253,17 +266,25 @@ def save_upload(file, subfolder: str = "general") -> str | None:
         clean_buf = _reencode_image(file.stream, declared_ext)
     if clean_buf is None:
         logger.warning("upload rejected: re-encode failed for %s", declared_ext)
-        return None
+        raise UploadRejected()
     file.stream = clean_buf
 
     if _s3_enabled():
         try:
             return _save_s3(file, subfolder, safe_name, declared_ext)
-        except (BotoCoreError, ClientError):
+        except (BotoCoreError, ClientError) as exc:
             logger.exception("S3 upload failed for %s", safe_name)
-            return None
-        except Exception:
+            raise UploadStorageError() from exc
+        except Exception as exc:
             logger.exception("S3 client configuration error for %s", safe_name)
-            return None
+            raise UploadStorageError() from exc
 
     return _save_local(file, subfolder, safe_name)
+
+
+def save_upload(file, subfolder: str = "general") -> str | None:
+    """Same as store_upload, but returns None on any failure."""
+    try:
+        return store_upload(file, subfolder)
+    except (UploadRejected, UploadStorageError):
+        return None

@@ -200,3 +200,67 @@ def test_attachment_404_for_unknown_message(client, login):
     login("admin@test.local")
     r = client.get(f"/api/messages/{uuid.uuid4()}/attachment")
     assert r.status_code == 404
+
+
+def _break_storage(monkeypatch):
+    # Reproduit un stockage S3 qui refuse l'écriture (clé sans droits) :
+    # le fichier est valide, seul l'enregistrement échoue.
+    from botocore.exceptions import ClientError
+
+    import services.uploads as uploads
+
+    def _denied(*_args, **_kwargs):
+        raise ClientError({"Error": {"Code": "AccessDenied"}}, "PutObject")
+
+    monkeypatch.setattr(uploads, "_s3_enabled", lambda: True)
+    monkeypatch.setattr(uploads, "_save_s3", _denied)
+
+
+def test_storage_failure_is_not_reported_as_a_refused_file(client, login, monkeypatch):
+    _break_storage(monkeypatch)
+    login("admin@test.local")
+    alice_id = _user_id("alice@test.local")
+    r = client.post(
+        "/api/messages",
+        data={
+            "recipient_id": str(alice_id),
+            "body": "Voici le document",
+            "file": (_png_upload(), "doc.png"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 503, r.data
+    error = r.get_json()["error"]
+    assert "erreur technique" in error
+    assert "formats acceptes" not in error
+
+
+def test_refused_file_keeps_the_format_message(client, login):
+    login("admin@test.local")
+    alice_id = _user_id("alice@test.local")
+    r = client.post(
+        "/api/messages",
+        data={
+            "recipient_id": str(alice_id),
+            "body": "",
+            "file": (io.BytesIO(b"hello world"), "notes.txt"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 400
+    assert "formats acceptes" in r.get_json()["error"]
+
+
+def test_save_upload_still_returns_none_on_storage_failure(app, monkeypatch):
+    # Les appelants historiques (profil traiteur) testent `is None` :
+    # le contrat de save_upload ne doit pas changer.
+    from werkzeug.datastructures import FileStorage
+
+    from services.uploads import save_upload
+
+    _break_storage(monkeypatch)
+    with app.test_request_context("/"):
+        upload = FileStorage(
+            stream=_png_upload(), filename="doc.png", content_type="image/png"
+        )
+        assert save_upload(upload, subfolder="messages") is None
