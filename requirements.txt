@@ -35,7 +35,7 @@ whitenoise==6.12.0
 dramatiq[redis]==1.17.0
 redis==5.0.3
 boto3==1.38.16
-Pillow==12.3.0
+Pillow==13.0.0
 pikepdf==9.7.0
 
 # Quote download : HTML + CSS → PDF for the caterer's "Télécharger en PDF"
