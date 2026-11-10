@@ -208,3 +208,32 @@ def test_admin_sees_target_caterer_on_pending_direct_request(client, login):
             s.commit()
         finally:
             s.close()
+
+
+def test_client_sees_target_caterer_without_message_while_pending(client, login):
+    from database import session_factory
+
+    s = session_factory()
+    try:
+        target = s.scalar(select(Caterer).where(Caterer.siret == _CATERER_SIRET))
+        target_name = target.name
+        qr_id = _seed_direct_pending_qr(s, target)
+        s.commit()
+    finally:
+        s.close()
+
+    try:
+        login("alice@test.local")
+        r = client.get(f"/client/requests/{qr_id}")
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200
+        assert target_name in body
+        assert "en cours de validation par notre équipe" in body
+        assert "send-message-pending-" not in body
+    finally:
+        s = session_factory()
+        try:
+            s.execute(QuoteRequest.__table__.delete().where(QuoteRequest.id == qr_id))
+            s.commit()
+        finally:
+            s.close()

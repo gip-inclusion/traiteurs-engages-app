@@ -429,12 +429,13 @@
       </div>
       {% else %}
 
-        {% if not qr.is_compare_mode and qrcs %}
-          {% set pending_qrc = qrcs[0] %}
-          {% set pending_caterer = pending_qrc.caterer %}
-
-          {% set pending_caterer_user = pending_qrc.caterer_user %}
-          {% set pending_modal_id = 'send-message-pending-' ~ (pending_qrc.id|string) %}
+        {# Demande directe : avant validation par l'équipe, le traiteur n'a
+           pas encore de QRC (il ne voit rien) — on montre le traiteur
+           choisi, sans bouton Message. #}
+        {% set pending_qrc = qrcs[0] if qrcs else none %}
+        {% set pending_caterer = pending_qrc.caterer if pending_qrc else qr.target_caterer %}
+        {% if not qr.is_compare_mode and pending_caterer %}
+          {% set pending_caterer_user = pending_qrc.caterer_user if pending_qrc else none %}
           <div class="bg-white rounded-lg p-6">
             <div class="flex items-center gap-3">
               <a href="{{ url_for('client.caterer_detail', caterer_id=pending_caterer.id) }}"
@@ -457,7 +458,7 @@
               </a>
               {% if pending_caterer_user %}
               <button type="button" data-action="dialog-open"
-                      data-target="{{ pending_modal_id }}"
+                      data-target="send-message-pending-{{ pending_qrc.id }}"
                       class="rounded-full text-xs font-bold px-3 py-2 inline-flex items-center gap-1.5 btn-ghost-navy flex-shrink-0">
                 <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
                 Message
@@ -468,7 +469,11 @@
             <div class="mt-4 pt-4 border-t border-soft">
               <div class="inline-flex items-start gap-2 px-3 py-2 rounded-lg bg-navy-soft text-navy">
                 <i data-lucide="clock" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                {% if qr.status == QuoteRequestStatus.pending_review %}
+                <p class="text-sm font-bold">Votre demande est en cours de validation par notre équipe.</p>
+                {% else %}
                 <p class="text-sm font-bold">Le traiteur ne devrait pas tarder à envoyer son devis.</p>
+                {% endif %}
               </div>
             </div>
           </div>
