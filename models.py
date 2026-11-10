@@ -368,6 +368,12 @@ class QuoteRequest(DietaryMixin, Base):
     service_setup_details: Mapped[str | None] = mapped_column(Text)
     wants_cleanup: Mapped[bool] = mapped_column(Boolean, default=False)
     is_compare_mode: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Traiteur choisi par le client pour une demande directe. Retenu ici
+    # (et non via un QuoteRequestCaterer) tant que la demande attend la
+    # validation d'un super admin : le traiteur ne doit rien en voir avant.
+    target_caterer_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("caterers.id"), index=True
+    )
     message_to_caterer: Mapped[str | None] = mapped_column(Text)
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -382,11 +388,25 @@ class QuoteRequest(DietaryMixin, Base):
     company_service: Mapped[CompanyService | None] = relationship(
         back_populates="quote_requests"
     )
+    target_caterer: Mapped[Caterer | None] = relationship()
     caterers: Mapped[list["QuoteRequestCaterer"]] = relationship(
         back_populates="quote_request"
     )
     quotes: Mapped[list["Quote"]] = relationship(back_populates="quote_request")
     messages: Mapped[list["Message"]] = relationship(back_populates="quote_request")
+
+    @property
+    def direct_caterer(self) -> Caterer | None:
+        """Traiteur visé par une demande directe, None en mise en concurrence.
+
+        Les demandes directes antérieures à `target_caterer_id` n'ont que
+        leur QuoteRequestCaterer unique : on retombe dessus.
+        """
+        if self.is_compare_mode:
+            return None
+        if self.target_caterer is not None:
+            return self.target_caterer
+        return self.caterers[0].caterer if self.caterers else None
 
 
 class QuoteRequestCaterer(Base):

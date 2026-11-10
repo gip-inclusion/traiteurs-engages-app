@@ -477,7 +477,11 @@
           <div class="bg-white rounded-lg p-6">
             <div class="inline-flex items-start gap-2 px-3 py-2 rounded-lg bg-navy-soft text-navy">
               <i data-lucide="clock" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+              {% if qr.status == QuoteRequestStatus.pending_review %}
+              <p class="text-sm font-bold">Votre demande est en cours de validation par notre équipe.</p>
+              {% else %}
               <p class="text-sm font-bold">Les traiteurs ne devraient pas tarder à envoyer leurs devis.</p>
+              {% endif %}
             </div>
           </div>
         {% endif %}
