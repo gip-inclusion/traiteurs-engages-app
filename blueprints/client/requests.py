@@ -38,7 +38,6 @@ from models import (
     Caterer,
     CompanyService,
     Notification,
-    QRCStatus,
     Quote,
     QuoteRequest,
     QuoteRequestCaterer,
@@ -47,7 +46,6 @@ from models import (
 )
 from services import geocoding, workflow
 from services.notifications import (
-    caterer_user_ids,
     notify_users,
     super_admin_user_ids,
 )
@@ -362,7 +360,9 @@ def register(bp):
         service_id = own_service_id(db, user, form.company_service_id.data)
 
         if target_caterer is not None:
-            status = QuoteRequestStatus.sent_to_caterers
+            # Une demande directe passe elle aussi par la qualification :
+            # le traiteur ne la recoit qu'apres validation d'un super admin.
+            status = QuoteRequestStatus.pending_review
             is_compare = False
         else:
             is_compare = bool(form.is_compare_mode.data)
@@ -382,6 +382,7 @@ def register(bp):
         apply_quote_request_form(qr, form)
         apply_drinks(qr, request.form)
         qr.is_compare_mode = is_compare
+        qr.target_caterer_id = target_caterer.id if target_caterer else None
         # Géocoder l'adresse événement si le client n'a pas fourni de
         # coordonnées explicites mais a renseigné une adresse. Utilisé par
         # le filtre rayon d'intervention lors du fan-out vers les
@@ -413,31 +414,7 @@ def register(bp):
             flash("Cette demande a deja ete envoyee.", "info")
             return redirect(url_for("client.request_detail", request_id=existing.id))
 
-        if target_caterer is not None:
-            db.add(
-                QuoteRequestCaterer(
-                    quote_request_id=qr.id,
-                    caterer_id=target_caterer.id,
-                    status=QRCStatus.selected,
-                )
-            )
-            notify_users(
-                db,
-                caterer_user_ids(db, target_caterer.id),
-                type="quote_request_received",
-                title="Nouvelle demande de devis",
-                body=f"Une demande pour {qr.guest_count or '?'} convives "
-                f"({qr.event_city or 'lieu non renseigné'}) vous a été transmise.",
-                related_entity_type="quote_request",
-                related_entity_id=qr.id,
-            )
-            # Email parallèle à la notif in-app (P0 du funnel).
-            from services import email_triggers
-
-            email_triggers.quote_request_received(
-                db, quote_request=qr, caterer=target_caterer
-            )
-        elif qr.status == QuoteRequestStatus.pending_review:
+        if qr.status == QuoteRequestStatus.pending_review:
             notify_users(
                 db,
                 super_admin_user_ids(db),

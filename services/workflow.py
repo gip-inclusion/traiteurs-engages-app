@@ -272,22 +272,30 @@ def approve_quote_request(
     if not qr:
         raise RequestNotFound
 
-    all_validated = list(
-        db.scalars(select(Caterer).where(Caterer.is_validated.is_(True))).all()
-    )
+    if qr.target_caterer_id is not None:
+        # Demande directe : le client a choisi son traiteur, le matching
+        # (offres, rayon) ne s'applique pas. Seul un traiteur dévalidé
+        # entre-temps bloque l'envoi.
+        target = qr.target_caterer
+        all_validated = [target] if target.is_validated else []
+        targets = all_validated
+    else:
+        all_validated = list(
+            db.scalars(select(Caterer).where(Caterer.is_validated.is_(True))).all()
+        )
 
-    # Géocodage paresseux : si la demande ou un traiteur n'a pas encore
-    # de coordonnées mais que l'adresse est renseignée, on tente
-    # geocode_address à la volée et on persiste le résultat. Cela
-    # absorbe les profils créés avant le déploiement de ce code, sans
-    # nécessiter un script de backfill séparé.
-    _ensure_quote_request_coords(qr)
-    for caterer in all_validated:
-        _ensure_caterer_coords(caterer)
+        # Géocodage paresseux : si la demande ou un traiteur n'a pas encore
+        # de coordonnées mais que l'adresse est renseignée, on tente
+        # geocode_address à la volée et on persiste le résultat. Cela
+        # absorbe les profils créés avant le déploiement de ce code, sans
+        # nécessiter un script de backfill séparé.
+        _ensure_quote_request_coords(qr)
+        for caterer in all_validated:
+            _ensure_caterer_coords(caterer)
 
-    from services.matching import is_caterer_eligible
+        from services.matching import is_caterer_eligible
 
-    targets = [c for c in all_validated if is_caterer_eligible(c, qr)]
+        targets = [c for c in all_validated if is_caterer_eligible(c, qr)]
 
     qrcs: list[QuoteRequestCaterer] = []
     for caterer in targets:

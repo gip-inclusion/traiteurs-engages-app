@@ -172,6 +172,7 @@ def requests_list():
     stmt = (
         select(QuoteRequest)
         .options(joinedload(QuoteRequest.company))
+        .options(joinedload(QuoteRequest.target_caterer))
         .options(
             selectinload(QuoteRequest.caterers).joinedload(QuoteRequestCaterer.caterer)
         )
@@ -226,13 +227,12 @@ def qualification_detail(request_id):
             selectinload(QuoteRequest.caterers)
             .joinedload(QuoteRequestCaterer.caterer)
             .selectinload(Caterer.users),
+            joinedload(QuoteRequest.target_caterer).selectinload(Caterer.users),
         )
     )
     if not qr:
         abort(404)
-    target_caterer = (
-        qr.caterers[0].caterer if (not qr.is_compare_mode and qr.caterers) else None
-    )
+    target_caterer = qr.direct_caterer
     # Premier user du traiteur, comme cote client (cf. blueprints/client/
     # requests.py) : destinataire du message si le traiteur a un compte.
     target_caterer_user = (
@@ -268,6 +268,12 @@ def qualification_approve(request_id):
     db.commit()
     if qrcs:
         flash(f"Demande approuvee et envoyee a {len(qrcs)} traiteur(s).", "success")
+    elif db.get(QuoteRequest, request_id).target_caterer_id is not None:
+        flash(
+            "Le traiteur choisi par le client n'est plus valide : la demande "
+            "n'a pas ete envoyee. Pensez a contacter le client.",
+            "info",
+        )
     else:
         flash(
             "Demande approuvee, mais aucun traiteur valide n'est present "

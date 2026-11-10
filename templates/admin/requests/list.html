@@ -43,9 +43,9 @@
     </thead>
     <tbody>
       {% for req in requests %}
-      {# Demande directe = un seul QRC (le traiteur ciblé) créé à la
-         soumission ; sinon 3 devis. `req.caterers` est eager-loadé. #}
-      {% set target_caterer = req.caterers[0].caterer if (not req.is_compare_mode and req.caterers) else none %}
+      {# Demande directe = traiteur choisi par le client ; sinon 3 devis.
+         `req.target_caterer` et `req.caterers` sont eager-loadés. #}
+      {% set target_caterer = req.direct_caterer %}
       <tr class="hover:bg-cream border-t border-soft">
         <td class="px-4 py-3 text-sm font-medium text-black">{{ req.company.name }}</td>
         <td class="px-4 py-3 text-sm">
