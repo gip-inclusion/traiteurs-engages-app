@@ -1,7 +1,7 @@
 {
   "name": "Les Traiteurs Engages",
   "description": "Plateforme de mise en relation traiteurs engages",
-  "website": "https://les-traiteurs-engages.fr",
+  "website": "https://traiteurs-engages.inclusion.gouv.fr",
   "scripts": {
     "postdeploy": "alembic upgrade head && python init_db.py"
   },
@@ -25,7 +25,7 @@
     },
     "ADMIN_EMAIL": {
       "description": "Email for the bootstrap admin account",
-      "value": "admin@traiteurs-engages.fr"
+      "value": "admin@traiteurs-engages.inclusion.gouv.fr"
     },
     "ADMIN_INITIAL_PASSWORD": {
       "description": "Password for the bootstrap admin (leave empty to skip)",

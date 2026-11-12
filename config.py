@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     stripe_publishable_key: str | None = None
     stripe_webhook_secret: SecretStr | None = None
 
-    admin_email: str = "admin@traiteurs-engages.fr"
+    admin_email: str = "admin@traiteurs-engages.inclusion.gouv.fr"
     admin_initial_password: SecretStr | None = None
 
     s3_bucket: str | None = Field(
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     billing_enabled: bool = False
 
     brevo_api_key: SecretStr | None = None
-    mail_from_email: str = "noreply@les-traiteurs-engages.fr"
+    mail_from_email: str = "noreply@traiteurs-engages.inclusion.gouv.fr"
     mail_from_name: str = "Les Traiteurs Engagés"
     base_url: str = "http://localhost:8000"
 
@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     @classmethod
     def _mail_empty_to_default(cls, v, info):
         defaults = {
-            "mail_from_email": "noreply@les-traiteurs-engages.fr",
+            "mail_from_email": "noreply@traiteurs-engages.inclusion.gouv.fr",
             "mail_from_name": "Les Traiteurs Engagés",
             "base_url": "http://localhost:8000",
         }
@@ -113,7 +113,11 @@ class Settings(BaseSettings):
     @field_validator("admin_email", mode="before")
     @classmethod
     def _email_empty_to_default(cls, v):
-        return v if (isinstance(v, str) and v) else "admin@traiteurs-engages.fr"
+        return (
+            v
+            if (isinstance(v, str) and v)
+            else "admin@traiteurs-engages.inclusion.gouv.fr"
+        )
 
     @field_validator(
         "secure_cookies", "trust_proxy_headers", "billing_enabled", mode="before"

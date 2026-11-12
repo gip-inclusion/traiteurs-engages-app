@@ -221,7 +221,7 @@ Use the OS screenshot tool (macOS: ⌘⇧4 then space then click window). Save e
 - `client-orders-detail.png` — open one order from the list
 - `caterer-dashboard.png` — log out, log in as `contact@saveurs-solidaires.fr` / `password123`
 - `caterer-quote-editor.png` — open a request in the caterer's queue, click "Devis"
-- `admin-qualification-detail.png` — log in as `admin@traiteurs-engages.fr` / `admin`, open one pending caterer
+- `admin-qualification-detail.png` — log in as `admin@traiteurs-engages.inclusion.gouv.fr` / `admin`, open one pending caterer
 - `error-404.png` — visit http://localhost:8000/this-does-not-exist
 
 - [ ] **Step 3: Commit the baseline screenshots in the refactor worktree**

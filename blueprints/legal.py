@@ -15,7 +15,7 @@ _SECURITY_TXT = (
     "Preferred-Languages: fr, en\n"
     "Expires: 2027-04-01T00:00:00.000Z\n"
     "Encryption: https://inclusion.gouv.fr/.well-known/pdi-pgp.asc\n"
-    "Canonical: https://les-traiteurs-engages.fr/.well-known/security.txt\n"
+    "Canonical: https://traiteurs-engages.inclusion.gouv.fr/.well-known/security.txt\n"
 )
 
 
