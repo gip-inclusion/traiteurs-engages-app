@@ -4,6 +4,7 @@ from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from sqlalchemy import select
 
 from blueprints.auth import _stamp_session
+from config import settings
 from database import get_db
 from extensions import limiter
 from models import User
@@ -12,7 +13,8 @@ devtools_bp = Blueprint("devtools", __name__, url_prefix="/dev")
 
 DEMO_ACCOUNTS = [
     {
-        "email": "admin@traiteurs-engages.fr",
+        # Le super admin est cree par init_db.py avec ADMIN_EMAIL.
+        "email": settings.admin_email,
         "label": "Super Admin",
         "role": "super_admin",
     },

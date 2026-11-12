@@ -29,7 +29,7 @@ scalingo --app les-traiteurs-engages env-set \
   SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')" \
   SECURE_COOKIES=true \
   TRUST_PROXY_HEADERS=true \
-  ADMIN_EMAIL=admin@traiteurs-engages.fr \
+  ADMIN_EMAIL=admin@traiteurs-engages.inclusion.gouv.fr \
   ADMIN_INITIAL_PASSWORD=your-bootstrap-password
 ```
 
